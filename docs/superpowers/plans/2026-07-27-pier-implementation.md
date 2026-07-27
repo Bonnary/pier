@@ -640,32 +640,37 @@ git commit -m "feat(config): TOML parser and validation for pier.toml"
   - `type Files []File`
   - `type Stack interface { Name() string; Detect(projectPath string) bool; DefaultConfig() config.StackConfig; GenerateDevCompose(cfg config.Config) (Files, error); GenerateProdFiles(cfg config.Config) (Files, error); RequiredDirs() []string }`
   - `type MergeWarning struct { Service, Key, SourceFile string }`
+  - `func Register(name string, s Stack)` — register a stack implementation
   - `func Registry() map[string]Stack` — keyed by stack type name
   - `func ForName(name string) (Stack, error)` — lookup, returns error on miss
 
-- [ ] **Step 1: Write the failing test**
+> **Implementation note (init()-based registration, fixes import cycle):** `internal/stack` must NOT import `internal/stack/laravel` — that creates a cycle because `laravel` returns `stack.Files`. Instead, expose `Register(name, Stack)` and keep a package-level `map[string]Stack` populated by each stack's `init()`. See the corrected Step 2 below.
 
-Create `internal/stack/stack_test.go`:
+- [x] **Step 1: Write the failing test**
+
+Create `internal/stack/stack_test.go`. Note: must be `package stack_test` (external/black-box) plus a blank import of `laravel` — otherwise `laravel`'s `init()` never runs during `go test ./internal/stack/` and the registry is empty. At runtime, `cmd/pier/main.go` will also need `_ "github.com/pcnerd/pier/internal/stack/laravel"` so the registry is populated for end users.
 
 ```go
-package stack
+package stack_test
 
 import (
 	"sort"
 	"testing"
 
+	_ "github.com/pcnerd/pier/internal/stack/laravel"
 	"github.com/pcnerd/pier/internal/config"
+	"github.com/pcnerd/pier/internal/stack"
 )
 
 func TestRegistryHasLaravel(t *testing.T) {
-	reg := Registry()
+	reg := stack.Registry()
 	if _, ok := reg["laravel"]; !ok {
 		t.Fatal(`Registry()["laravel"] missing`)
 	}
 }
 
 func TestForName(t *testing.T) {
-	s, err := ForName("laravel")
+	s, err := stack.ForName("laravel")
 	if err != nil {
 		t.Fatalf("ForName(laravel): %v", err)
 	}
@@ -675,7 +680,7 @@ func TestForName(t *testing.T) {
 }
 
 func TestForNameMissing(t *testing.T) {
-	_, err := ForName("python")
+	_, err := stack.ForName("python")
 	if err == nil {
 		t.Fatal("ForName(python) = nil error, want non-nil")
 	}
@@ -683,7 +688,7 @@ func TestForNameMissing(t *testing.T) {
 
 func TestStackInterfaceSatisfied(t *testing.T) {
 	cfg := config.Config{Stack: config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"}}
-	s, _ := ForName(cfg.Stack.Type)
+	s, _ := stack.ForName(cfg.Stack.Type)
 	def := s.DefaultConfig()
 	if def.PHP != "8.3" {
 		t.Errorf("DefaultConfig().PHP = %q, want 8.3", def.PHP)
@@ -691,7 +696,7 @@ func TestStackInterfaceSatisfied(t *testing.T) {
 }
 
 func TestRegistryDeterministic(t *testing.T) {
-	reg := Registry()
+	reg := stack.Registry()
 	keys := make([]string, 0, len(reg))
 	for k := range reg {
 		keys = append(keys, k)
@@ -706,7 +711,9 @@ func TestRegistryDeterministic(t *testing.T) {
 Run: `go test ./internal/stack/`
 Expected: build failure (no `Stack`, `Registry`).
 
-- [ ] **Step 2: Define types and interface**
+
+
+- [x] **Step 2: Define types and interface**
 
 Create `internal/stack/stack.go`:
 
@@ -716,9 +723,9 @@ package stack
 import (
 	"fmt"
 	"os"
+	"sync"
 
 	"github.com/pcnerd/pier/internal/config"
-	laravel "github.com/pcnerd/pier/internal/stack/laravel"
 )
 
 type File struct {
@@ -744,15 +751,40 @@ type Stack interface {
 	RequiredDirs() []string
 }
 
-func Registry() map[string]Stack {
-	return map[string]Stack{
-		"laravel": laravel.New(),
+var (
+	regMu sync.RWMutex
+	reg   = map[string]Stack{}
+)
+
+// Register adds a Stack implementation under the given name. It panics on
+// duplicate registration. Each stack package calls this from its init().
+func Register(name string, s Stack) {
+	if name == "" || s == nil {
+		panic("stack: Register: empty name or nil stack")
 	}
+	regMu.Lock()
+	defer regMu.Unlock()
+	if _, dup := reg[name]; dup {
+		panic("stack: Register: duplicate registration for " + name)
+	}
+	reg[name] = s
+}
+
+// Registry returns a snapshot of the registered stacks, keyed by name.
+func Registry() map[string]Stack {
+	regMu.RLock()
+	defer regMu.RUnlock()
+	out := make(map[string]Stack, len(reg))
+	for k, v := range reg {
+		out[k] = v
+	}
+	return out
 }
 
 func ForName(name string) (Stack, error) {
-	reg := Registry()
+	regMu.RLock()
 	s, ok := reg[name]
+	regMu.RUnlock()
 	if !ok {
 		return nil, fmt.Errorf("stack: %q not registered (known: laravel)", name)
 	}
@@ -760,9 +792,9 @@ func ForName(name string) (Stack, error) {
 }
 ```
 
-- [ ] **Step 3: Stub laravel.New**
+- [x] **Step 3: Stub laravel.New**
 
-Create `internal/stack/laravel/stack.go` (stub; real methods land in Tasks 5-11):
+Create `internal/stack/laravel/stack.go` (stub; real methods land in Tasks 5-11). Note the `init()` self-registers with the parent `stack` package — that's how the cycle is broken.
 
 ```go
 package laravel
@@ -775,6 +807,10 @@ import (
 type Stack struct{}
 
 func New() *Stack { return &Stack{} }
+
+func init() {
+	stack.Register("laravel", New())
+}
 
 func (s *Stack) Name() string { return "laravel" }
 func (s *Stack) Detect(path string) bool { return false }
@@ -789,7 +825,7 @@ func (s *Stack) RequiredDirs() []string { return nil }
 Run: `go test ./internal/stack/ -v`
 Expected: 5 tests PASS (the stub satisfies the interface).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add .

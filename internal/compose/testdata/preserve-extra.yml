@@ -1,0 +1,8 @@
+services:
+  app:
+    image: myapp:1.0
+    extra_hosts:
+      - host.docker.internal:host-gateway
+networks:
+  default:
+    driver: bridge
