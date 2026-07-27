@@ -1,8 +1,8 @@
 # Changelog
 
-## v0.1.0 (2026-07-27)
+## v0.0.1-beta (2026-07-27)
 
-Initial release.
+Initial beta release.
 
 - `pier init`, `pier dev`, `pier stop`, `pier shell`, `pier exec`
 - `pier service add` / `pier service remove`

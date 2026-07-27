@@ -7,7 +7,7 @@ Docker stack with one-command deploys, health checks, and automatic rollback.
 
 ## Status
 
-v0.1.0 — under active development.
+v0.0.1-beta — under active development.
 
 ## Install
 
