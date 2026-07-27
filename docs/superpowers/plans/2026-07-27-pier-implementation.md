@@ -853,14 +853,14 @@ git commit -m "feat(stack): Stack interface, Files type, and registry scaffold"
   - `func MergeNodes(base, overlay *yaml.Node) *yaml.Node` — overlay wins on scalar/map conflicts; for sequences, base wins (deterministic order)
   - `func WriteFile(path string, n *yaml.Node) error`
 
-- [ ] **Step 1: Add yaml.v3 and go-cmp**
+- [x] **Step 1: Add yaml.v3 and go-cmp**
 
 ```bash
 go get gopkg.in/yaml.v3@latest
 go get github.com/google/go-cmp@latest
 ```
 
-- [ ] **Step 2: Create test fixtures**
+- [x] **Step 2: Create test fixtures**
 
 Create `internal/compose/testdata/empty.yml`:
 
@@ -891,7 +891,7 @@ networks:
     driver: bridge
 ```
 
-- [ ] **Step 3: Write failing tests for render**
+- [x] **Step 3: Write failing tests for render**
 
 Create `internal/compose/render_test.go`:
 
@@ -965,7 +965,7 @@ func TestWriteFile(t *testing.T) {
 }
 ```
 
-- [ ] **Step 4: Implement render**
+- [x] **Step 4: Implement render**
 
 Create `internal/compose/render.go`:
 
@@ -1013,7 +1013,7 @@ func WriteFile(path string, n *yaml.Node) error {
 Run: `go test ./internal/compose/ -v -run TestDecodeFile -run TestEncode -run TestWriteFile`
 Expected: 4 tests PASS.
 
-- [ ] **Step 5: Write failing tests for merge**
+- [x] **Step 5: Write failing tests for merge**
 
 Create `internal/compose/merge_test.go`:
 
@@ -1039,7 +1039,7 @@ func TestMergeNodesEmpty(t *testing.T) {
 	overlay := mustDecode("services:\n  app:\n    image: x\n")
 	got := MergeNodes(base, overlay)
 	b, _ := yaml.Marshal(got)
-	want := "services:\n  app:\n    image: x\n"
+	want := "services:\n    app:\n        image: x\n"
 	if string(b) != want {
 		t.Errorf("got:\n%s\nwant:\n%s", b, want)
 	}
@@ -1050,7 +1050,7 @@ func TestMergeNodesOverlayScalar(t *testing.T) {
 	overlay := mustDecode("services:\n  app:\n    image: new\n")
 	got := MergeNodes(base, overlay)
 	b, _ := yaml.Marshal(got)
-	if string(b) != "services:\n  app:\n    image: new\n" {
+	if string(b) != "services:\n    app:\n        image: new\n" {
 		t.Errorf("got: %s", b)
 	}
 }
@@ -1060,7 +1060,7 @@ func TestMergeNodesPreserveUnknownKeys(t *testing.T) {
 	overlay := mustDecode("services:\n  app:\n    image: myapp:2\n")
 	got := MergeNodes(base, overlay)
 	b, _ := yaml.Marshal(got)
-	want := "services:\n  app:\n    image: myapp:2\n    extra_hosts:\n      - host.docker.internal:host-gateway\n"
+	want := "services:\n    app:\n        image: myapp:2\n        extra_hosts:\n            - host.docker.internal:host-gateway\n"
 	if string(b) != want {
 		t.Errorf("got:\n%s\nwant:\n%s", b, want)
 	}
@@ -1105,8 +1105,10 @@ func TestMergeNodesSequenceBaseWins(t *testing.T) {
 func TestMergeNodesIdempotent(t *testing.T) {
 	merged := MergeNodes(mustDecode("services:\n  app:\n    image: x\n"), mustDecode("services:\n  app:\n    image: y\n"))
 	again := MergeNodes(merged, merged)
-	if string(merged) != string(again) {
-		t.Errorf("MergeNodes not idempotent:\n%s\nvs\n%s", merged, again)
+	b1, _ := yaml.Marshal(merged)
+	b2, _ := yaml.Marshal(again)
+	if string(b1) != string(b2) {
+		t.Errorf("MergeNodes not idempotent:\n%s\nvs\n%s", b1, b2)
 	}
 }
 
@@ -1133,7 +1135,7 @@ func contains(b []byte, sub string) bool {
 }
 ```
 
-- [ ] **Step 6: Implement MergeNodes**
+- [x] **Step 6: Implement MergeNodes**
 
 Create `internal/compose/merge.go`:
 
@@ -1221,7 +1223,7 @@ func hasKey(m *yaml.Node, key string) bool {
 Run: `go test ./internal/compose/ -v`
 Expected: 11 tests PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add .
@@ -1245,7 +1247,7 @@ git commit -m "feat(compose): YAML AST decode/encode and deterministic merge"
 - Consumes: nothing
 - Produces: `func detect(path string) bool` — true if `composer.json` requires `laravel/framework` AND `artisan` file exists in path.
 
-- [ ] **Step 1: Create test fixtures**
+- [x] **Step 1: Create test fixtures**
 
 Create `internal/stack/laravel/testdata/laravel/composer.json`:
 
@@ -1291,7 +1293,7 @@ Create `internal/stack/laravel/testdata/laravel/empty-project/composer.json`:
 }
 ```
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 Create `internal/stack/laravel/detect_test.go`:
 
@@ -1337,7 +1339,7 @@ func TestDetectMissing(t *testing.T) {
 Run: `go test ./internal/stack/laravel/`
 Expected: build failure (no `detect`).
 
-- [ ] **Step 3: Implement detect**
+- [x] **Step 3: Implement detect**
 
 Create `internal/stack/laravel/detect.go`:
 
@@ -1381,7 +1383,7 @@ func (s *Stack) Detect(path string) bool { return detect(path) }
 Run: `go test ./internal/stack/laravel/ -v`
 Expected: 5 tests PASS.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add .
