@@ -365,7 +365,7 @@ git commit -m "chore: scaffold pier module, CI, and version flag"
   - `func (c *Config) Validate() error` — called by `Load`, exported for callers
   - Sentinel error: `ErrConfigInvalid` (use `errors.Is`).
 
-- [ ] **Step 1: Create test fixtures**
+- [x] **Step 1: Create test fixtures**
 
 Create `internal/config/testdata/minimal.toml`:
 
@@ -1407,7 +1407,7 @@ git commit -m "feat(stack/laravel): detect Laravel projects via composer.json + 
   - `func services() map[string]Service` — full registry per spec
   - `func lookup(name string) (Service, bool)` — case-insensitive
 
-- [ ] **Step 1: Create shared test helper**
+- [x] **Step 1: Create shared test helper**
 
 Create `internal/stack/laravel/testhelpers_test.go`:
 
@@ -1430,7 +1430,7 @@ func contains(s, sub string) bool {
 }
 ```
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 Create `internal/stack/laravel/services_test.go`:
 
@@ -1484,7 +1484,7 @@ func TestS3HasPorts(t *testing.T) {
 }
 ```
 
-- [ ] **Step 3: Implement service registry**
+- [x] **Step 3: Implement service registry**
 
 Create `internal/stack/laravel/services.go`:
 
@@ -1604,7 +1604,7 @@ func services() map[string]Service {
 		},
 		"s3": {
 			Name: "s3", Image: "chrislusf/seaweedfs:latest",
-			Ports: []string{"8333:8333", "8888:8888", "9333:9333"},
+			Ports: []string{"8333", "8888", "9333"},
 			Volumes: []string{"s3_data:/data"},
 			Healthcheck: &Healthcheck{
 				Test: []string{"CMD-SHELL", "echo 's3' | nc -w 1 localhost 8333 | grep -q s3"},
@@ -1630,7 +1630,7 @@ Note on `chrislusf/seaweedfs`: the spec calls this out as an implementation-time
 Run: `go test ./internal/stack/laravel/ -v`
 Expected: 5 tests PASS.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add .
@@ -1648,7 +1648,7 @@ git commit -m "feat(stack/laravel): service registry (mysql, postgres, redis, ma
 - Consumes: `config.StackConfig`
 - Produces: `(s *Stack) DefaultConfig()` returning PHP 8.3, Node 22, no services. `(s *Stack) RequiredDirs()` returning `["docker", ".devcontainer"]`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `internal/stack/laravel/defaults_test.go`:
 
@@ -1660,6 +1660,8 @@ import (
 
 	"github.com/pcnerd/pier/internal/config"
 )
+
+var _ config.StackConfig
 
 func TestDefaultConfig(t *testing.T) {
 	s := New()
@@ -1687,7 +1689,7 @@ func TestRequiredDirs(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Implement**
+- [x] **Step 2: Implement**
 
 Update `internal/stack/laravel/stack.go`:
 
@@ -1726,7 +1728,7 @@ func (s *Stack) RequiredDirs() []string {
 Run: `go test ./internal/stack/laravel/ -v`
 Expected: 2 new tests PASS.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add .
@@ -1750,7 +1752,7 @@ git commit -m "feat(stack/laravel): default config and required dirs"
 - Consumes: nothing
 - Produces: `func Runtime(php string) (string, error)` returning path like `internal/stack/laravel/runtimes/8.3` for supported versions.
 
-- [ ] **Step 1: Pin upstream**
+- [x] **Step 1: Pin upstream**
 
 The implementation engineer fetches the latest stable Sail release at execution time and copies:
 
@@ -1769,7 +1771,7 @@ After copying, prepend a header comment to each Dockerfile:
 # See UPSTREAM.md for the exact tag and any local modifications.
 ```
 
-- [ ] **Step 2: Write UPSTREAM.md**
+- [x] **Step 2: Write UPSTREAM.md**
 
 Create `internal/stack/laravel/runtimes/UPSTREAM.md`:
 
@@ -1799,7 +1801,7 @@ diff -ruN internal/stack/laravel/runtimes/<v>/ /tmp/sail/vendor/laravel/sail/run
 ```
 ```
 
-- [ ] **Step 3: Write the failing test**
+- [x] **Step 3: Write the failing test**
 
 Create `internal/stack/laravel/runtimes_test.go`:
 
@@ -1844,7 +1846,7 @@ func TestRuntimeUnknown(t *testing.T) {
 }
 ```
 
-- [ ] **Step 4: Implement Runtime**
+- [x] **Step 4: Implement Runtime**
 
 Create `internal/stack/laravel/runtime.go`:
 
@@ -1859,7 +1861,7 @@ import (
 func Runtime(php string) (string, error) {
 	switch php {
 	case "8.2", "8.3", "8.4", "8.5":
-		return filepath.Join("internal", "stack", "laravel", "runtimes", php), nil
+		return filepath.Join("runtimes", php), nil
 	default:
 		return "", fmt.Errorf("laravel: PHP %q not supported (valid: 8.2 8.3 8.4 8.5)", php)
 	}
@@ -1869,7 +1871,7 @@ func Runtime(php string) (string, error) {
 Run: `go test ./internal/stack/laravel/ -v`
 Expected: 3 new tests PASS (after Step 1 has populated the runtimes/ tree).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add .
@@ -1891,7 +1893,7 @@ git commit -m "feat(stack/laravel): pier-owned runtime Dockerfiles (forked from 
 - Consumes: `config.Config`, `services()` registry
 - Produces: `(s *Stack) GenerateDevCompose(cfg config.Config) (stack.Files, error)` returning `docker-compose.yml`, `.env`, and `docker/<php>/{Dockerfile,php.ini,supervisord.conf}`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `internal/stack/laravel/dev_test.go`:
 
@@ -2032,13 +2034,13 @@ echo "{}" > internal/stack/laravel/testdata/golden/compose-with-services.yml
 Run: `go test ./internal/stack/laravel/ -v -run TestGenerateDevCompose`
 Expected: 2 tests FAIL (golden mismatch), 2 tests FAIL (no implementation).
 
-- [ ] **Step 2: Add go-cmp**
+- [x] **Step 2: Add go-cmp**
 
 ```bash
 go get github.com/google/go-cmp@latest
 ```
 
-- [ ] **Step 3: Implement GenerateDevCompose + helpers**
+- [x] **Step 3: Implement GenerateDevCompose + helpers**
 
 Create `internal/stack/laravel/yaml.go`:
 
@@ -2174,7 +2176,9 @@ func renderDevCompose(cfg config.Config) ([]byte, error) {
 			deps = append(deps, n)
 		}
 	}
-	cf.Services["laravel.test"].DependsOn = deps
+	laravelTest := cf.Services["laravel.test"]
+	laravelTest.DependsOn = deps
+	cf.Services["laravel.test"] = laravelTest
 
 	for _, name := range cfg.Stack.Services {
 		s, ok := lookup(name)
@@ -2274,13 +2278,13 @@ func renderDevEnv(cfg config.Config) ([]byte, error) {
 }
 ```
 
-- [ ] **Step 4: Update goldens**
+- [x] **Step 4: Update goldens**
 
 ```bash
 go test ./internal/stack/laravel/ -update -run TestGenerateDevCompose
 ```
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 ```bash
 go test ./internal/stack/laravel/ -v -run TestGenerateDevCompose
@@ -2288,7 +2292,7 @@ go test ./internal/stack/laravel/ -v -run TestGenerateDevCompose
 
 Expected: all 4 tests PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add .
@@ -2309,7 +2313,7 @@ git commit -m "feat(stack/laravel): dev compose generation with golden tests"
 - Consumes: `config.Config`
 - Produces: `(s *Stack) GenerateProdFiles(cfg config.Config) (stack.Files, error)` returning `docker-compose.prod.yml`, `docker/<php>/Dockerfile`, `docker/nginx/default.conf`, `.env.production.example`. Dev-only services (mailpit, log-viewer, dumps) excluded.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `internal/stack/laravel/prod_test.go`:
 
@@ -2375,7 +2379,7 @@ func TestGenerateProdFilesDevOnlyExcluded(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Implement GenerateProdFiles**
+- [x] **Step 2: Implement GenerateProdFiles**
 
 Create `internal/stack/laravel/prod.go`:
 
@@ -2445,7 +2449,7 @@ func renderProdCompose(cfg config.Config, services []string) ([]byte, error) {
 				Image:    "nginx:alpine",
 				Restart:  "unless-stopped",
 				Ports:    []string{"80:80", "443:443"},
-				Volumes:  []string{"./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro", "./.env.production:/var/www/html/.env:ro"},
+				Volumes:  []string{"./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro"},
 				Networks: []string{"pier"},
 				DependsOn: []string{"app"},
 			},
@@ -2456,7 +2460,9 @@ func renderProdCompose(cfg config.Config, services []string) ([]byte, error) {
 	for _, n := range services {
 		switch n {
 		case "mysql", "postgres", "redis":
-			cf.Services["app"].DependsOn = append(cf.Services["app"].DependsOn, n)
+			appSvc := cf.Services["app"]
+			appSvc.DependsOn = append(appSvc.DependsOn, n)
+			cf.Services["app"] = appSvc
 		}
 	}
 
@@ -2595,7 +2601,7 @@ echo "{}" > internal/stack/laravel/testdata/golden/compose-prod-no-services.yml
 echo "{}" > internal/stack/laravel/testdata/golden/compose-prod-with-services.yml
 ```
 
-- [ ] **Step 3: Update goldens and verify**
+- [x] **Step 3: Update goldens and verify**
 
 ```bash
 go test ./internal/stack/laravel/ -update -run TestGenerateProdFiles
@@ -2604,7 +2610,7 @@ go test ./internal/stack/laravel/ -v -run TestGenerateProdFiles
 
 Expected: all 3 prod tests PASS.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add .
@@ -2671,7 +2677,7 @@ services:
       - "myhost.local:192.168.1.1"
 ```
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 Create `internal/stack/laravel/merge_test.go`:
 
@@ -2782,7 +2788,7 @@ func TestMergeDevDecisionDropRemovesKey(t *testing.T) {
 }
 ```
 
-- [ ] **Step 3: Implement MergeDev**
+- [x] **Step 3: Implement MergeDev**
 
 Create `internal/stack/laravel/merge.go`:
 
@@ -2952,7 +2958,7 @@ func mergeServicesMap(fresh, existing *yaml.Node, owned map[string]bool) (*yaml.
 			if owned[k] {
 				continue // user removed this pier-owned service
 			}
-			out.Content = append(out.Content, k, v) // user-owned sidecar
+			out.Content = append(out.Content, &yaml.Node{Kind: yaml.ScalarNode, Value: k}, v) // user-owned sidecar
 		}
 	}
 	return out, warnings
@@ -2966,7 +2972,7 @@ func wrapDocument(n *yaml.Node) *yaml.Node {
 Run: `go test ./internal/stack/laravel/ -v -run TestMerge`
 Expected: 6 merge tests PASS.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add .
@@ -2998,7 +3004,7 @@ git commit -m "feat(stack/laravel): smart-merge with ownership, unknown-key warn
   - `(*Compose) Exec(ctx, opts ExecOpts, cmd ...string) error`
   - `func DetectTTY() bool`
 
-- [ ] **Step 1: Write the failing test for Compose**
+- [x] **Step 1: Write the failing test for Compose**
 
 Create `internal/docker/compose_test.go`:
 
@@ -3040,7 +3046,7 @@ func TestComposeUp(t *testing.T) {
 	if err := c.Up(context.Background()); err != nil {
 		t.Fatalf("Up: %v", err)
 	}
-	if len(f.calls) != 1 || f.calls[0] != "docker compose -f /tmp/docker-compose.yml up -d" {
+	if len(f.calls) != 1 || f.calls[0] != "docker compose -f /tmp/docker-compose.yml --project-directory /tmp up -d" {
 		t.Errorf("calls = %v", f.calls)
 	}
 }
@@ -3051,7 +3057,7 @@ func TestComposeUpWithServices(t *testing.T) {
 	if err := c.Up(context.Background(), "redis", "mysql"); err != nil {
 		t.Fatalf("Up: %v", err)
 	}
-	if f.calls[0] != "docker compose -f /tmp/docker-compose.yml up -d redis mysql" {
+	if f.calls[0] != "docker compose -f /tmp/docker-compose.yml --project-directory /tmp up -d redis mysql" {
 		t.Errorf("calls = %v", f.calls)
 	}
 }
@@ -3062,7 +3068,7 @@ func TestComposeDown(t *testing.T) {
 	if err := c.Down(context.Background()); err != nil {
 		t.Fatalf("Down: %v", err)
 	}
-	if f.calls[0] != "docker compose -f /tmp/docker-compose.yml down" {
+	if f.calls[0] != "docker compose -f /tmp/docker-compose.yml --project-directory /tmp down" {
 		t.Errorf("calls = %v", f.calls)
 	}
 }
@@ -3073,7 +3079,7 @@ func TestComposeBuild(t *testing.T) {
 	if err := c.Build(context.Background()); err != nil {
 		t.Fatalf("Build: %v", err)
 	}
-	if f.calls[0] != "docker compose -f /tmp/docker-compose.yml build" {
+	if f.calls[0] != "docker compose -f /tmp/docker-compose.yml --project-directory /tmp build" {
 		t.Errorf("calls = %v", f.calls)
 	}
 }
@@ -3097,13 +3103,13 @@ func TestComposeConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Config: %v", err)
 	}
-	if f.calls[0] != "docker compose -f /tmp/docker-compose.yml config" {
+	if f.calls[0] != "docker compose -f /tmp/docker-compose.yml --project-directory /tmp config" {
 		t.Errorf("calls = %v", f.calls)
 	}
 }
 ```
 
-- [ ] **Step 2: Implement Compose**
+- [x] **Step 2: Implement Compose**
 
 Create `internal/docker/compose.go`:
 
@@ -3114,6 +3120,7 @@ import (
 	"bytes"
 	"context"
 	"os/exec"
+	"path/filepath"
 )
 
 type Runner interface {
@@ -3138,7 +3145,11 @@ type Compose struct {
 }
 
 func (c *Compose) base() []string {
-	args := []string{"compose", "-f", c.File}
+	file := c.File
+	if c.Workdir != "" && !filepath.IsAbs(file) {
+		file = filepath.Join(c.Workdir, file)
+	}
+	args := []string{"compose", "-f", file}
 	if c.Workdir != "" {
 		args = append(args, "--project-directory", c.Workdir)
 	}
@@ -3187,7 +3198,7 @@ func (c *Compose) Pull(ctx context.Context) error {
 Run: `go test ./internal/docker/ -v`
 Expected: 6 tests PASS.
 
-- [ ] **Step 3: Write the failing test for Exec**
+- [x] **Step 3: Write the failing test for Exec**
 
 Create `internal/docker/exec_test.go`:
 
@@ -3205,7 +3216,7 @@ func TestExecService(t *testing.T) {
 	if err := c.Exec(context.Background(), ExecOpts{Service: "laravel.test", User: "www-data"}, "php", "artisan", "--version"); err != nil {
 		t.Fatalf("Exec: %v", err)
 	}
-	want := "docker compose -f /tmp/docker-compose.yml exec -T -u www-data laravel.test php artisan --version"
+	want := "docker compose -f /tmp/docker-compose.yml --project-directory /tmp exec -T -u www-data laravel.test php artisan --version"
 	if f.calls[0] != want {
 		t.Errorf("got: %s\nwant: %s", f.calls[0], want)
 	}
@@ -3217,7 +3228,7 @@ func TestExecTTYAddsI(t *testing.T) {
 	if err := c.Exec(context.Background(), ExecOpts{Service: "laravel.test", User: "www-data", TTY: true}, "bash"); err != nil {
 		t.Fatalf("Exec: %v", err)
 	}
-	want := "docker compose -f /tmp/docker-compose.yml exec -i -u www-data laravel.test bash"
+	want := "docker compose -f /tmp/docker-compose.yml --project-directory /tmp exec -i -u www-data laravel.test bash"
 	if f.calls[0] != want {
 		t.Errorf("got: %s\nwant: %s", f.calls[0], want)
 	}
@@ -3233,7 +3244,7 @@ func TestExecRequiresService(t *testing.T) {
 }
 ```
 
-- [ ] **Step 4: Implement Exec**
+- [x] **Step 4: Implement Exec**
 
 Create `internal/docker/exec.go`:
 
@@ -3286,7 +3297,7 @@ func DetectTTY() bool {
 }
 ```
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 ```bash
 go test ./internal/docker/ -v
@@ -3294,7 +3305,7 @@ go test ./internal/docker/ -v
 
 Expected: 9 tests PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add .
@@ -3323,14 +3334,14 @@ git commit -m "feat(docker): compose wrapper and exec command builder"
   - `func NewLogger(json bool, w io.Writer) Logger`
   - Exit codes: `ExitOK = 0`, `ExitGeneral = 1`, `ExitPreflight = 2`, `ExitBuild = 3`, `ExitUp = 4`, `ExitExecDown = 5`
 
-- [ ] **Step 1: Add cobra and lipgloss**
+- [x] **Step 1: Add cobra and lipgloss**
 
 ```bash
 go get github.com/spf13/cobra@latest
 go get github.com/charmbracelet/lipgloss@latest
 ```
 
-- [ ] **Step 2: Write the failing test for root**
+- [x] **Step 2: Write the failing test for root**
 
 Create `internal/cli/root_test.go`:
 
@@ -3371,7 +3382,7 @@ func TestRootUnknownCommand(t *testing.T) {
 }
 ```
 
-- [ ] **Step 3: Write the failing test for errors**
+- [x] **Step 3: Write the failing test for errors**
 
 Create `internal/cli/errors_test.go`:
 
@@ -3397,7 +3408,7 @@ func TestPreflightError(t *testing.T) {
 }
 ```
 
-- [ ] **Step 4: Implement errors**
+- [x] **Step 4: Implement errors**
 
 Create `internal/cli/errors.go`:
 
@@ -3435,6 +3446,20 @@ type ExitError struct {
 func (e *ExitError) Error() string { return fmt.Sprintf("exit %d: %v", e.Code, e.Err) }
 func (e *ExitError) Unwrap() error { return e.Err }
 
+func (e *ExitError) Is(target error) bool {
+	switch e.Code {
+	case ExitPreflight:
+		return target == ErrPreflight
+	case ExitBuild:
+		return target == ErrBuild
+	case ExitUp:
+		return target == ErrUp
+	case ExitExecDown:
+		return target == ErrExecDown
+	}
+	return false
+}
+
 // PreflightError wraps err with the preflight exit code.
 func PreflightError(err error) error { return &ExitError{Code: ExitPreflight, Err: err} }
 
@@ -3448,7 +3473,7 @@ func UpError(err error) error { return &ExitError{Code: ExitUp, Err: err} }
 func ExecDownError() error { return &ExitError{Code: ExitExecDown, Err: ErrExecDown} }
 ```
 
-- [ ] **Step 5: Write the failing test for logger**
+- [x] **Step 5: Write the failing test for logger**
 
 Create `internal/cli/logger_test.go`:
 
@@ -3495,7 +3520,7 @@ func TestLoggerJSON(t *testing.T) {
 }
 ```
 
-- [ ] **Step 6: Implement logger**
+- [x] **Step 6: Implement logger**
 
 Create `internal/cli/logger.go`:
 
@@ -3600,7 +3625,7 @@ func ternary[T any](cond bool, a, b T) T {
 }
 ```
 
-- [ ] **Step 7: Implement root**
+- [x] **Step 7: Implement root**
 
 Create `internal/cli/root.go`:
 
@@ -3695,7 +3720,7 @@ func errors_As(err error, target **ExitError) bool {
 var _ = fmt.Sprintf
 ```
 
-- [ ] **Step 8: Update cmd/pier/main.go**
+- [x] **Step 8: Update cmd/pier/main.go**
 
 Replace `cmd/pier/main.go`:
 
@@ -3720,7 +3745,7 @@ func main() {
 }
 ```
 
-- [ ] **Step 9: Run tests**
+- [x] **Step 9: Run tests**
 
 ```bash
 go test ./internal/cli/ -v
@@ -3728,7 +3753,7 @@ go test ./internal/cli/ -v
 
 Expected: 4 tests PASS (`TestRootUnknownCommand` requires the subcommands to exist; stubs are added in Tasks 14-18).
 
-- [ ] **Step 10: Add subcommand stubs so root test passes**
+- [x] **Step 10: Add subcommand stubs so root test passes**
 
 Create `internal/cli/init.go`:
 
@@ -3753,7 +3778,7 @@ Repeat the stub for each subcommand (`dev.go`, `stop.go`, `shell.go`, `exec.go`,
 Run: `go test ./internal/cli/ -v`
 Expected: PASS.
 
-- [ ] **Step 11: Commit**
+- [x] **Step 11: Commit**
 
 ```bash
 git add .
@@ -3780,7 +3805,7 @@ git commit -m "feat(cli): cobra root, exit codes, structured logger, command stu
   7. Render dev + prod files via stack module, smart-merge into any existing `docker-compose.yml` (warn-and-confirm for unknown keys).
   8. Print summary.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `internal/cli/init_test.go`:
 
@@ -3852,7 +3877,7 @@ func TestInitFailsOnNonLaravel(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Implement pier init**
+- [x] **Step 2: Implement pier init**
 
 Update `internal/cli/init.go`:
 
@@ -4076,7 +4101,7 @@ func tomlEncode(c config.Config) ([]byte, error) {
 }
 ```
 
-- [ ] **Step 3: Run tests**
+- [x] **Step 3: Run tests**
 
 ```bash
 go test ./internal/cli/ -v -run TestInit
@@ -4084,7 +4109,7 @@ go test ./internal/cli/ -v -run TestInit
 
 Expected: 3 tests PASS (test 2's error message check is satisfied by the implementation).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add .
@@ -4106,7 +4131,7 @@ git commit -m "feat(cli): pier init writes pier.toml, dev/prod files, smart-merg
   - `pier dev [--no-build] [services...]` — re-render dev compose (smart-merge), `docker compose up -d`, print status table
   - `pier stop` — `docker compose down` (named volumes preserved)
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `internal/cli/dev_test.go`:
 
@@ -4156,8 +4181,11 @@ func TestDevCommand(t *testing.T) {
 	if len(runner.calls) < 2 {
 		t.Errorf("expected >=2 docker calls, got: %v", runner.calls)
 	}
-	if runner.calls[0] != "docker compose -f "+filepath.Join(dir, "docker-compose.yml")+" --project-directory "+dir+" up -d" {
+	if runner.calls[0] != "docker compose -f "+filepath.Join(dir, "docker-compose.yml")+" --project-directory "+dir+" build" {
 		t.Errorf("first call = %q", runner.calls[0])
+	}
+	if len(runner.calls) < 2 || runner.calls[1] != "docker compose -f "+filepath.Join(dir, "docker-compose.yml")+" --project-directory "+dir+" up -d" {
+		t.Errorf("second call = %v", runner.calls)
 	}
 }
 ```
@@ -4174,7 +4202,7 @@ import "github.com/pcnerd/pier/internal/docker"
 var dockerRunner docker.Runner = docker.ExecRunner{}
 ```
 
-- [ ] **Step 2: Implement dev and stop**
+- [x] **Step 2: Implement dev and stop**
 
 `internal/cli/dev.go`:
 
@@ -4285,7 +4313,7 @@ func runStop(cmd *cobra.Command) error {
 }
 ```
 
-- [ ] **Step 3: Run tests**
+- [x] **Step 3: Run tests**
 
 ```bash
 go test ./internal/cli/ -v -run TestDev
@@ -4293,7 +4321,7 @@ go test ./internal/cli/ -v -run TestDev
 
 Expected: PASS.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add .
