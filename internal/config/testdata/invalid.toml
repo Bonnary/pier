@@ -1,0 +1,6 @@
+[project]
+name = "myapp"
+
+[stack]
+type = "laravel"
+php = "8.3"

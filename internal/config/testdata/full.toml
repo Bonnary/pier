@@ -1,0 +1,21 @@
+[project]
+name = "myapp"
+domain = "myapp.example.com"
+
+[stack]
+type = "laravel"
+php = "8.3"
+node = "22"
+services = ["redis", "mailpit", "s3"]
+
+[deploy.production]
+host = "prod.example.com"
+user = "deploy"
+path = "/srv/myapp"
+branch = "main"
+
+[deploy.staging]
+host = "staging.example.com"
+user = "deploy"
+path = "/srv/myapp-staging"
+branch = "develop"

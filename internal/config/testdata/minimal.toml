@@ -1,0 +1,9 @@
+[project]
+name = "myapp"
+domain = "myapp.example.com"
+
+[stack]
+type = "laravel"
+php = "8.3"
+node = "22"
+services = []
