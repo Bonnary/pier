@@ -108,3 +108,8 @@ func (c *Client) Close() error {
 	}
 	return c.conn.Close()
 }
+
+type runner interface {
+	Run(ctx context.Context, cmd string) ([]byte, []byte, error)
+	RunStream(ctx context.Context, cmd string, onLine func(string)) error
+}
