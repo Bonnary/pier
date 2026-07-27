@@ -1,10 +1,13 @@
 package cli
 
 import (
-	"fmt"
 	"io"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
+
+	"github.com/pcnerd/pier/internal/config"
+	"github.com/pcnerd/pier/internal/deploy"
 )
 
 func newDeployCmd(stdout, stderr io.Writer) *cobra.Command {
@@ -13,7 +16,42 @@ func newDeployCmd(stdout, stderr io.Writer) *cobra.Command {
 		Short: "Deploy the project to <env>",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return fmt.Errorf("not implemented")
+			return runDeploy(cmd, args[0])
 		},
 	}
+}
+
+func runDeploy(cmd *cobra.Command, env string) error {
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		return err
+	}
+	dc, ok := cfg.Deploy[env]
+	if !ok {
+		return cliError("no [deploy.%s] section in pier.toml", env)
+	}
+	logger := NewLogger(jsonOut, cmd.OutOrStdout())
+	p := &deploy.Pipeline{
+		Config:    cfg,
+		Env:       env,
+		DeployEnv: dc,
+		Logger:    logger,
+		SSH: deploy.SSHConfig{
+			Host: dc.Host, User: dc.User, KeyPath: sshKeyPath(),
+		},
+		Health: deploy.DefaultHealthConfig(cfg.Project.Domain),
+	}
+	return p.Run(cmd.Context())
+}
+
+func sshKeyPath() string {
+	if v := osGetenv("DEPLOY_SSH_KEY"); v != "" {
+		return v
+	}
+	return filepath.Join(homeDir(), ".ssh", "id_ed25519")
+}
+
+func homeDir() string {
+	h, _ := osUserHomeDir()
+	return h
 }

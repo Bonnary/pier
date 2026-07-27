@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/pcnerd/pier/internal/cli"
 	"github.com/pcnerd/pier/internal/config"
 )
 
@@ -13,7 +12,7 @@ type Pipeline struct {
 	Config    *config.Config
 	Env       string
 	DeployEnv config.DeployConfig
-	Logger    cli.Logger
+	Logger    Logger
 	SSH       SSHConfig
 	Health    HealthConfig
 	Now       func() time.Time
@@ -29,7 +28,7 @@ func (p *Pipeline) Run(ctx context.Context) error {
 	client, err := p.preflight(ctx)
 	if err != nil {
 		p.Logger.PhaseEnd("preflight", err)
-		return cli.PreflightError(err)
+		return PreflightError(err)
 	}
 	p.Logger.PhaseEnd("preflight", nil)
 	defer client.Close()
@@ -48,7 +47,7 @@ func (p *Pipeline) Run(ctx context.Context) error {
 	p.Logger.PhaseStart("sync")
 	if err := Sync(ctx, defaultRunner, ".", p.sshAddr()); err != nil {
 		p.Logger.PhaseEnd("sync", err)
-		return cli.PreflightError(err)
+		return PreflightError(err)
 	}
 	p.Logger.PhaseEnd("sync", nil)
 
@@ -58,7 +57,7 @@ func (p *Pipeline) Run(ctx context.Context) error {
 		p.Logger.Log("build", "%s", l)
 	}); err != nil {
 		p.Logger.PhaseEnd("build", err)
-		return cli.BuildError(err)
+		return BuildError(err)
 	}
 	p.Logger.PhaseEnd("build", nil)
 
@@ -114,9 +113,9 @@ func (p *Pipeline) sshAddr() string {
 
 func (p *Pipeline) rollback(ctx context.Context, c *Client) error {
 	if err := Rollback(ctx, c, p.DeployEnv.Path, p.Config.Project.Name); err != nil {
-		return cli.UpError(err)
+		return UpError(err)
 	}
-	return cli.UpError(fmt.Errorf("health check failed; rolled back"))
+	return UpError(fmt.Errorf("health check failed; rolled back"))
 }
 
 func (p *Pipeline) commit() error {

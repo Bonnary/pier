@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/pcnerd/pier/internal/deploy"
 )
 
 var (
@@ -16,23 +18,6 @@ var (
 	errStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
 )
 
-type Event struct {
-	Time    time.Time      `json:"time"`
-	Phase   string         `json:"phase,omitempty"`
-	Level   string         `json:"level,omitempty"`
-	Message string         `json:"message"`
-	Data    map[string]any `json:"data,omitempty"`
-}
-
-type Logger interface {
-	Emit(Event)
-	PhaseStart(name string)
-	PhaseEnd(name string, err error)
-	Log(level, format string, args ...any)
-	JSON() bool
-	Writer() io.Writer
-}
-
 type stdLogger struct {
 	mu   sync.Mutex
 	w    io.Writer
@@ -40,7 +25,7 @@ type stdLogger struct {
 	tty  bool
 }
 
-func NewLogger(jsonOut bool, w io.Writer) Logger {
+func NewLogger(jsonOut bool, w io.Writer) deploy.Logger {
 	return &stdLogger{w: w, json: jsonOut, tty: !jsonOut}
 }
 
@@ -49,7 +34,7 @@ type fileWriter struct{}
 func (l *stdLogger) Writer() io.Writer { return l.w }
 func (l *stdLogger) JSON() bool        { return l.json }
 
-func (l *stdLogger) Emit(e Event) {
+func (l *stdLogger) Emit(e deploy.Event) {
 	if e.Time.IsZero() {
 		e.Time = time.Now()
 	}
@@ -73,7 +58,7 @@ func (l *stdLogger) Emit(e Event) {
 }
 
 func (l *stdLogger) PhaseStart(name string) {
-	l.Emit(Event{Phase: name, Message: "start"})
+	l.Emit(deploy.Event{Phase: name, Message: "start"})
 }
 
 func (l *stdLogger) PhaseEnd(name string, err error) {
@@ -81,11 +66,11 @@ func (l *stdLogger) PhaseEnd(name string, err error) {
 	if err != nil {
 		msg = "failed: " + err.Error()
 	}
-	l.Emit(Event{Phase: name, Message: msg, Level: ternary(err == nil, "info", "error")})
+	l.Emit(deploy.Event{Phase: name, Message: msg, Level: ternary(err == nil, "info", "error")})
 }
 
 func (l *stdLogger) Log(level, format string, args ...any) {
-	l.Emit(Event{Level: level, Message: fmt.Sprintf(format, args...)})
+	l.Emit(deploy.Event{Level: level, Message: fmt.Sprintf(format, args...)})
 }
 
 func ternary[T any](cond bool, a, b T) T {

@@ -7,9 +7,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pcnerd/pier/internal/cli"
 	"github.com/pcnerd/pier/internal/config"
 )
+
+type discardLogger struct{}
+
+func (discardLogger) Emit(Event)                 {}
+func (discardLogger) PhaseStart(string)          {}
+func (discardLogger) PhaseEnd(string, error)     {}
+func (discardLogger) Log(string, string, ...any) {}
+func (discardLogger) JSON() bool                 { return false }
+func (discardLogger) Writer() io.Writer          { return io.Discard }
 
 func TestPipelineDryRun(t *testing.T) {
 	cfg := &config.Config{
@@ -23,7 +31,7 @@ func TestPipelineDryRun(t *testing.T) {
 		Config:    cfg,
 		Env:       "production",
 		DeployEnv: cfg.Deploy["production"],
-		Logger:    cli.NewLogger(false, io.Discard),
+		Logger:    discardLogger{},
 		SSH:       SSHConfig{Host: "h", User: "u", KeyPath: filepath.Join("testdata", "id_ed25519")},
 		Health:    HealthConfig{URL: "https://x.example.com/up", Timeout: time.Second, Interval: 100 * time.Millisecond, MaxAttempts: 1},
 		Now:       time.Now,
