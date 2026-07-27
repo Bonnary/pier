@@ -4821,7 +4821,7 @@ git commit -m "feat(cli): pier service add/remove with idempotency"
 - Consumes: `internal/config`, `internal/docker`
 - Produces: `pier status` command. Reads `pier.toml`, runs `docker compose ps` for each defined compose file, prints a table: project, env, last deploy time, health.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `internal/cli/status_test.go`:
 
@@ -4881,7 +4881,7 @@ func TestStatusReadsConfig(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Implement status**
+- [x] **Step 2: Implement status**
 
 `internal/cli/status.go`:
 
@@ -4930,7 +4930,7 @@ func runStatus(cmd *cobra.Command) error {
 }
 ```
 
-- [ ] **Step 3: Run tests**
+- [x] **Step 3: Run tests**
 
 ```bash
 go test ./internal/cli/ -v -run TestStatus
@@ -4938,7 +4938,7 @@ go test ./internal/cli/ -v -run TestStatus
 
 Expected: PASS.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add .
@@ -4959,7 +4959,7 @@ git commit -m "feat(cli): pier status command"
 - Consumes: nothing
 - Produces: `func writeDevcontainer(projectPath string) error` writes `.devcontainer/devcontainer.json` referencing the pier-owned docker-compose.yml.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `internal/cli/devcontainer_test.go`:
 
@@ -4996,7 +4996,7 @@ func TestWriteDevcontainer(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Implement writeDevcontainer**
+- [x] **Step 2: Implement writeDevcontainer**
 
 Create `internal/cli/devcontainer.go`:
 
@@ -5037,7 +5037,7 @@ func writeDevcontainer(projectPath string) error {
 }
 ```
 
-- [ ] **Step 3: Run tests**
+- [x] **Step 3: Run tests**
 
 ```bash
 go test ./internal/cli/ -v -run TestWriteDevcontainer
@@ -5045,7 +5045,7 @@ go test ./internal/cli/ -v -run TestWriteDevcontainer
 
 Expected: PASS.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add .
@@ -5071,13 +5071,13 @@ git commit -m "feat(cli): pier init --devcontainer writes .devcontainer/devconta
   - `func (c *Client) RunStream(ctx context.Context, cmd string, onLine func(string)) error` — streams stdout line by line (for the TUI)
   - Sentinel: `ErrPreflight` (use errors.Is) for connection failures
 
-- [ ] **Step 1: Add ssh dep**
+- [x] **Step 1: Add ssh dep**
 
 ```bash
 go get golang.org/x/crypto/ssh@latest
 ```
 
-- [ ] **Step 2: Write the failing test (uses testcontainers SSH server behind integration tag)**
+- [x] **Step 2: Write the failing test (uses testcontainers SSH server behind integration tag)**
 
 Create `internal/deploy/ssh_test.go`:
 
@@ -5108,7 +5108,7 @@ func TestDialRejectsEmptyHost(t *testing.T) {
 }
 ```
 
-- [ ] **Step 3: Implement SSH client**
+- [x] **Step 3: Implement SSH client**
 
 Create `internal/deploy/ssh.go`:
 
@@ -5226,7 +5226,7 @@ func (c *Client) Close() error {
 }
 ```
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 ```bash
 go test ./internal/deploy/ -v -run TestSSHConfig -run TestDial
@@ -5234,7 +5234,7 @@ go test ./internal/deploy/ -v -run TestSSHConfig -run TestDial
 
 Expected: 2 tests PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add .
@@ -5258,7 +5258,7 @@ git commit -m "feat(deploy): SSH client with key auth, run + runstream"
   - `func SaveState(dir string, s *State) error` — writes atomically (write to tmp, rename)
   - `func (s *State) HasPrevious() bool` — `s.Previous != ""`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `internal/deploy/state_test.go`:
 
@@ -5308,7 +5308,7 @@ func TestStateLoadMissing(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Implement state**
+- [x] **Step 2: Implement state**
 
 Create `internal/deploy/state.go`:
 
@@ -5366,7 +5366,7 @@ func SaveState(dir string, s *State) error {
 }
 ```
 
-- [ ] **Step 3: Run tests**
+- [x] **Step 3: Run tests**
 
 ```bash
 go test ./internal/deploy/ -v
@@ -5374,7 +5374,7 @@ go test ./internal/deploy/ -v
 
 Expected: 3 tests PASS.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add .
@@ -5397,7 +5397,7 @@ git commit -m "feat(deploy): .pier/state.json load/save with atomic write"
   - Falls back to `tar | ssh tar` if `rsync` is missing on remote
   - `type CommandRunner interface { Run(ctx, name, args...) error }` (subset of docker.Runner)
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `internal/deploy/rsync_test.go`:
 
@@ -5471,7 +5471,7 @@ func contains(s, sub string) bool {
 var _ = filepath.Join
 ```
 
-- [ ] **Step 2: Implement Sync**
+- [x] **Step 2: Implement Sync**
 
 Create `internal/deploy/rsync.go`:
 
@@ -5480,7 +5480,6 @@ package deploy
 
 import (
 	"context"
-	"fmt"
 	"os/exec"
 )
 
@@ -5519,7 +5518,7 @@ func Sync(ctx context.Context, runner CommandRunner, local, remote string) error
 }
 ```
 
-- [ ] **Step 3: Run tests**
+- [x] **Step 3: Run tests**
 
 ```bash
 go test ./internal/deploy/ -v
@@ -5527,7 +5526,7 @@ go test ./internal/deploy/ -v
 
 Expected: 2 sync tests PASS.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add .
@@ -5550,7 +5549,7 @@ git commit -m "feat(deploy): rsync-over-ssh file sync with sensible excludes"
   - `func Up(ctx context.Context, c *Client, dir string) error` — runs `docker compose -f docker-compose.prod.yml up -d`
   - `func Tag(ctx context.Context, c *Client, project, sha string) error` — tags the just-built image as `<project>:<sha>` and `<project>:current`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `internal/deploy/build_test.go`:
 
@@ -5600,7 +5599,7 @@ func TestBuildStreamsOutput(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Add a test-only Client constructor**
+- [x] **Step 2: Add a test-only Client constructor**
 
 Append to `internal/deploy/ssh.go`:
 
@@ -5642,7 +5641,7 @@ Client already implements it. Tests pass a fake. Adjust the function signatures 
 func Build(ctx context.Context, r runner, dir, project, sha string, onLine func(string)) error
 ```
 
-- [ ] **Step 3: Implement Build, Up, Tag**
+- [x] **Step 3: Implement Build, Up, Tag**
 
 Create `internal/deploy/build.go`:
 
@@ -5683,7 +5682,7 @@ func Up(ctx context.Context, r runner, dir string) error {
 }
 ```
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 ```bash
 go test ./internal/deploy/ -v
@@ -5691,7 +5690,7 @@ go test ./internal/deploy/ -v
 
 Expected: 4 tests PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add .
@@ -5713,7 +5712,7 @@ git commit -m "feat(deploy): remote build, tag, up via SSH"
   - `func Probe(ctx context.Context, cfg HealthConfig) error` — HTTP probe with exponential backoff up to Timeout
   - `func DefaultHealthConfig(domain string) HealthConfig` — `https://<domain>/up`, 60s timeout, 5 attempts
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `internal/deploy/health_test.go`:
 
@@ -5771,7 +5770,7 @@ func TestProbeBackoff(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Implement Probe**
+- [x] **Step 2: Implement Probe**
 
 Create `internal/deploy/health.go`:
 
@@ -5836,7 +5835,7 @@ func Probe(ctx context.Context, cfg HealthConfig) error {
 }
 ```
 
-- [ ] **Step 3: Run tests**
+- [x] **Step 3: Run tests**
 
 ```bash
 go test ./internal/deploy/ -v
@@ -5844,7 +5843,7 @@ go test ./internal/deploy/ -v
 
 Expected: 3 health tests PASS.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add .
