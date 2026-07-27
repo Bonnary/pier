@@ -20,10 +20,6 @@ func (s *Stack) DefaultConfig() config.StackConfig {
 	return config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22", Services: []string{}}
 }
 
-func (s *Stack) GenerateProdFiles(cfg config.Config) (stack.Files, error) {
-	return nil, nil // Task 10
-}
-
 func (s *Stack) RequiredDirs() []string {
 	return []string{"docker", ".devcontainer"}
 }
