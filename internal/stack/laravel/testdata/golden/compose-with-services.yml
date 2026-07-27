@@ -1,0 +1,66 @@
+services:
+    laravel.test:
+        build:
+            context: ./docker/8.3
+            dockerfile: Dockerfile
+            args:
+                WWWGROUP: "1000"
+        image: myapp/test:latest
+        environment:
+            APP_DEBUG: "true"
+            APP_ENV: local
+            DB_CONNECTION: sqlite
+            MAIL_HOST: mailpit
+            MAIL_MAILER: smtp
+            MAIL_PORT: "1025"
+            REDIS_HOST: redis
+            REDIS_PORT: "6379"
+        volumes:
+            - ./:/var/www/html
+        extra_hosts:
+            - host.docker.internal:host-gateway
+        networks:
+            - pier
+        depends_on:
+            - redis
+    mailpit:
+        image: axllent/mailpit:latest
+        ports:
+            - 1025:1025
+            - 8025:8025
+        networks:
+            - pier
+        healthcheck:
+            test:
+                - CMD
+                - wget
+                - --spider
+                - -q
+                - http://localhost:8025/
+            interval: 10s
+            timeout: 5s
+            retries: "5"
+            start_period: 10s
+    redis:
+        image: redis:7-alpine
+        ports:
+            - 6379:6379
+        volumes:
+            - redis_data:/data
+        networks:
+            - pier
+        healthcheck:
+            test:
+                - CMD
+                - redis-cli
+                - ping
+            interval: 10s
+            timeout: 5s
+            retries: "5"
+            start_period: 10s
+networks:
+    pier:
+        driver: bridge
+volumes:
+    redis_data:
+        driver: local

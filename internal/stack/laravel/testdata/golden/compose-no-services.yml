@@ -1,0 +1,21 @@
+services:
+    laravel.test:
+        build:
+            context: ./docker/8.3
+            dockerfile: Dockerfile
+            args:
+                WWWGROUP: "1000"
+        image: myapp/test:latest
+        environment:
+            APP_DEBUG: "true"
+            APP_ENV: local
+            DB_CONNECTION: sqlite
+        volumes:
+            - ./:/var/www/html
+        extra_hosts:
+            - host.docker.internal:host-gateway
+        networks:
+            - pier
+networks:
+    pier:
+        driver: bridge
