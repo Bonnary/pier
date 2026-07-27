@@ -4343,7 +4343,7 @@ git commit -m "feat(cli): pier dev (smart-merge + up) and pier stop"
   - `pier shell` — interactive bash in `laravel.test` (TTY detection, user from env)
   - `pier exec <cmd...>` — one-off command in `laravel.test`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `internal/cli/exec_test.go`:
 
@@ -4399,7 +4399,7 @@ func TestExecBuildsCommand(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Implement shell and exec**
+- [x] **Step 2: Implement shell and exec**
 
 `internal/cli/shell.go`:
 
@@ -4519,7 +4519,7 @@ func runExec(cmd *cobra.Command, args []string) error {
 }
 ```
 
-- [ ] **Step 3: Run tests**
+- [x] **Step 3: Run tests**
 
 ```bash
 go test ./internal/cli/ -v -run TestExec
@@ -4527,7 +4527,7 @@ go test ./internal/cli/ -v -run TestExec
 
 Expected: PASS.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add .
@@ -4551,7 +4551,7 @@ git commit -m "feat(cli): pier shell (interactive) and pier exec (one-off), TTY 
   - For `remove`: `docker compose stop <removed services>`; `--no-stop` to skip
   - Idempotent: adding an existing service is a no-op
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `internal/cli/service_test.go`:
 
@@ -4624,7 +4624,7 @@ func TestServiceAddIdempotent(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Implement service add/remove**
+- [x] **Step 2: Implement service add/remove**
 
 `internal/cli/service.go`:
 
@@ -4794,7 +4794,7 @@ func writeFile(path string, b []byte) error {
 }
 ```
 
-- [ ] **Step 3: Run tests**
+- [x] **Step 3: Run tests**
 
 ```bash
 go test ./internal/cli/ -v -run TestService
@@ -4802,7 +4802,7 @@ go test ./internal/cli/ -v -run TestService
 
 Expected: PASS.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add .
