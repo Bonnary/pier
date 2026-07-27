@@ -176,18 +176,3 @@ func replaceFile(files stack.Files, path string, contents []byte) stack.Files {
 func tomlMarshal(c config.Config) ([]byte, error) {
 	return tomlEncode(c)
 }
-
-func writeDevcontainer(projectPath string) error {
-	dir := filepath.Join(projectPath, ".devcontainer")
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return err
-	}
-	body := `{
-  "name": "pier",
-  "dockerComposeFile": ["../docker-compose.yml"],
-  "service": "laravel.test",
-  "workspaceFolder": "/var/www/html"
-}
-`
-	return os.WriteFile(filepath.Join(dir, "devcontainer.json"), []byte(body), 0644)
-}
