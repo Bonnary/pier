@@ -3329,6 +3329,8 @@ git commit -m "feat(docker): compose wrapper and exec command builder"
 - Consumes: nothing
 - Produces:
   - `func Execute() error` — runs the cobra root
+
+> **Architecture note (Task 27 fix):** The plan's `deploy.Pipeline` needs `cli.Logger` and `cli.PreflightError` etc. for its `Run()` method. But once `cli/deploy.go` imports `deploy.Pipeline`, the package graph is `cli → deploy → cli` (cycle). Resolved in Task 27 by moving the `Logger` interface, `Event` type, and the error helpers (`ExitError`, `PreflightError`, `BuildError`, `UpError`, `ExecDownError`, exit code constants) from `internal/cli` to `internal/deploy`. `internal/cli` re-exports them as type aliases so existing call sites keep working. This means future `tui` package can import `deploy` (Logger interface) without cycling.
   - `type Event struct { Phase, Message string; Time time.Time; Level string; Data map[string]any }`
   - `type Logger interface { Emit(Event); PhaseStart(name string); PhaseEnd(name string, err error); Log(level, format string, args ...any); JSON() bool; Writer() io.Writer }`
   - `func NewLogger(json bool, w io.Writer) Logger`
@@ -5863,7 +5865,7 @@ git commit -m "feat(deploy): health probe with exponential backoff"
 - Produces:
   - `func Rollback(ctx context.Context, r runner, dir, project string) error` — reads state, tags `:previous` as `:current`, runs up, runs health probe
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `internal/deploy/rollback_test.go`:
 
@@ -5924,7 +5926,7 @@ func TestRollbackSwitchesToPrevious(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Implement Rollback**
+- [x] **Step 2: Implement Rollback**
 
 Create `internal/deploy/rollback.go`:
 
@@ -5957,7 +5959,7 @@ func Rollback(ctx context.Context, r runner, dir, project string) error {
 }
 ```
 
-- [ ] **Step 3: Run tests**
+- [x] **Step 3: Run tests**
 
 ```bash
 go test ./internal/deploy/ -v
@@ -5965,7 +5967,7 @@ go test ./internal/deploy/ -v
 
 Expected: 2 rollback tests PASS.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add .
@@ -5988,7 +5990,7 @@ git commit -m "feat(deploy): rollback to previous image tag"
   - `func (p *Pipeline) Run(ctx context.Context) error` — runs the 7 phases
   - Phase names: `"preflight"`, `"sync"`, `"build"`, `"up"`, `"health"`, `"commit"`
 
-- [ ] **Step 1: Write the failing unit test**
+- [x] **Step 1: Write the failing unit test**
 
 Create `internal/deploy/deploy_unit_test.go`:
 
@@ -6032,7 +6034,7 @@ func TestPipelineDryRun(t *testing.T) {
 
 A real unit test that exercises the full pipeline without integration is impractical because every phase touches the network or filesystem. The unit test above just asserts the Pipeline struct compiles and the constructor logic is sound. Full coverage happens in the integration test (Task 26 Step 3).
 
-- [ ] **Step 2: Implement Pipeline**
+- [x] **Step 2: Implement Pipeline**
 
 Create `internal/deploy/deploy.go`:
 
@@ -6173,7 +6175,7 @@ func (p *Pipeline) commit() error {
 }
 ```
 
-- [ ] **Step 3: Write the integration test (skipped without -tags=integration)**
+- [x] **Step 3: Write the integration test (skipped without -tags=integration)**
 
 Create `internal/deploy/deploy_integration_test.go`:
 
@@ -6215,7 +6217,7 @@ func TestPipelineEndToEnd(t *testing.T) {
 }
 ```
 
-- [ ] **Step 4: Run unit tests**
+- [x] **Step 4: Run unit tests**
 
 ```bash
 go test ./internal/deploy/ -v -short
@@ -6223,7 +6225,7 @@ go test ./internal/deploy/ -v -short
 
 Expected: 4 (ssh + state + rsync + build + health + rollback) unit tests PASS. Pipeline test runs but doesn't assert anything yet (it's a wiring smoke test).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add .
@@ -6242,7 +6244,7 @@ git commit -m "feat(deploy): 7-phase pipeline orchestrator with rollback"
 - Consumes: `internal/config`, `internal/deploy`, `internal/tui` (TUI starts here)
 - Produces: `pier deploy <env>` command. Loads pier.toml, builds the Pipeline, calls Run with the TUI as the Logger.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `internal/cli/deploy_test.go`:
 
@@ -6278,7 +6280,7 @@ func TestDeployMissingEnv(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Implement pier deploy**
+- [x] **Step 2: Implement pier deploy**
 
 `internal/cli/deploy.go`:
 
@@ -6365,7 +6367,7 @@ func osGetenv(k string) string { return os.Getenv(k) }
 func osUserHomeDir() (string, error) { return os.UserHomeDir() }
 ```
 
-- [ ] **Step 3: Run tests**
+- [x] **Step 3: Run tests**
 
 ```bash
 go test ./internal/cli/ -v -run TestDeploy
@@ -6373,7 +6375,7 @@ go test ./internal/cli/ -v -run TestDeploy
 
 Expected: PASS.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add .
@@ -6391,7 +6393,7 @@ git commit -m "feat(cli): pier deploy <env> with optional TUI"
 - Consumes: `internal/config`, `internal/deploy`
 - Produces: `pier rollback <env>` — opens SSH, runs Rollback, prints result.
 
-- [ ] **Step 1: Implement pier rollback**
+- [x] **Step 1: Implement pier rollback**
 
 `internal/cli/rollback.go`:
 
@@ -6445,7 +6447,7 @@ func runRollback(cmd *cobra.Command, env string) error {
 }
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add .
@@ -6469,14 +6471,14 @@ git commit -m "feat(cli): pier rollback <env>"
   - Internal: `type model struct { pipeline *deploy.Pipeline; phases []phase; logLines []string; ... }`
   - The TUI consumes events from the Pipeline's Logger interface; it does not call the Pipeline directly.
 
-- [ ] **Step 1: Add Bubble Tea**
+- [x] **Step 1: Add Bubble Tea**
 
 ```bash
 go get github.com/charmbracelet/bubbletea@latest
 go get github.com/charmbracelet/bubbles@latest
 ```
 
-- [ ] **Step 2: Implement styles**
+- [x] **Step 2: Implement styles**
 
 Create `internal/tui/styles.go`:
 
@@ -6495,7 +6497,7 @@ var (
 )
 ```
 
-- [ ] **Step 3: Implement the model**
+- [x] **Step 3: Implement the model**
 
 Create `internal/tui/deploy.go`:
 
@@ -6638,7 +6640,7 @@ func (l tuiLogger) Writer() *os.File { return os.Stdout }
 // (Step 4) pins the type. Engineer: align method signatures with cli.Logger.
 ```
 
-- [ ] **Step 4: Write the failing test (teatest)**
+- [x] **Step 4: Write the failing test (teatest)**
 
 Create `internal/tui/deploy_test.go`:
 
@@ -6671,7 +6673,7 @@ func TestModelQuitOnQ(t *testing.T) {
 }
 ```
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 ```bash
 go test ./internal/tui/ -v
@@ -6679,7 +6681,7 @@ go test ./internal/tui/ -v
 
 Expected: 2 tests PASS (compile may surface the cli.Logger mismatch; align types).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add .
