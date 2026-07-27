@@ -6700,7 +6700,7 @@ git commit -m "feat(tui): Bubble Tea deploy screen with phase strip and log tail
 - Consumes: nothing
 - Produces: a complete README with install, quickstart, all commands, configuration reference, troubleshooting, and the spec's manual verification checklist (verbatim).
 
-- [ ] **Step 1: Replace README with full content**
+- [x] **Step 1: Replace README with full content**
 
 `README.md`:
 
@@ -6815,7 +6815,7 @@ Run before tagging a release.
 MIT (see `LICENSE`).
 ```
 
-- [ ] **Step 2: Add CHANGELOG.md**
+- [x] **Step 2: Add CHANGELOG.md**
 
 `CHANGELOG.md`:
 
@@ -6837,7 +6837,7 @@ Initial release.
 - CI on macOS, Linux, Windows (unit + golden); Linux only (integration)
 ```
 
-- [ ] **Step 3: Final build + test**
+- [x] **Step 3: Final build + test**
 
 ```bash
 go build ./...
@@ -6847,7 +6847,7 @@ go test -tags=integration -timeout 15m ./internal/deploy/...  # manual; requires
 
 Expected: build succeeds; all unit + golden tests pass.
 
-- [ ] **Step 4: Commit + tag**
+- [x] **Step 4: Commit + tag**
 
 ```bash
 git add .
