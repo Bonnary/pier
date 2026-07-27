@@ -14,7 +14,7 @@ func init() {
 }
 
 func (s *Stack) Name() string { return "laravel" }
-func (s *Stack) Detect(path string) bool { return false }
+func (s *Stack) Detect(path string) bool { return detect(path) }
 func (s *Stack) DefaultConfig() config.StackConfig {
 	return config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"}
 }
