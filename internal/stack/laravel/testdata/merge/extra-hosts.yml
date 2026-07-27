@@ -1,0 +1,4 @@
+services:
+  laravel.test:
+    extra_hosts:
+      - "myhost.local:192.168.1.1"

@@ -1,0 +1,5 @@
+services:
+  user-sidecar:
+    image: custom:1
+    ports:
+      - "9999:9999"
