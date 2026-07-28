@@ -36,3 +36,32 @@ func TestRuntimeUnknown(t *testing.T) {
 		t.Error("Runtime(7.4) = nil error, want non-nil")
 	}
 }
+
+func TestSupportedPHPRuntimes(t *testing.T) {
+	got := SupportedPHPRuntimes()
+	if len(got) < 1 {
+		t.Fatal("SupportedPHPRuntimes() empty")
+	}
+	for i := 1; i < len(got); i++ {
+		if got[i-1] >= got[i] {
+			t.Errorf("not ascending: %v", got)
+		}
+	}
+	for _, v := range got {
+		if _, err := Runtime(v); err != nil {
+			t.Errorf("SupportedPHPRuntimes contains %q which Runtime() rejects: %v", v, err)
+		}
+	}
+}
+
+func TestSupportedNodeVersions(t *testing.T) {
+	got := SupportedNodeVersions()
+	if len(got) < 1 {
+		t.Fatal("SupportedNodeVersions() empty")
+	}
+	for i := 1; i < len(got); i++ {
+		if got[i-1] >= got[i] {
+			t.Errorf("not ascending: %v", got)
+		}
+	}
+}
