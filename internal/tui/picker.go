@@ -127,12 +127,16 @@ func (p *Picker) Run() (Result, error) {
 		return Result{}, err
 	}
 	pp := final.(*Picker)
-	if pp.aborted {
-		return Result{Aborted: true}, nil
+	return pp.buildResult(), nil
+}
+
+func (p *Picker) buildResult() Result {
+	if p.aborted {
+		return Result{Aborted: true}
 	}
-	if pp.multi {
-		indices := make([]int, 0, len(pp.picked))
-		for i, on := range pp.picked {
+	if p.multi {
+		indices := make([]int, 0, len(p.picked))
+		for i, on := range p.picked {
 			if on {
 				indices = append(indices, i)
 			}
@@ -141,14 +145,14 @@ func (p *Picker) Run() (Result, error) {
 		sortInts(indices)
 		values := make([]string, len(indices))
 		for i, idx := range indices {
-			values[i] = pp.items[idx]
+			values[i] = p.items[idx]
 		}
-		return Result{Indices: indices, Values: values}, nil
+		return Result{Indices: indices, Values: values}
 	}
 	return Result{
-		Indices: []int{pp.cursor},
-		Values:  []string{pp.items[pp.cursor]},
-	}, nil
+		Indices: []int{p.cursor},
+		Values:  []string{p.items[p.cursor]},
+	}
 }
 
 func sortInts(xs []int) {

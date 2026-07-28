@@ -147,3 +147,50 @@ func TestMultiPickerEmptyEnter(t *testing.T) {
 		t.Error("done = false after enter on empty multi, want true")
 	}
 }
+
+func TestMultiPickerBuildResultIsSorted(t *testing.T) {
+	p := newMultiP(t, []string{"a", "b", "c"}, nil)
+	upd, _ := p.Update(key("j"))
+	upd, _ = upd.(*Picker).Update(key("j"))
+	upd, _ = upd.(*Picker).Update(key(" ")) // picked={2}
+	upd, _ = upd.(*Picker).Update(key("up"))
+	upd, _ = upd.(*Picker).Update(key("up"))
+	upd, _ = upd.(*Picker).Update(key(" ")) // picked={2, 0}
+	got := upd.(*Picker)
+	result := got.buildResult()
+	if result.Aborted {
+		t.Error("Aborted = true after enter, want false")
+	}
+	wantIdx := []int{0, 2}
+	if !equalInts(result.Indices, wantIdx) {
+		t.Errorf("Indices = %v, want %v (ascending)", result.Indices, wantIdx)
+	}
+	wantVal := []string{"a", "c"}
+	if !equalStrings(result.Values, wantVal) {
+		t.Errorf("Values = %v, want %v (ascending)", result.Values, wantVal)
+	}
+}
+
+func equalInts(a, b []int) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func equalStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
