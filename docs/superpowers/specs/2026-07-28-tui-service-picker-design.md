@@ -23,7 +23,7 @@ The deploy TUI (`internal/tui/deploy.go`) is unchanged. This work is purely abou
 - **Same visual language as the existing deploy TUI.** Title in `titleStyle`, highlighted row in `activeStyle`, dim/help text in `pendingStyle`. No new color palette.
 - **Idempotency contract preserved.** `pier service add <existing>` is a no-op today; the new picker filters installed services out of the add list rather than offering them as greyed-out checkboxes.
 - **One TUI program per user action.** No background TUI, no daemon, no shared state between pickers.
-- **Three-line touch on the CLI package.** `init.go` and `service.go` each gain a single guarded `if tui.ShouldRun() && ...` block that calls into the TUI package; nothing else in those files moves.
+- **Small surface on the CLI package.** `init.go` and `service.go` each gain one guarded `if tui.ShouldRun() && ...` block that calls into the TUI package; the existing file-write / render / docker-up code is untouched.
 
 ## Proposed approach
 
@@ -60,8 +60,8 @@ type Picker struct {
 }
 
 type Result struct {
-    Indices []int    // indices into items, in user-pick order (single mode: [cursor]; multi mode: ascending)
-    Values  []string // corresponding items
+    Indices []int    // indices into items, in ascending order
+    Values  []string // corresponding items, same order as Indices
     Aborted bool
 }
 
@@ -174,14 +174,22 @@ The existing `prompt(...)` calls become the "some flag was provided" fallback. I
 
 **`internal/cli/service.go` — `runServiceAdd`:**
 
+`config.Load` already runs at the top of the current function (to validate `pier.toml` before mutating it). The TUI block is inserted between Load and the validation loop:
+
 ```go
+cfg, err := config.Load(cfgPath)
+if err != nil { return err }
+
 if tui.ShouldRun() && len(names) == 0 {
-    cfg, err := config.Load(cfgPath)  // moved up; was below the prompt
-    if err != nil { return err }
     picked, err := tui.PickServicesToAdd(laravelpkg.SupportedServices(), cfg.Stack.Services)
     if err != nil { return err }
     if len(picked) == 0 { return fmt.Errorf("no services selected") }
     names = picked
+}
+
+for _, n := range names {
+    if n == "" { return fmt.Errorf("empty service name") }
+    _ = laravelpkg.New().DefaultConfig()
 }
 ```
 
@@ -190,9 +198,10 @@ The existing `for _, n := range names` loop is unchanged; it just receives `name
 **`internal/cli/service.go` — `runServiceRemove`:**
 
 ```go
+cfg, err := config.Load(cfgPath)
+if err != nil { return err }
+
 if tui.ShouldRun() && len(names) == 0 {
-    cfg, err := config.Load(cfgPath)
-    if err != nil { return err }
     picked, err := tui.PickServicesToRemove(cfg.Stack.Services)
     if err != nil { return err }
     if len(picked) == 0 { return fmt.Errorf("no services selected") }
@@ -253,12 +262,27 @@ helpStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))  // dim help
 
 | Failure | Behavior |
 |---|---|
-| TUI `q` / `ctrl+c` | Return `Result{Aborted: true}`. CLI returns `fmt.Errorf("aborted")`. Exit code 130. |
+| TUI `q` / `ctrl+c` | Return `Result{Aborted: true}`. CLI returns `&deploy.ExitError{Code: deploy.ExitAborted, Err: errors.New("aborted")}`. Exit code 130. |
 | Empty pick on services step (init) | Allowed; result has `Services: []`. Matches today's "press enter with blank" behavior. |
-| Empty pick on `service add` / `remove` picker | CLI returns `fmt.Errorf("no services selected")`. Exit code 1. |
+| Empty pick on `service add` / `remove` picker | CLI returns `fmt.Errorf("no services selected")`. Exit code 1 (`ExitGeneral`). |
 | TTY false | `tui.ShouldRun()` returns false; existing text-prompt path runs. CI/pipe behavior unchanged. |
 | `--php` etc. flag set | TUI bypassed; existing text prompts handle the rest. Flagged partial-input path stays text-mode for consistency. |
 | Any other TUI error (e.g. terminal too small) | Bubble Tea returns it; CLI surfaces it. Same as deploy.go's `Run() error` propagation today. |
+
+**New exit code constant** in `internal/deploy/errors.go`:
+
+```go
+ExitAborted = 130
+```
+
+Plus a helper, exposed via `internal/cli/errors.go`:
+
+```go
+ExitAborted = deploy.ExitAborted
+func AbortedError() error { return &deploy.ExitError{Code: deploy.ExitAborted, Err: errors.New("aborted")} }
+```
+
+130 = 128 + SIGINT, matching the POSIX shell convention for processes terminated by interrupt.
 
 ### 9. Testing
 
