@@ -12,6 +12,7 @@ import (
 	"github.com/pcnerd/pier/internal/config"
 	"github.com/pcnerd/pier/internal/stack"
 	laravelpkg "github.com/pcnerd/pier/internal/stack/laravel"
+	"github.com/pcnerd/pier/internal/tui"
 )
 
 type Decision = laravelpkg.Decision
@@ -27,6 +28,12 @@ type initFlags struct {
 	services     []string
 	devcontainer bool
 }
+
+// test seams — overridable from *_test.go.
+var (
+	tuiForTest = tui.ShouldRun
+	runInitTUI = tui.RunInit
+)
 
 func newInitCmd(stdout, stderr io.Writer) *cobra.Command {
 	f := &initFlags{}
@@ -64,14 +71,30 @@ func runInit(cmd *cobra.Command, path string, f *initFlags) error {
 	s, err := laravelpkg.New().DefaultConfig(), error(nil)
 	_ = s
 	php := f.php
+	node := f.node
+	services := f.services
+	if tuiForTest() && f.php == "" && f.node == "" && len(f.services) == 0 {
+		res, err := runInitTUI(
+			laravelpkg.SupportedPHPRuntimes(),
+			laravelpkg.SupportedNodeVersions(),
+			laravelpkg.SupportedServices(),
+		)
+		if err != nil {
+			return err
+		}
+		if res.Aborted {
+			return AbortedError()
+		}
+		php = res.PHP
+		node = res.Node
+		services = res.Services
+	}
 	if php == "" {
 		php = prompt(cmd.OutOrStdout(), cmd.InOrStdin(), "PHP version [8.3]: ", "8.3")
 	}
-	node := f.node
 	if node == "" {
 		node = prompt(cmd.OutOrStdout(), cmd.InOrStdin(), "Node version [22]: ", "22")
 	}
-	services := f.services
 	if services == nil {
 		servicesStr := prompt(cmd.OutOrStdout(), cmd.InOrStdin(), "Services (comma-separated, blank for none) [redis,mailpit,s3]: ", "")
 		if servicesStr != "" {
