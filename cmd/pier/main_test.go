@@ -22,7 +22,7 @@ func TestVersionFlag(t *testing.T) {
 
 	w.Close()
 	var buf bytes.Buffer
-	io.Copy(&buf, r)
+	_, _ = io.Copy(&buf, r)
 
 	if !strings.Contains(buf.String(), "pier 0.0.1-beta") {
 		t.Errorf("expected version output, got: %q", buf.String())

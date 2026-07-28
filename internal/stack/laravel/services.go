@@ -36,8 +36,8 @@ func services() map[string]Service {
 			},
 			Volumes: []string{"mysql_data:/var/lib/mysql"},
 			Healthcheck: &Healthcheck{
-				Test:        []string{"CMD", "mysqladmin", "ping", "-h", "localhost"},
-				Interval:    "10s", Timeout: "5s", Retries: "5", StartPeriod: "30s",
+				Test:     []string{"CMD", "mysqladmin", "ping", "-h", "localhost"},
+				Interval: "10s", Timeout: "5s", Retries: "5", StartPeriod: "30s",
 			},
 		},
 		"postgres": {
@@ -49,25 +49,25 @@ func services() map[string]Service {
 			},
 			Volumes: []string{"postgres_data:/var/lib/postgresql/data"},
 			Healthcheck: &Healthcheck{
-				Test:        []string{"CMD-SHELL", "pg_isready -U laravel"},
-				Interval:    "10s", Timeout: "5s", Retries: "5", StartPeriod: "30s",
+				Test:     []string{"CMD-SHELL", "pg_isready -U laravel"},
+				Interval: "10s", Timeout: "5s", Retries: "5", StartPeriod: "30s",
 			},
 		},
 		"redis": {
 			Name: "redis", Image: "redis:7-alpine", Ports: []string{"6379:6379"},
 			Volumes: []string{"redis_data:/data"},
 			Healthcheck: &Healthcheck{
-				Test: []string{"CMD", "redis-cli", "ping"},
+				Test:     []string{"CMD", "redis-cli", "ping"},
 				Interval: "10s", Timeout: "5s", Retries: "5", StartPeriod: "10s",
 			},
 		},
 		"meilisearch": {
 			Name: "meilisearch", Image: "getmeili/meilisearch:v1.10",
-			Ports: []string{"7700:7700"},
-			Env:   map[string]string{"MEILI_ENV": "development"},
+			Ports:   []string{"7700:7700"},
+			Env:     map[string]string{"MEILI_ENV": "development"},
 			Volumes: []string{"meili_data:/meili_data"},
 			Healthcheck: &Healthcheck{
-				Test: []string{"CMD", "wget", "--spider", "-q", "http://localhost:7700/health"},
+				Test:     []string{"CMD", "wget", "--spider", "-q", "http://localhost:7700/health"},
 				Interval: "10s", Timeout: "5s", Retries: "5", StartPeriod: "10s",
 			},
 		},
@@ -75,7 +75,7 @@ func services() map[string]Service {
 			Name: "mailpit", Image: "axllent/mailpit:latest",
 			Ports: []string{"1025:1025", "8025:8025"}, DevOnly: "true",
 			Healthcheck: &Healthcheck{
-				Test: []string{"CMD", "wget", "--spider", "-q", "http://localhost:8025/"},
+				Test:     []string{"CMD", "wget", "--spider", "-q", "http://localhost:8025/"},
 				Interval: "10s", Timeout: "5s", Retries: "5", StartPeriod: "10s",
 			},
 		},
@@ -84,25 +84,25 @@ func services() map[string]Service {
 			Ports: []string{"8080:8080"},
 			Env:   map[string]string{"REVERB_SERVER_PORT": "8080"},
 			Healthcheck: &Healthcheck{
-				Test: []string{"CMD", "wget", "--spider", "-q", "http://localhost:8080/"},
+				Test:     []string{"CMD", "wget", "--spider", "-q", "http://localhost:8080/"},
 				Interval: "10s", Timeout: "5s", Retries: "5", StartPeriod: "20s",
 			},
 		},
 		"queue": {
 			Name: "queue", Image: "${APP_IMAGE:-myapp:latest}",
-			Env:   map[string]string{"CONTAINER_ROLE": "queue"},
+			Env:       map[string]string{"CONTAINER_ROLE": "queue"},
 			DependsOn: []string{"app"},
 			Healthcheck: &Healthcheck{
-				Test: []string{"CMD-SHELL", "ps aux | grep -v grep | grep -q 'artisan queue:work'"},
+				Test:     []string{"CMD-SHELL", "ps aux | grep -v grep | grep -q 'artisan queue:work'"},
 				Interval: "30s", Timeout: "10s", Retries: "3",
 			},
 		},
 		"scheduler": {
 			Name: "scheduler", Image: "${APP_IMAGE:-myapp:latest}",
-			Env:   map[string]string{"CONTAINER_ROLE": "scheduler"},
+			Env:       map[string]string{"CONTAINER_ROLE": "scheduler"},
 			DependsOn: []string{"app"},
 			Healthcheck: &Healthcheck{
-				Test: []string{"CMD-SHELL", "ps aux | grep -v grep | grep -q 'artisan schedule:work'"},
+				Test:     []string{"CMD-SHELL", "ps aux | grep -v grep | grep -q 'artisan schedule:work'"},
 				Interval: "30s", Timeout: "10s", Retries: "3",
 			},
 		},
@@ -116,10 +116,10 @@ func services() map[string]Service {
 		},
 		"s3": {
 			Name: "s3", Image: "chrislusf/seaweedfs:latest",
-			Ports: []string{"8333", "8888", "9333"},
+			Ports:   []string{"8333", "8888", "9333"},
 			Volumes: []string{"s3_data:/data"},
 			Healthcheck: &Healthcheck{
-				Test: []string{"CMD-SHELL", "echo 's3' | nc -w 1 localhost 8333 | grep -q s3"},
+				Test:     []string{"CMD-SHELL", "echo 's3' | nc -w 1 localhost 8333 | grep -q s3"},
 				Interval: "10s", Timeout: "5s", Retries: "5", StartPeriod: "20s",
 			},
 		},
