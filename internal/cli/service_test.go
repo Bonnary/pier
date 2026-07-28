@@ -2,11 +2,13 @@ package cli
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/pcnerd/pier/internal/docker"
+	"github.com/pcnerd/pier/internal/tui"
 )
 
 func TestServiceAdd(t *testing.T) {
@@ -136,5 +138,139 @@ func TestServiceRemoveTUIPickerInvoked(t *testing.T) {
 	}
 	if !bytes.Contains(got, []byte(`"mailpit"`)) {
 		t.Errorf("mailpit missing from pier.toml after partial remove:\n%s", got)
+	}
+}
+
+func TestServiceAddTUIAbort(t *testing.T) {
+	dir := t.TempDir()
+	toml := "[project]\nname=\"x\"\ndomain=\"x.example.com\"\n[stack]\ntype=\"laravel\"\nphp=\"8.3\"\nnode=\"22\"\nservices=[]\n"
+	if err := os.WriteFile(filepath.Join(dir, "pier.toml"), []byte(toml), 0644); err != nil {
+		t.Fatal(err)
+	}
+	runner := &capturingRunner{}
+	orig := dockerRunner
+	dockerRunner = docker.Runner(runner)
+	defer func() { dockerRunner = orig }()
+
+	origTTY := tuiForTest
+	tuiForTest = func() bool { return true }
+	defer func() { tuiForTest = origTTY }()
+	origPick := pickAddTUI
+	pickAddTUI = func(available, installed []string) ([]string, error) {
+		return nil, tui.ErrAborted
+	}
+	defer func() { pickAddTUI = origPick }()
+
+	var buf bytes.Buffer
+	root := NewRootCmd(&buf, &buf)
+	root.SetArgs([]string{"--config", filepath.Join(dir, "pier.toml"), "service", "add", "--no-up"})
+	err := root.Execute()
+	if err == nil {
+		t.Fatalf("Execute returned nil error; want abort")
+	}
+	if !errors.Is(err, ErrAborted) {
+		t.Errorf("errors.Is(err, ErrAborted) = false; want true; err = %v", err)
+	}
+	if got := ExitCode(err); got != ExitAborted {
+		t.Errorf("ExitCode(err) = %d; want %d", got, ExitAborted)
+	}
+}
+
+func TestServiceRemoveTUIAbort(t *testing.T) {
+	dir := t.TempDir()
+	toml := "[project]\nname=\"x\"\ndomain=\"x.example.com\"\n[stack]\ntype=\"laravel\"\nphp=\"8.3\"\nnode=\"22\"\nservices=[\"redis\"]\n"
+	if err := os.WriteFile(filepath.Join(dir, "pier.toml"), []byte(toml), 0644); err != nil {
+		t.Fatal(err)
+	}
+	runner := &capturingRunner{}
+	orig := dockerRunner
+	dockerRunner = docker.Runner(runner)
+	defer func() { dockerRunner = orig }()
+
+	origTTY := tuiForTest
+	tuiForTest = func() bool { return true }
+	defer func() { tuiForTest = origTTY }()
+	origPick := pickRemoveTUI
+	pickRemoveTUI = func(installed []string) ([]string, error) {
+		return nil, tui.ErrAborted
+	}
+	defer func() { pickRemoveTUI = origPick }()
+
+	var buf bytes.Buffer
+	root := NewRootCmd(&buf, &buf)
+	root.SetArgs([]string{"--config", filepath.Join(dir, "pier.toml"), "service", "remove"})
+	err := root.Execute()
+	if err == nil {
+		t.Fatalf("Execute returned nil error; want abort")
+	}
+	if !errors.Is(err, ErrAborted) {
+		t.Errorf("errors.Is(err, ErrAborted) = false; want true; err = %v", err)
+	}
+	if got := ExitCode(err); got != ExitAborted {
+		t.Errorf("ExitCode(err) = %d; want %d", got, ExitAborted)
+	}
+}
+
+func TestServiceAddTUIEmptyPick(t *testing.T) {
+	dir := t.TempDir()
+	toml := "[project]\nname=\"x\"\ndomain=\"x.example.com\"\n[stack]\ntype=\"laravel\"\nphp=\"8.3\"\nnode=\"22\"\nservices=[]\n"
+	if err := os.WriteFile(filepath.Join(dir, "pier.toml"), []byte(toml), 0644); err != nil {
+		t.Fatal(err)
+	}
+	runner := &capturingRunner{}
+	orig := dockerRunner
+	dockerRunner = docker.Runner(runner)
+	defer func() { dockerRunner = orig }()
+
+	origTTY := tuiForTest
+	tuiForTest = func() bool { return true }
+	defer func() { tuiForTest = origTTY }()
+	origPick := pickAddTUI
+	pickAddTUI = func(available, installed []string) ([]string, error) {
+		return []string{}, nil
+	}
+	defer func() { pickAddTUI = origPick }()
+
+	var buf bytes.Buffer
+	root := NewRootCmd(&buf, &buf)
+	root.SetArgs([]string{"--config", filepath.Join(dir, "pier.toml"), "service", "add", "--no-up"})
+	err := root.Execute()
+	if err == nil {
+		t.Fatalf("Execute returned nil error; want empty-pick error")
+	}
+	if !contains(err.Error(), "no services selected") {
+		t.Errorf("err = %v; want substring %q", err, "no services selected")
+	}
+}
+
+func TestServiceRemoveTUIEmptyPick(t *testing.T) {
+	dir := t.TempDir()
+	toml := "[project]\nname=\"x\"\ndomain=\"x.example.com\"\n[stack]\ntype=\"laravel\"\nphp=\"8.3\"\nnode=\"22\"\nservices=[\"redis\"]\n"
+	if err := os.WriteFile(filepath.Join(dir, "pier.toml"), []byte(toml), 0644); err != nil {
+		t.Fatal(err)
+	}
+	runner := &capturingRunner{}
+	orig := dockerRunner
+	dockerRunner = docker.Runner(runner)
+	defer func() { dockerRunner = orig }()
+
+	origTTY := tuiForTest
+	tuiForTest = func() bool { return true }
+	defer func() { tuiForTest = origTTY }()
+	origPick := pickRemoveTUI
+	pickRemoveTUI = func(installed []string) ([]string, error) {
+		return []string{}, nil
+	}
+	defer func() { pickRemoveTUI = origPick }()
+
+	var buf bytes.Buffer
+	root := NewRootCmd(&buf, &buf)
+	root.SetArgs([]string{"--config", filepath.Join(dir, "pier.toml"), "service", "remove"})
+	err := root.Execute()
+	if err == nil {
+		t.Fatalf("Execute returned nil error; want empty-pick error")
+	}
+	if !contains(err.Error(), "no services selected") {
+		t.Errorf("err = %v; want substring %q", err, "no services selected")
 	}
 }
