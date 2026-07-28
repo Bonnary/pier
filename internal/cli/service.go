@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -14,12 +15,19 @@ import (
 	"github.com/pcnerd/pier/internal/config"
 	"github.com/pcnerd/pier/internal/docker"
 	laravelpkg "github.com/pcnerd/pier/internal/stack/laravel"
+	"github.com/pcnerd/pier/internal/tui"
 )
 
 type serviceFlags struct {
 	noUp   bool
 	noStop bool
 }
+
+// test seams — overridable from *_test.go. tuiForTest lives in init.go.
+var (
+	pickAddTUI    = tui.PickServicesToAdd
+	pickRemoveTUI = tui.PickServicesToRemove
+)
 
 func newServiceCmd(stdout, stderr io.Writer) *cobra.Command {
 	f := &serviceFlags{}
@@ -31,17 +39,17 @@ func newServiceCmd(stdout, stderr io.Writer) *cobra.Command {
 	cmd.PersistentFlags().BoolVar(&f.noStop, "no-stop", false, "skip stopping the service after remove")
 
 	add := &cobra.Command{
-		Use:   "add <name...>",
+		Use:   "add [name...]",
 		Short: "Add one or more services to pier.toml",
-		Args:  cobra.MinimumNArgs(1),
+		Args:  cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runServiceAdd(cmd, args, f)
 		},
 	}
 	rm := &cobra.Command{
-		Use:   "remove <name...>",
+		Use:   "remove [name...]",
 		Short: "Remove one or more services from pier.toml",
-		Args:  cobra.MinimumNArgs(1),
+		Args:  cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runServiceRemove(cmd, args, f)
 		},
@@ -54,6 +62,19 @@ func runServiceAdd(cmd *cobra.Command, names []string, f *serviceFlags) error {
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
 		return err
+	}
+	if tuiForTest() && len(names) == 0 {
+		picked, err := pickAddTUI(laravelpkg.SupportedServices(), cfg.Stack.Services)
+		if err != nil {
+			if errors.Is(err, tui.ErrAborted) {
+				return AbortedError()
+			}
+			return err
+		}
+		if len(picked) == 0 {
+			return fmt.Errorf("no services selected")
+		}
+		names = picked
 	}
 	for _, n := range names {
 		if n == "" {
@@ -83,6 +104,19 @@ func runServiceRemove(cmd *cobra.Command, names []string, f *serviceFlags) error
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
 		return err
+	}
+	if tuiForTest() && len(names) == 0 {
+		picked, err := pickRemoveTUI(cfg.Stack.Services)
+		if err != nil {
+			if errors.Is(err, tui.ErrAborted) {
+				return AbortedError()
+			}
+			return err
+		}
+		if len(picked) == 0 {
+			return fmt.Errorf("no services selected")
+		}
+		names = picked
 	}
 	updated, removed := removeServices(cfg, names)
 	if err := writeConfig(cfgPath, updated); err != nil {
