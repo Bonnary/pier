@@ -45,3 +45,20 @@ func TestS3HasPorts(t *testing.T) {
 		}
 	}
 }
+
+func TestSupportedServices(t *testing.T) {
+	got := SupportedServices()
+	if len(got) != len(services()) {
+		t.Errorf("len = %d, want %d", len(got), len(services()))
+	}
+	for i := 1; i < len(got); i++ {
+		if got[i-1] >= got[i] {
+			t.Errorf("not sorted: %v", got)
+		}
+	}
+	for _, name := range got {
+		if _, ok := services()[name]; !ok {
+			t.Errorf("SupportedServices contains %q which is not in services()", name)
+		}
+	}
+}

@@ -1,6 +1,9 @@
 package laravel
 
-import "strings"
+import (
+	"sort"
+	"strings"
+)
 
 type Service struct {
 	Name        string
@@ -131,4 +134,17 @@ func lookup(name string) (Service, bool) {
 		}
 	}
 	return Service{}, false
+}
+
+// SupportedServices returns the names of every service registered in
+// services(), sorted alphabetically. Used as the picker input by the
+// init and service-add TUIs so the TUI shows a stable order regardless
+// of map iteration.
+func SupportedServices() []string {
+	out := make([]string, 0, len(services()))
+	for k := range services() {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }
