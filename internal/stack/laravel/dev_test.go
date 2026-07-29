@@ -277,6 +277,101 @@ func TestRuntimeDirHasStartContainer(t *testing.T) {
 	}
 }
 
+func TestGenerateDevComposePortOverride(t *testing.T) {
+	s := New()
+	files, err := s.GenerateDevCompose(config.Config{
+		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Stack: config.StackConfig{
+			Type: "laravel", PHP: "8.3", Node: "22",
+			Services: []string{"redis"},
+		},
+		Dev: config.DevConfig{
+			Ports: map[string]int{"redis": 6390, "laravel": 8001},
+		},
+	})
+	if err != nil {
+		t.Fatalf("GenerateDevCompose: %v", err)
+	}
+	got := findFile(files, "docker-compose.yml")
+	if got == nil {
+		t.Fatal("docker-compose.yml missing")
+	}
+	var doc struct {
+		Services map[string]struct {
+			Ports []string `yaml:"ports"`
+		} `yaml:"services"`
+	}
+	if err := yaml.Unmarshal(got.Contents, &doc); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	redis := doc.Services["redis"]
+	found := false
+	for _, p := range redis.Ports {
+		if p == "127.0.0.1:6390:6379" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("redis ports = %v, want it to include 127.0.0.1:6390:6379 (host=6390 from [dev.ports.redis], container=6379)", redis.Ports)
+	}
+	lt := doc.Services["laravel.test"]
+	found = false
+	for _, p := range lt.Ports {
+		if p == "127.0.0.1:8001:8000" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("laravel.test ports = %v, want it to include 127.0.0.1:8001:8000 (host=8001 from [dev.ports.laravel], container=8000)", lt.Ports)
+	}
+}
+
+func TestGenerateDevComposePortZeroOptOut(t *testing.T) {
+	s := New()
+	files, err := s.GenerateDevCompose(config.Config{
+		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Stack: config.StackConfig{
+			Type: "laravel", PHP: "8.3", Node: "22",
+			Services: []string{"mailpit"},
+		},
+		Dev: config.DevConfig{
+			Ports: map[string]int{"mailpit_ui": 0},
+		},
+	})
+	if err != nil {
+		t.Fatalf("GenerateDevCompose: %v", err)
+	}
+	got := findFile(files, "docker-compose.yml")
+	if got == nil {
+		t.Fatal("docker-compose.yml missing")
+	}
+	var doc struct {
+		Services map[string]struct {
+			Ports []string `yaml:"ports"`
+		} `yaml:"services"`
+	}
+	if err := yaml.Unmarshal(got.Contents, &doc); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	mp := doc.Services["mailpit"]
+	for _, p := range mp.Ports {
+		if p == "127.0.0.1:8025:8025" || p == "127.0.0.1:0:8025" {
+			t.Errorf("mailpit ports = %v, want mailpit_ui port 8025 NOT exposed (override = 0 means don't expose)", mp.Ports)
+		}
+	}
+	found := false
+	for _, p := range mp.Ports {
+		if p == "127.0.0.1:1025:1025" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("mailpit ports = %v, want 127.0.0.1:1025:1025 (SMTP) still present", mp.Ports)
+	}
+}
+
 func findFile(files stack.Files, name string) *stack.File {
 	for i, f := range files {
 		if f.Path == name {
