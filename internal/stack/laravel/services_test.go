@@ -124,6 +124,14 @@ func TestS3HealthcheckIsValid(t *testing.T) {
 	}
 }
 
+func TestServicesPortKeysMatchPorts(t *testing.T) {
+	for name, svc := range services() {
+		if len(svc.PortKeys) != len(svc.Ports) {
+			t.Errorf("%s: len(PortKeys)=%d != len(Ports)=%d (every container port needs a matching key)", name, len(svc.PortKeys), len(svc.Ports))
+		}
+	}
+}
+
 func TestQueueSchedulerSetSupervisorCommand(t *testing.T) {
 	for _, name := range []string{"queue", "scheduler"} {
 		s := services()[name]

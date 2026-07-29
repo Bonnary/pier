@@ -30,6 +30,7 @@ type Service struct {
 	Image       string
 	DevOnly     string
 	Ports       []string
+	PortKeys    []string
 	Env         map[string]string
 	Volumes     []string
 	Healthcheck *Healthcheck
@@ -50,6 +51,7 @@ func services() map[string]Service {
 			Name:  "mysql",
 			Image: "mysql:8.0",
 			Ports: []string{"3306:3306"},
+			PortKeys: []string{"mysql"},
 			Env: map[string]string{
 				"MYSQL_ROOT_PASSWORD": "root",
 				"MYSQL_DATABASE":      "laravel",
@@ -64,6 +66,7 @@ func services() map[string]Service {
 			Name:  "postgres",
 			Image: "postgres:16-alpine",
 			Ports: []string{"5432:5432"},
+			PortKeys: []string{"postgres"},
 			Env: map[string]string{
 				"POSTGRES_USER": "laravel", "POSTGRES_PASSWORD": "secret", "POSTGRES_DB": "laravel",
 			},
@@ -74,7 +77,7 @@ func services() map[string]Service {
 			},
 		},
 		"redis": {
-			Name: "redis", Image: "redis:7-alpine", Ports: []string{"6379:6379"},
+			Name: "redis", Image: "redis:7-alpine", Ports: []string{"6379:6379"}, PortKeys: []string{"redis"},
 			Volumes: []string{"redis_data:/data"},
 			Healthcheck: &Healthcheck{
 				Test:     []string{"CMD", "redis-cli", "ping"},
@@ -84,6 +87,7 @@ func services() map[string]Service {
 		"meilisearch": {
 			Name: "meilisearch", Image: "getmeili/meilisearch:v1.10",
 			Ports:   []string{"7700:7700"},
+			PortKeys: []string{"meilisearch"},
 			Env:     map[string]string{"MEILI_ENV": "development"},
 			Volumes: []string{"meili_data:/meili_data"},
 			Healthcheck: &Healthcheck{
@@ -93,7 +97,7 @@ func services() map[string]Service {
 		},
 		"mailpit": {
 			Name: "mailpit", Image: "axllent/mailpit:latest",
-			Ports: []string{"1025:1025", "8025:8025"}, DevOnly: "true",
+			Ports: []string{"1025:1025", "8025:8025"}, PortKeys: []string{"mailpit_smtp", "mailpit_ui"}, DevOnly: "true",
 			Healthcheck: &Healthcheck{
 				Test:     []string{"CMD", "wget", "--spider", "-q", "http://localhost:8025/"},
 				Interval: "10s", Timeout: "5s", Retries: "5", StartPeriod: "10s",
@@ -126,6 +130,7 @@ func services() map[string]Service {
 		"s3": {
 			Name: "s3", Image: "chrislusf/seaweedfs:latest",
 			Ports:   []string{"8333", "8888", "9333"},
+			PortKeys: []string{"s3_api", "s3_filer", "s3_master"},
 			Volumes: []string{"s3_data:/data"},
 			Healthcheck: &Healthcheck{
 				Test:     []string{"CMD-SHELL", "nc -z 127.0.0.1 8333"},
