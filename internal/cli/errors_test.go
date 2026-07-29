@@ -3,6 +3,8 @@ package cli
 import (
 	"errors"
 	"testing"
+
+	"github.com/pcnerd/pier/internal/deploy"
 )
 
 func TestExitCodes(t *testing.T) {
@@ -28,5 +30,24 @@ func TestAbortedError(t *testing.T) {
 	}
 	if got := ExitCode(err); got != ExitAborted {
 		t.Errorf("ExitCode(err) = %d, want %d", got, ExitAborted)
+	}
+}
+
+func TestReexportedKinds(t *testing.T) {
+	if KindConfig != deploy.KindConfig {
+		t.Errorf("KindConfig = %v, want %v", KindConfig, deploy.KindConfig)
+	}
+	if KindDocker != deploy.KindDocker {
+		t.Errorf("KindDocker = %v, want %v", KindDocker, deploy.KindDocker)
+	}
+}
+
+func TestReexportedConstructors(t *testing.T) {
+	base := errors.New("x")
+	if got := ConfigError(base); !errors.Is(got, base) {
+		t.Errorf("ConfigError does not wrap base")
+	}
+	if got := DockerError(base); !errors.Is(got, base) {
+		t.Errorf("DockerError does not wrap base")
 	}
 }
