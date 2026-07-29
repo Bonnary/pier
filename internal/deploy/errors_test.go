@@ -81,6 +81,7 @@ func TestExistingConstructorsDefaultKind(t *testing.T) {
 		{"BuildError", BuildError(base), ExitBuild, KindDocker},
 		{"UpError", UpError(base), ExitUp, KindDocker},
 		{"ExecDownError", ExecDownError(), ExitExecDown, KindDocker},
+		{"PortInUseError", PortInUseError([]int{8000}), ExitPortInUse, KindUser},
 		{"AbortedError", AbortedError(), ExitAborted, KindUser},
 	}
 	for _, c := range cases {
@@ -96,6 +97,23 @@ func TestExistingConstructorsDefaultKind(t *testing.T) {
 				t.Errorf("Kind = %v, want %v", ee.Kind, c.kind)
 			}
 		})
+	}
+}
+
+func TestPortInUseErrorCode(t *testing.T) {
+	e := PortInUseError([]int{8000, 6379})
+	var exitErr *ExitError
+	if !errors.As(e, &exitErr) {
+		t.Fatalf("PortInUseError did not return *ExitError, got %T", e)
+	}
+	if exitErr.Code != ExitPortInUse {
+		t.Errorf("Code = %d, want %d", exitErr.Code, ExitPortInUse)
+	}
+	if exitErr.Kind != KindUser {
+		t.Errorf("Kind = %v, want KindUser (user needs to edit pier.toml)", exitErr.Kind)
+	}
+	if !errors.Is(e, ErrPortInUse) {
+		t.Errorf("err does not match ErrPortInUse sentinel")
 	}
 }
 
