@@ -10,3 +10,4 @@ coverage.txt
 .vscode/
 *.swp
 .DS_Store
+.worktrees/
