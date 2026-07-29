@@ -114,7 +114,7 @@ func runInit(cmd *cobra.Command, path string, f *initFlags) error {
 	if err != nil {
 		return err
 	}
-	prodFiles, err := stackMod.GenerateProdFiles(cfg)
+	prodFiles, err := stackMod.GenerateProdFiles(cfg, "production")
 	if err != nil {
 		return err
 	}

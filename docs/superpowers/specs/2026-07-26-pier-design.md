@@ -190,6 +190,25 @@ branch = "main"
 
 `[deploy.staging]` is supported by the engine; the user adds it by hand. README documents this.
 
+#### Host port overrides (added in v0.0.x)
+
+```toml
+[dev.ports]
+laravel       = 8000
+vite          = 5173
+mysql         = 3306
+# ...
+
+[deploy.production.ports]
+laravel = 8383   # only the keys the user writes are applied; rest fall back to defaults
+```
+
+Dev binds to 127.0.0.1; prod/staging bind to 0.0.0.0. `pier dev` runs a
+pre-flight port probe and exits with code 6 (`ErrPortInUse`) if any
+pier-owned host port is already in use; the user edits `[dev.ports]` to
+remap. See `docs/superpowers/specs/2026-07-29-dev-ports-design.md` for
+the full design.
+
 ### 5. Generated files
 
 - `docker-compose.yml` — dev, pier-owned, smart-merge on re-render (preserves user-added services and unknown keys with a one-time warn-and-confirm)

@@ -41,3 +41,31 @@ func TestPipelineDryRun(t *testing.T) {
 	_ = p
 	_ = context.Background
 }
+
+func TestDeployFinalStateURL(t *testing.T) {
+	url := ResolvedURL(config.Config{
+		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+		Deploy: map[string]config.DeployConfig{
+			"production": {Host: "h", User: "u", Path: "p", Branch: "b", Ports: map[string]int{"laravel": 8383}},
+		},
+	}, "production")
+	want := "https://myapp.example.com:8383"
+	if url != want {
+		t.Errorf("ResolvedURL = %q, want %q", url, want)
+	}
+}
+
+func TestDeployFinalStateURLDefault(t *testing.T) {
+	url := ResolvedURL(config.Config{
+		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+		Deploy: map[string]config.DeployConfig{
+			"production": {Host: "h", User: "u", Path: "p", Branch: "b"},
+		},
+	}, "production")
+	want := "https://myapp.example.com:443"
+	if url != want {
+		t.Errorf("ResolvedURL = %q, want %q (no override → default 443)", url, want)
+	}
+}

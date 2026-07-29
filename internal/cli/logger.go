@@ -14,8 +14,6 @@ import (
 
 var (
 	phaseStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("5"))
-	okStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
-	errStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
 )
 
 type stdLogger struct {
@@ -28,8 +26,6 @@ type stdLogger struct {
 func NewLogger(jsonOut bool, w io.Writer) deploy.Logger {
 	return &stdLogger{w: w, json: jsonOut, tty: !jsonOut}
 }
-
-type fileWriter struct{}
 
 func (l *stdLogger) Writer() io.Writer { return l.w }
 func (l *stdLogger) JSON() bool        { return l.json }

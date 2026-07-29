@@ -66,11 +66,19 @@ php = "8.3"
 node = "22"
 services = ["redis", "mailpit"]
 
+[dev.ports]
+laravel = 8000
+vite    = 5173
+redis   = 6379
+
 [deploy.production]
 host = "prod.example.com"
 user = "deploy"
 path = "/srv/myapp"
 branch = "main"
+
+[deploy.production.ports]
+laravel = 443   # only the keys the user writes are applied
 ```
 
 ## Manual verification checklist
@@ -102,6 +110,10 @@ Run before tagging a release.
 - **"pier.toml is invalid"** — run `cat pier.toml` and check the section that's named in the error. The validator reports which field.
 - **"ssh: handshake failed"** — check `pier status`, your `~/.ssh/id_ed25519` perms (`chmod 600`), and that the host is reachable.
 - **"container not running"** — run `pier dev` first, then `pier shell`.
+- **"port N in use"** — `pier dev` runs a pre-flight port probe and exits
+  with code 6 when a pier-owned host port is already taken on 127.0.0.1.
+  Edit `[dev.ports]` in `pier.toml` to remap to a free port, then re-run
+  `pier dev`.
 
 ## License
 

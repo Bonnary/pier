@@ -9,9 +9,8 @@ node = "22"
 services = ["redis", "mailpit", "s3"]
 
 [dev.ports]
-laravel = 8000
-vite = 5173
-redis = 6379
+laravel = 8080
+vite = 5174
 
 [deploy.production]
 host = "prod.example.com"
@@ -21,12 +20,3 @@ branch = "main"
 
 [deploy.production.ports]
 laravel = 8383
-
-[deploy.staging]
-host = "staging.example.com"
-user = "deploy"
-path = "/srv/myapp-staging"
-branch = "develop"
-
-[deploy.staging.ports]
-laravel = 8443

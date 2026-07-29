@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/pcnerd/pier/internal/config"
+	laravelpkg "github.com/pcnerd/pier/internal/stack/laravel"
 )
 
 type Pipeline struct {
@@ -84,6 +85,12 @@ func (p *Pipeline) Run(ctx context.Context) error {
 		return err
 	}
 	p.Logger.PhaseEnd("commit", nil)
+
+	p.Logger.Emit(Event{
+		Phase:   "done",
+		Message: "URL: " + ResolvedURL(*p.Config, p.Env),
+		Data:    map[string]any{"url": ResolvedURL(*p.Config, p.Env)},
+	})
 	return nil
 }
 
@@ -130,4 +137,19 @@ func (p *Pipeline) commit() error {
 		s.Previous = prev.Current
 	}
 	return SaveState(dir, s)
+}
+
+// ResolvedURL returns the public HTTPS URL for the deployed env, using
+// the resolved "laravel" port (the laravelpkg.ProdPortDefaults default
+// of 443, or the per-env override from [deploy.<env>.ports.laravel]).
+func ResolvedURL(cfg config.Config, env string) string {
+	deployCfg, ok := cfg.Deploy[env]
+	if !ok {
+		deployCfg = config.DeployConfig{}
+	}
+	host, _ := laravelpkg.ResolvePort("laravel", deployCfg.Ports, laravelpkg.ProdPortDefaults)
+	if host == 0 {
+		host = laravelpkg.ProdPortDefaults["laravel"]
+	}
+	return fmt.Sprintf("https://%s:%d", cfg.Project.Domain, host)
 }

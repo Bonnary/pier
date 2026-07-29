@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
+	"strings"
 
 	"github.com/pcnerd/pier/internal/config"
 	"github.com/pcnerd/pier/internal/stack"
@@ -110,6 +112,7 @@ func renderDevCompose(cfg config.Config) ([]byte, error) {
 					Args:       map[string]string{"WWWGROUP": "1000"},
 				},
 				Image:       cfg.Project.Name + "/test:latest",
+				Ports:       laravelTestPorts(cfg.Dev.Ports),
 				ExtraHosts:  []string{"host.docker.internal:host-gateway"},
 				Volumes:     []string{"./:/var/www/html"},
 				Environment: devEnvForServices(svcSet),
@@ -135,7 +138,7 @@ func renderDevCompose(cfg config.Config) ([]byte, error) {
 			return nil, fmt.Errorf("laravel: unknown service %q", name)
 		}
 		cs := composeService{
-			Image: s.Image, Ports: s.Ports, Environment: s.Env, Volumes: s.Volumes, Networks: []string{"pier"},
+			Image: s.Image, Ports: sidecarPorts("dev", name, s.PortKeys, s.Ports, cfg.Dev.Ports), Environment: s.Env, Volumes: s.Volumes, Networks: []string{"pier"},
 		}
 		if s.Healthcheck != nil {
 			cs.Healthcheck = &composeHealthcheck{
@@ -225,6 +228,79 @@ func devEnvForServices(svcSet map[string]bool) map[string]string {
 		env["MAIL_PORT"] = "1025"
 	}
 	return env
+}
+
+// laravelTestPorts assembles the `ports:` slice for the laravel.test
+// service. Two keys, in fixed order: "laravel" (the php artisan dev HTTP
+// port) and "vite" (the Vite dev server). Either key may be set to 0 in
+// cfg.Dev.Ports to opt out of exposing that port.
+func laravelTestPorts(override map[string]int) []string {
+	bind := BindAddr("dev")
+	var out []string
+	for _, key := range []string{"laravel", "vite"} {
+		host, ok := ResolvePort(key, override, DevPortDefaults)
+		if !ok {
+			continue
+		}
+		out = append(out, PortBinding(bind, host, containerPortFor(key)))
+	}
+	return out
+}
+
+// containerPortFor returns the fixed container-side port for a laravel.test
+// port key. The container ports never change — only the host side is
+// overridable.
+func containerPortFor(key string) int {
+	switch key {
+	case "laravel":
+		return 8000
+	case "vite":
+		return 5173
+	}
+	return 0
+}
+
+// sidecarPorts assembles the `ports:` slice for a registered sidecar
+// service. The container ports (s.Ports) and the keys (s.PortKeys) are
+// parallel slices. Each key is resolved via ResolvePort against the
+// user's override and the env's defaults; resolved entries become
+// `<bind><host>:<container>` strings. Keys that resolve to "don't expose"
+// are omitted.
+func sidecarPorts(env, name string, keys, containerPorts []string, override map[string]int) []string {
+	var defaults map[string]int
+	switch env {
+	case "dev":
+		defaults = DevPortDefaults
+	default:
+		defaults = ProdPortDefaults
+	}
+	bind := BindAddr(env)
+	var out []string
+	for i, key := range keys {
+		if i >= len(containerPorts) {
+			break
+		}
+		host, ok := ResolvePort(key, override, defaults)
+		if !ok {
+			continue
+		}
+		container := containerPortOf(containerPorts[i])
+		out = append(out, PortBinding(bind, host, container))
+	}
+	return out
+}
+
+// containerPortOf extracts the container-side port from a compose port
+// string like "3306:3306" or "8333" (single number == host == container).
+// Returns 0 if unparseable.
+func containerPortOf(s string) int {
+	parts := strings.Split(s, ":")
+	last := parts[len(parts)-1]
+	n, err := strconv.Atoi(last)
+	if err != nil {
+		return 0
+	}
+	return n
 }
 
 func renderDevEnv(cfg config.Config) ([]byte, error) {

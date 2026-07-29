@@ -120,6 +120,9 @@ func (m model) View() string {
 	}
 	s += "\n" + logBoxStyle.Render(joinLines(m.logs, 15)) + "\n"
 	if m.done {
+		if m.err == nil && m.pipeline != nil {
+			s += "\nURL: " + okStyle.Render(deploy.ResolvedURL(*m.pipeline.Config, m.pipeline.Env)) + "\n"
+		}
 		s += "\n(q to quit)\n"
 	}
 	return s

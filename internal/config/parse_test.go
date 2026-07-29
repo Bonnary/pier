@@ -3,8 +3,26 @@ package config
 import (
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 )
+
+func TestLoadFullWithPorts(t *testing.T) {
+	cfg, err := Load(filepath.Join("testdata", "full-ports.toml"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got := cfg.Dev.Ports["laravel"]; got != 8080 {
+		t.Errorf("Dev.Ports[laravel] = %d, want 8080", got)
+	}
+	if got := cfg.Dev.Ports["vite"]; got != 5174 {
+		t.Errorf("Dev.Ports[vite] = %d, want 5174", got)
+	}
+	prod := cfg.Deploy["production"]
+	if got := prod.Ports["laravel"]; got != 8383 {
+		t.Errorf("Deploy[production].Ports[laravel] = %d, want 8383", got)
+	}
+}
 
 func TestLoadMinimal(t *testing.T) {
 	cfg, err := Load(filepath.Join("testdata", "minimal.toml"))
@@ -83,5 +101,96 @@ func TestValidateStackType(t *testing.T) {
 	}
 	if err := c.Validate(); !errors.Is(err, ErrConfigInvalid) {
 		t.Errorf("Validate = %v, want ErrConfigInvalid", err)
+	}
+}
+
+func TestValidateDevPortOutOfRange(t *testing.T) {
+	c := &Config{
+		Project: ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Stack:   StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+		Dev:     DevConfig{Ports: map[string]int{"laravel": -1}},
+	}
+	if err := c.Validate(); !errors.Is(err, ErrConfigInvalid) {
+		t.Errorf("Validate = %v, want ErrConfigInvalid (laravel=-1 out of range)", err)
+	}
+}
+
+func TestValidateDevPortTooLarge(t *testing.T) {
+	c := &Config{
+		Project: ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Stack:   StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+		Dev:     DevConfig{Ports: map[string]int{"laravel": 70000}},
+	}
+	if err := c.Validate(); !errors.Is(err, ErrConfigInvalid) {
+		t.Errorf("Validate = %v, want ErrConfigInvalid (laravel=70000 out of range)", err)
+	}
+}
+
+func TestValidateDevPortZeroAccepted(t *testing.T) {
+	c := &Config{
+		Project: ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Stack:   StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+		Dev:     DevConfig{Ports: map[string]int{"laravel": 0}},
+	}
+	if err := c.Validate(); err != nil {
+		t.Errorf("Validate(laravel=0) = %v, want nil (0 means 'don't expose')", err)
+	}
+}
+
+func TestValidateDevPortRejectsWebserverHTTP(t *testing.T) {
+	c := &Config{
+		Project: ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Stack:   StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+		Dev:     DevConfig{Ports: map[string]int{"webserver_http": 80}},
+	}
+	err := c.Validate()
+	if !errors.Is(err, ErrConfigInvalid) {
+		t.Fatalf("Validate = %v, want ErrConfigInvalid", err)
+	}
+	if !strings.Contains(err.Error(), "webserver_http") {
+		t.Errorf("err = %v, want it to mention 'webserver_http'", err)
+	}
+}
+
+func TestValidateDeployPortRejectsVite(t *testing.T) {
+	c := &Config{
+		Project: ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Stack:   StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+		Deploy: map[string]DeployConfig{
+			"production": {Host: "h", User: "u", Path: "p", Branch: "b", Ports: map[string]int{"vite": 5173}},
+		},
+	}
+	err := c.Validate()
+	if !errors.Is(err, ErrConfigInvalid) {
+		t.Fatalf("Validate = %v, want ErrConfigInvalid", err)
+	}
+	if !strings.Contains(err.Error(), "vite") {
+		t.Errorf("err = %v, want it to mention 'vite'", err)
+	}
+}
+
+func TestValidateDeployPortRejectsMailpitSMTP(t *testing.T) {
+	c := &Config{
+		Project: ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Stack:   StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+		Deploy: map[string]DeployConfig{
+			"production": {Host: "h", User: "u", Path: "p", Branch: "b", Ports: map[string]int{"mailpit_smtp": 1025}},
+		},
+	}
+	if err := c.Validate(); !errors.Is(err, ErrConfigInvalid) {
+		t.Errorf("Validate = %v, want ErrConfigInvalid (mailpit_smtp not valid in production)", err)
+	}
+}
+
+func TestValidateDeployPortAcceptsWebserverHTTP(t *testing.T) {
+	c := &Config{
+		Project: ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Stack:   StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+		Deploy: map[string]DeployConfig{
+			"production": {Host: "h", User: "u", Path: "p", Branch: "b", Ports: map[string]int{"webserver_http": 8080}},
+		},
+	}
+	if err := c.Validate(); err != nil {
+		t.Errorf("Validate(webserver_http=8080 in production) = %v, want nil", err)
 	}
 }

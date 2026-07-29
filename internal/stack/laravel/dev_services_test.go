@@ -108,7 +108,7 @@ func TestGenerateProdFilesExcludesDevServices(t *testing.T) {
 				"log-viewer": {Image: "x/y:1"},
 			},
 		},
-	})
+	}, "production")
 	if err != nil {
 		t.Fatalf("GenerateProdFiles: %v", err)
 	}

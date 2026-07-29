@@ -14,7 +14,7 @@ func TestGenerateProdFilesNoServices(t *testing.T) {
 	files, err := s.GenerateProdFiles(config.Config{
 		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
-	})
+	}, "production")
 	if err != nil {
 		t.Fatalf("GenerateProdFiles: %v", err)
 	}
@@ -37,7 +37,7 @@ func TestGenerateProdFilesWithServices(t *testing.T) {
 	s := New()
 	files, err := s.GenerateProdFiles(config.Config{
 		Stack: config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22", Services: []string{"redis"}},
-	})
+	}, "production")
 	if err != nil {
 		t.Fatalf("GenerateProdFiles: %v", err)
 	}
@@ -51,7 +51,7 @@ func TestGenerateProdFilesDevOnlyExcluded(t *testing.T) {
 	s := New()
 	files, err := s.GenerateProdFiles(config.Config{
 		Stack: config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22", Services: []string{"redis", "mailpit"}},
-	})
+	}, "production")
 	if err != nil {
 		t.Fatalf("GenerateProdFiles: %v", err)
 	}
@@ -66,7 +66,7 @@ func TestGenerateProdFilesQueueSchedulerReuseAppImage(t *testing.T) {
 	files, err := s.GenerateProdFiles(config.Config{
 		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22", Services: []string{"queue", "scheduler"}},
-	})
+	}, "production")
 	if err != nil {
 		t.Fatalf("GenerateProdFiles: %v", err)
 	}
@@ -102,7 +102,7 @@ func TestGenerateProdFilesQueueSchedulerSetSupervisorCommand(t *testing.T) {
 	files, err := s.GenerateProdFiles(config.Config{
 		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22", Services: []string{"queue", "scheduler"}},
-	})
+	}, "production")
 	if err != nil {
 		t.Fatalf("GenerateProdFiles: %v", err)
 	}
@@ -139,5 +139,107 @@ func TestGenerateProdFilesQueueSchedulerSetSupervisorCommand(t *testing.T) {
 				t.Errorf("prod scheduler SUPERVISOR_PHP_COMMAND = %q, want it to invoke 'artisan schedule:work'", cmd)
 			}
 		}
+	}
+}
+
+func TestGenerateProdFilesWebserverDefaultPorts(t *testing.T) {
+	s := New()
+	files, err := s.GenerateProdFiles(config.Config{
+		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+		Deploy: map[string]config.DeployConfig{
+			"production": {Host: "h", User: "u", Path: "p", Branch: "b"},
+		},
+	}, "production")
+	if err != nil {
+		t.Fatalf("GenerateProdFiles: %v", err)
+	}
+	got := findFile(files, "docker-compose.prod.yml")
+	if got == nil {
+		t.Fatal("docker-compose.prod.yml missing")
+	}
+	var doc struct {
+		Services map[string]struct {
+			Ports []string `yaml:"ports"`
+		} `yaml:"services"`
+	}
+	if err := yaml.Unmarshal(got.Contents, &doc); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	web, ok := doc.Services["webserver"]
+	if !ok {
+		t.Fatal("webserver missing")
+	}
+	wantPorts := map[string]bool{
+		"443:443": false,
+		"80:80":   false,
+	}
+	for _, p := range web.Ports {
+		if _, ok := wantPorts[p]; ok {
+			wantPorts[p] = true
+		}
+	}
+	for p, found := range wantPorts {
+		if !found {
+			t.Errorf("webserver ports missing %q; got %v (production defaults: laravel=443, webserver_http=80)", p, web.Ports)
+		}
+	}
+}
+
+func TestGenerateProdFilesPortPartialOverride(t *testing.T) {
+	s := New()
+	files, err := s.GenerateProdFiles(config.Config{
+		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Stack: config.StackConfig{
+			Type: "laravel", PHP: "8.3", Node: "22",
+			Services: []string{"redis"},
+		},
+		Deploy: map[string]config.DeployConfig{
+			"production": {
+				Host: "h", User: "u", Path: "p", Branch: "b",
+				Ports: map[string]int{"laravel": 8383},
+			},
+		},
+	}, "production")
+	if err != nil {
+		t.Fatalf("GenerateProdFiles: %v", err)
+	}
+	got := findFile(files, "docker-compose.prod.yml")
+	if got == nil {
+		t.Fatal("docker-compose.prod.yml missing")
+	}
+	var doc struct {
+		Services map[string]struct {
+			Ports []string `yaml:"ports"`
+		} `yaml:"services"`
+	}
+	if err := yaml.Unmarshal(got.Contents, &doc); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	web := doc.Services["webserver"]
+	found8383, found80 := false, false
+	for _, p := range web.Ports {
+		if p == "8383:443" {
+			found8383 = true
+		}
+		if p == "80:80" {
+			found80 = true
+		}
+	}
+	if !found8383 {
+		t.Errorf("webserver ports = %v, want it to include 8383:443 (laravel override)", web.Ports)
+	}
+	if !found80 {
+		t.Errorf("webserver ports = %v, want it to include 80:80 (webserver_http default)", web.Ports)
+	}
+	redis := doc.Services["redis"]
+	foundRedis := false
+	for _, p := range redis.Ports {
+		if p == "6379:6379" {
+			foundRedis = true
+		}
+	}
+	if !foundRedis {
+		t.Errorf("redis ports = %v, want it to include 6379:6379 (prod default, not overridden)", redis.Ports)
 	}
 }
