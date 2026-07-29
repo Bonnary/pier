@@ -29,7 +29,7 @@ type StackConfig struct {
 
 type DevConfig struct {
 	Services map[string]DevService `toml:"services"`
-	Ports    map[string]int       `toml:"ports"`
+	Ports    map[string]int        `toml:"ports"`
 }
 
 type DevService struct {

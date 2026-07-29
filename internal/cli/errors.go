@@ -36,12 +36,12 @@ const (
 	KindUser    = deploy.KindUser
 )
 
-func PreflightError(err error) error  { return deploy.PreflightError(err) }
-func BuildError(err error) error      { return deploy.BuildError(err) }
-func UpError(err error) error         { return deploy.UpError(err) }
-func ExecDownError() error            { return deploy.ExecDownError() }
+func PreflightError(err error) error   { return deploy.PreflightError(err) }
+func BuildError(err error) error       { return deploy.BuildError(err) }
+func UpError(err error) error          { return deploy.UpError(err) }
+func ExecDownError() error             { return deploy.ExecDownError() }
 func PortInUseError(ports []int) error { return deploy.PortInUseError(ports) }
-func AbortedError() error             { return deploy.AbortedError() }
+func AbortedError() error              { return deploy.AbortedError() }
 
 func ConfigError(err error) error  { return deploy.ConfigError(err) }
 func DockerError(err error) error  { return deploy.DockerError(err) }

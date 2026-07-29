@@ -48,9 +48,9 @@ type Healthcheck struct {
 func services() map[string]Service {
 	return map[string]Service{
 		"mysql": {
-			Name:  "mysql",
-			Image: "mysql:8.0",
-			Ports: []string{"3306:3306"},
+			Name:     "mysql",
+			Image:    "mysql:8.0",
+			Ports:    []string{"3306:3306"},
 			PortKeys: []string{"mysql"},
 			Env: map[string]string{
 				"MYSQL_ROOT_PASSWORD": "root",
@@ -63,9 +63,9 @@ func services() map[string]Service {
 			},
 		},
 		"postgres": {
-			Name:  "postgres",
-			Image: "postgres:16-alpine",
-			Ports: []string{"5432:5432"},
+			Name:     "postgres",
+			Image:    "postgres:16-alpine",
+			Ports:    []string{"5432:5432"},
 			PortKeys: []string{"postgres"},
 			Env: map[string]string{
 				"POSTGRES_USER": "laravel", "POSTGRES_PASSWORD": "secret", "POSTGRES_DB": "laravel",
@@ -86,10 +86,10 @@ func services() map[string]Service {
 		},
 		"meilisearch": {
 			Name: "meilisearch", Image: "getmeili/meilisearch:v1.10",
-			Ports:   []string{"7700:7700"},
+			Ports:    []string{"7700:7700"},
 			PortKeys: []string{"meilisearch"},
-			Env:     map[string]string{"MEILI_ENV": "development"},
-			Volumes: []string{"meili_data:/meili_data"},
+			Env:      map[string]string{"MEILI_ENV": "development"},
+			Volumes:  []string{"meili_data:/meili_data"},
 			Healthcheck: &Healthcheck{
 				Test:     []string{"CMD", "wget", "--spider", "-q", "http://127.0.0.1:7700/health"},
 				Interval: "10s", Timeout: "5s", Retries: "5", StartPeriod: "10s",
@@ -129,9 +129,9 @@ func services() map[string]Service {
 		},
 		"s3": {
 			Name: "s3", Image: "chrislusf/seaweedfs:latest",
-			Ports:   []string{"8333", "8888", "9333"},
+			Ports:    []string{"8333", "8888", "9333"},
 			PortKeys: []string{"s3_api", "s3_filer", "s3_master"},
-			Volumes: []string{"s3_data:/data"},
+			Volumes:  []string{"s3_data:/data"},
 			Healthcheck: &Healthcheck{
 				Test:     []string{"CMD-SHELL", "nc -z 127.0.0.1 8333"},
 				Interval: "10s", Timeout: "5s", Retries: "5", StartPeriod: "20s",

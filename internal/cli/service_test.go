@@ -35,8 +35,6 @@ func TestServiceAdd(t *testing.T) {
 	if !contains(string(got), "redis") {
 		t.Errorf("redis not in pier.toml:\n%s", got)
 	}
-	if !contains(string(got), "docker-compose.yml") {
-	}
 }
 
 func TestServiceAddIdempotent(t *testing.T) {
