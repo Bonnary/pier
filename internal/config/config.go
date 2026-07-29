@@ -29,6 +29,7 @@ type StackConfig struct {
 
 type DevConfig struct {
 	Services map[string]DevService `toml:"services"`
+	Ports    map[string]int       `toml:"ports"`
 }
 
 type DevService struct {
@@ -41,8 +42,9 @@ type DevService struct {
 }
 
 type DeployConfig struct {
-	Host   string `toml:"host"`
-	User   string `toml:"user"`
-	Path   string `toml:"path"`
-	Branch string `toml:"branch"`
+	Host   string         `toml:"host"`
+	User   string         `toml:"user"`
+	Path   string         `toml:"path"`
+	Branch string         `toml:"branch"`
+	Ports  map[string]int `toml:"ports"`
 }

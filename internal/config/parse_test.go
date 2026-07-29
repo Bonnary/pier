@@ -6,6 +6,23 @@ import (
 	"testing"
 )
 
+func TestLoadFullWithPorts(t *testing.T) {
+	cfg, err := Load(filepath.Join("testdata", "full-ports.toml"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got := cfg.Dev.Ports["laravel"]; got != 8080 {
+		t.Errorf("Dev.Ports[laravel] = %d, want 8080", got)
+	}
+	if got := cfg.Dev.Ports["vite"]; got != 5174 {
+		t.Errorf("Dev.Ports[vite] = %d, want 5174", got)
+	}
+	prod := cfg.Deploy["production"]
+	if got := prod.Ports["laravel"]; got != 8383 {
+		t.Errorf("Deploy[production].Ports[laravel] = %d, want 8383", got)
+	}
+}
+
 func TestLoadMinimal(t *testing.T) {
 	cfg, err := Load(filepath.Join("testdata", "minimal.toml"))
 	if err != nil {
