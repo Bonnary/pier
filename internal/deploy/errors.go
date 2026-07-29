@@ -53,3 +53,31 @@ func BuildError(err error) error     { return &ExitError{Code: ExitBuild, Err: e
 func UpError(err error) error        { return &ExitError{Code: ExitUp, Err: err} }
 func ExecDownError() error           { return &ExitError{Code: ExitExecDown, Err: ErrExecDown} }
 func AbortedError() error            { return &ExitError{Code: ExitAborted, Err: ErrAborted} }
+
+type Kind int
+
+const (
+	KindUnknown Kind = iota
+	KindConfig
+	KindDocker
+	KindSSH
+	KindNetwork
+	KindUser
+)
+
+func (k Kind) String() string {
+	switch k {
+	case KindConfig:
+		return "config"
+	case KindDocker:
+		return "docker"
+	case KindSSH:
+		return "ssh"
+	case KindNetwork:
+		return "network"
+	case KindUser:
+		return "user"
+	default:
+		return "unknown"
+	}
+}
