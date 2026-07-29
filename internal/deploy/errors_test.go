@@ -68,3 +68,33 @@ func TestNewConstructorsSetKind(t *testing.T) {
 		})
 	}
 }
+
+func TestExistingConstructorsDefaultKind(t *testing.T) {
+	base := errors.New("base")
+	cases := []struct {
+		name string
+		got  error
+		code int
+		kind Kind
+	}{
+		{"PreflightError", PreflightError(base), ExitPreflight, KindConfig},
+		{"BuildError", BuildError(base), ExitBuild, KindDocker},
+		{"UpError", UpError(base), ExitUp, KindDocker},
+		{"ExecDownError", ExecDownError(), ExitExecDown, KindDocker},
+		{"AbortedError", AbortedError(), ExitAborted, KindUser},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var ee *ExitError
+			if !errors.As(c.got, &ee) {
+				t.Fatalf("not *ExitError")
+			}
+			if ee.Code != c.code {
+				t.Errorf("Code = %d, want %d", ee.Code, c.code)
+			}
+			if ee.Kind != c.kind {
+				t.Errorf("Kind = %v, want %v", ee.Kind, c.kind)
+			}
+		})
+	}
+}
