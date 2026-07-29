@@ -82,3 +82,9 @@ func (k Kind) String() string {
 		return "unknown"
 	}
 }
+
+func ConfigError(err error) error  { return &ExitError{Code: ExitGeneral, Kind: KindConfig, Err: err} }
+func DockerError(err error) error  { return &ExitError{Code: ExitGeneral, Kind: KindDocker, Err: err} }
+func SSHError(err error) error     { return &ExitError{Code: ExitGeneral, Kind: KindSSH, Err: err} }
+func NetworkError(err error) error { return &ExitError{Code: ExitGeneral, Kind: KindNetwork, Err: err} }
+func UserError(err error) error    { return &ExitError{Code: ExitGeneral, Kind: KindUser, Err: err} }

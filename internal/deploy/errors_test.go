@@ -39,3 +39,32 @@ func TestExitErrorErrorString(t *testing.T) {
 		t.Errorf("Error() = %q, want %q", got, want)
 	}
 }
+
+func TestNewConstructorsSetKind(t *testing.T) {
+	base := errors.New("base")
+	cases := []struct {
+		name string
+		got  error
+		want Kind
+	}{
+		{"ConfigError", ConfigError(base), KindConfig},
+		{"DockerError", DockerError(base), KindDocker},
+		{"SSHError", SSHError(base), KindSSH},
+		{"NetworkError", NetworkError(base), KindNetwork},
+		{"UserError", UserError(base), KindUser},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var ee *ExitError
+			if !errors.As(c.got, &ee) {
+				t.Fatalf("errors.As failed: not *ExitError")
+			}
+			if ee.Kind != c.want {
+				t.Errorf("Kind = %v, want %v", ee.Kind, c.want)
+			}
+			if !errors.Is(c.got, base) {
+				t.Errorf("errors.Is(base) = false, want true")
+			}
+		})
+	}
+}
