@@ -3,7 +3,27 @@ package laravel
 import (
 	"sort"
 	"strings"
+
+	"github.com/pcnerd/pier/internal/config"
 )
+
+const (
+	devImageTag  = "test:latest"
+	prodImageTag = ":latest"
+)
+
+// appImageFor returns the image reference for sidecar services that reuse the
+// project's built app image (currently queue and scheduler). The static
+// services() registry leaves Image empty for these; the render code calls
+// appImageFor to substitute the concrete reference using the project name from
+// pier.toml, so the generated compose never falls back to a non-existent tag
+// like "myapp:latest".
+//
+// image is the tag portion of the reference and must already include its
+// separator, e.g. "test:latest" (dev) or ":latest" (prod).
+func appImageFor(cfg config.Config, image string) string {
+	return cfg.Project.Name + image
+}
 
 type Service struct {
 	Name        string
@@ -67,7 +87,7 @@ func services() map[string]Service {
 			Env:     map[string]string{"MEILI_ENV": "development"},
 			Volumes: []string{"meili_data:/meili_data"},
 			Healthcheck: &Healthcheck{
-				Test:     []string{"CMD", "wget", "--spider", "-q", "http://localhost:7700/health"},
+				Test:     []string{"CMD", "wget", "--spider", "-q", "http://127.0.0.1:7700/health"},
 				Interval: "10s", Timeout: "5s", Retries: "5", StartPeriod: "10s",
 			},
 		},
@@ -79,18 +99,12 @@ func services() map[string]Service {
 				Interval: "10s", Timeout: "5s", Retries: "5", StartPeriod: "10s",
 			},
 		},
-		"reverb": {
-			Name: "reverb", Image: "serversideup/reverb:latest",
-			Ports: []string{"8080:8080"},
-			Env:   map[string]string{"REVERB_SERVER_PORT": "8080"},
-			Healthcheck: &Healthcheck{
-				Test:     []string{"CMD", "wget", "--spider", "-q", "http://localhost:8080/"},
-				Interval: "10s", Timeout: "5s", Retries: "5", StartPeriod: "20s",
-			},
-		},
 		"queue": {
-			Name: "queue", Image: "${APP_IMAGE:-myapp:latest}",
-			Env:       map[string]string{"CONTAINER_ROLE": "queue"},
+			Name: "queue", Image: "",
+			Env: map[string]string{
+				"CONTAINER_ROLE":         "queue",
+				"SUPERVISOR_PHP_COMMAND": "/usr/bin/php /var/www/html/artisan queue:work",
+			},
 			DependsOn: []string{"app"},
 			Healthcheck: &Healthcheck{
 				Test:     []string{"CMD-SHELL", "ps aux | grep -v grep | grep -q 'artisan queue:work'"},
@@ -98,28 +112,23 @@ func services() map[string]Service {
 			},
 		},
 		"scheduler": {
-			Name: "scheduler", Image: "${APP_IMAGE:-myapp:latest}",
-			Env:       map[string]string{"CONTAINER_ROLE": "scheduler"},
+			Name: "scheduler", Image: "",
+			Env: map[string]string{
+				"CONTAINER_ROLE":         "scheduler",
+				"SUPERVISOR_PHP_COMMAND": "/usr/bin/php /var/www/html/artisan schedule:work",
+			},
 			DependsOn: []string{"app"},
 			Healthcheck: &Healthcheck{
 				Test:     []string{"CMD-SHELL", "ps aux | grep -v grep | grep -q 'artisan schedule:work'"},
 				Interval: "30s", Timeout: "10s", Retries: "3",
 			},
 		},
-		"log-viewer": {
-			Name: "log-viewer", Image: "opcodesio/log-viewer:latest",
-			Ports: []string{"8081:8080"}, DevOnly: "true",
-		},
-		"dumps": {
-			Name: "dumps", Image: "nicolasbissig/laravel-dumps:latest",
-			Ports: []string{"9191:9191"}, DevOnly: "true",
-		},
 		"s3": {
 			Name: "s3", Image: "chrislusf/seaweedfs:latest",
 			Ports:   []string{"8333", "8888", "9333"},
 			Volumes: []string{"s3_data:/data"},
 			Healthcheck: &Healthcheck{
-				Test:     []string{"CMD-SHELL", "echo 's3' | nc -w 1 localhost 8333 | grep -q s3"},
+				Test:     []string{"CMD-SHELL", "nc -z 127.0.0.1 8333"},
 				Interval: "10s", Timeout: "5s", Retries: "5", StartPeriod: "20s",
 			},
 		},

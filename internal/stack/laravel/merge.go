@@ -27,6 +27,9 @@ func ownedServices(cfg config.Config) map[string]bool {
 	for _, n := range cfg.Stack.Services {
 		out[n] = true
 	}
+	for n := range cfg.Dev.Services {
+		out[n] = true
+	}
 	return out
 }
 

@@ -102,3 +102,28 @@ func TestMergeDevDecisionDropRemovesKey(t *testing.T) {
 		t.Errorf("DecisionDrop should have removed 'version':\n%s", out)
 	}
 }
+
+func TestMergeDevDevServiceEditsPropagate(t *testing.T) {
+	existing, _ := os.ReadFile(filepath.Join("testdata", "merge", "dev-service-stale.yml"))
+	cfg := config.Config{
+		Stack: config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+		Dev: config.DevConfig{
+			Services: map[string]config.DevService{
+				"log-viewer": {
+					Image: "new/image:2",
+					Ports: []string{"9090:8080"},
+				},
+			},
+		},
+	}
+	out, _, err := MergeDev(string(existing), cfg, func(MergeWarning) Decision { return DecisionKeep })
+	if err != nil {
+		t.Fatalf("MergeDev: %v", err)
+	}
+	if contains(out, "old/image:1") {
+		t.Errorf("dev service image was treated as a user sidecar; expected overlay to win for owned services:\n%s", out)
+	}
+	if !contains(out, "new/image:2") {
+		t.Errorf("new image missing after merge:\n%s", out)
+	}
+}

@@ -31,8 +31,7 @@ func (c *Compose) Exec(ctx context.Context, opts ExecOpts, cmd ...string) error 
 	}
 	args = append(args, opts.Service)
 	args = append(args, cmd...)
-	_, _, err := c.run(ctx, args...)
-	return err
+	return c.runRaw(ctx, args...)
 }
 
 func DetectTTY() bool {

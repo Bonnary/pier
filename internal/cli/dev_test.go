@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -18,13 +19,14 @@ type fakeRunnerCLI struct {
 	calls []string
 }
 
-func (f *fakeRunnerCLI) Run(ctx context.Context, name string, args ...string) ([]byte, []byte, error) {
+func (f *fakeRunnerCLI) Run(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
 	call := name
 	for _, a := range args {
 		call += " " + a
 	}
 	f.calls = append(f.calls, call)
-	return []byte("name\timage\tstate\n"), nil, nil
+	stdout.Write([]byte("name\timage\tstate\n"))
+	return nil
 }
 
 func TestDevCommand(t *testing.T) {

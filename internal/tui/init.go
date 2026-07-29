@@ -73,9 +73,6 @@ func (m initModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.result.Node = m.nodePicker.items[m.nodePicker.cursor]
 		m.state = stateServices
 	case stateServices:
-		res, _ := m.svcPicker.Run() // should already be done; but be safe
-		_ = res
-		// re-derive from the picker state directly (Run is what would produce this)
 		var picked []string
 		for i, on := range m.svcPicker.picked {
 			if on {

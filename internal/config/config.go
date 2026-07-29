@@ -11,6 +11,7 @@ var validStackType = map[string]bool{"laravel": true}
 type Config struct {
 	Project ProjectConfig           `toml:"project"`
 	Stack   StackConfig             `toml:"stack"`
+	Dev     DevConfig               `toml:"dev"`
 	Deploy  map[string]DeployConfig `toml:"deploy"`
 }
 
@@ -24,6 +25,19 @@ type StackConfig struct {
 	PHP      string   `toml:"php"`
 	Node     string   `toml:"node"`
 	Services []string `toml:"services"`
+}
+
+type DevConfig struct {
+	Services map[string]DevService `toml:"services"`
+}
+
+type DevService struct {
+	Image     string            `toml:"image"`
+	Ports     []string          `toml:"ports"`
+	Env       map[string]string `toml:"environment"`
+	Volumes   []string          `toml:"volumes"`
+	DependsOn []string          `toml:"depends_on"`
+	Restart   string            `toml:"restart"`
 }
 
 type DeployConfig struct {

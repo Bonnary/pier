@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"io"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -14,13 +15,14 @@ type capturingRunner struct {
 	calls []string
 }
 
-func (c *capturingRunner) Run(ctx context.Context, name string, args ...string) ([]byte, []byte, error) {
+func (c *capturingRunner) Run(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
 	call := name
 	for _, a := range args {
 		call += " " + a
 	}
 	c.calls = append(c.calls, call)
-	return []byte("name\timage\tstate\nlaravel.test\tmyapp\tUp\n"), nil, nil
+	stdout.Write([]byte("name\timage\tstate\nlaravel.test\tmyapp\tUp\n"))
+	return nil
 }
 
 func TestExecBuildsCommand(t *testing.T) {

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"github.com/pcnerd/pier/internal/config"
 	"github.com/pcnerd/pier/internal/stack"
@@ -57,13 +58,18 @@ func (s *Stack) GenerateDevCompose(cfg config.Config) (stack.Files, error) {
 			return nil, fmt.Errorf("laravel: unknown service %q in [stack].services", name)
 		}
 	}
+	for name, ds := range cfg.Dev.Services {
+		if ds.Image == "" {
+			return nil, fmt.Errorf("laravel: [dev.services.%s] requires image", name)
+		}
+	}
 
 	runtimeDir, err := Runtime(cfg.Stack.PHP)
 	if err != nil {
 		return nil, err
 	}
 	var files stack.Files
-	for _, name := range []string{"Dockerfile", "php.ini", "supervisord.conf"} {
+	for _, name := range []string{"Dockerfile", "php.ini", "supervisord.conf", "start-container"} {
 		src := filepath.Join(runtimeDir, name)
 		b, err := os.ReadFile(src)
 		if err != nil {
@@ -137,7 +143,31 @@ func renderDevCompose(cfg config.Config) ([]byte, error) {
 				Timeout: s.Healthcheck.Timeout, Retries: s.Healthcheck.Retries, StartPeriod: s.Healthcheck.StartPeriod,
 			}
 		}
+		if cs.Image == "" {
+			cs.Image = appImageFor(cfg, "/"+devImageTag)
+		}
+		if name == "queue" || name == "scheduler" {
+			cs.Volumes = append(cs.Volumes, "./:/var/www/html")
+		}
 		cf.Services[name] = cs
+	}
+
+	devNames := make([]string, 0, len(cfg.Dev.Services))
+	for name := range cfg.Dev.Services {
+		devNames = append(devNames, name)
+	}
+	sort.Strings(devNames)
+	for _, name := range devNames {
+		ds := cfg.Dev.Services[name]
+		cf.Services[name] = composeService{
+			Image:       ds.Image,
+			Ports:       ds.Ports,
+			Environment: ds.Env,
+			Volumes:     ds.Volumes,
+			DependsOn:   ds.DependsOn,
+			Restart:     ds.Restart,
+			Networks:    []string{"pier"},
+		}
 	}
 
 	vols := map[string]bool{}

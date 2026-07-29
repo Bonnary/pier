@@ -96,6 +96,9 @@ func renderProdCompose(cfg config.Config, services []string) ([]byte, error) {
 				Timeout: s.Healthcheck.Timeout, Retries: s.Healthcheck.Retries, StartPeriod: s.Healthcheck.StartPeriod,
 			}
 		}
+		if cs.Image == "" {
+			cs.Image = appImageFor(cfg, prodImageTag)
+		}
 		cf.Services[name] = cs
 	}
 

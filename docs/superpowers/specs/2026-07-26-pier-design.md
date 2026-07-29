@@ -138,12 +138,23 @@ Global flags: `--config <path>` (default `./pier.toml`), `--json` (machine-reada
 | `redis` | both | |
 | `meilisearch` | both | |
 | `mailpit` | dev only | SMTP catch-all for local |
-| `reverb` | both | Laravel WebSocket server |
 | `queue` | both | Laravel queue worker container |
 | `scheduler` | both | Laravel scheduler (`schedule:run`) container |
-| `log-viewer` | dev only | `opcodesio/log-viewer` sidecar; only the container, the composer package is the user's call |
-| `dumps` | dev only | `https://github.com/superbalist/laravel-pubsub`–style data dump sidecar; in practice a tiny container with a TTY-friendly file browser over the `storage/app/dumps` volume |
 | `s3` (SeaweedFS) | both | S3-compatible, single binary runs master + filer + S3, ports 8333/8888/9333 |
+
+**User-defined dev services (`[dev.services.<name>]`):** pier only ships sidecars whose images are known to be available on Docker Hub. Anything else (a log viewer, a dump inspector, a Reverb sidecar from a custom registry, etc.) is configured by the user per-project and rendered into the dev compose. Each entry is a partial compose service; `image` is required, the other keys (`ports`, `environment`, `volumes`, `depends_on`, `restart`) are optional and pass through verbatim. Dev services are dev-only — they are never rendered into `docker-compose.prod.yml`. They are owned by pier for merge purposes, so editing `[dev.services.log-viewer]` in `pier.toml` and re-running `pier dev` updates the rendered block (scalar keys like `image` overlay-wins; sequence keys like `ports` keep the previous value, same as the rest of pier's merge behavior). Example:
+
+```toml
+[dev.services.log-viewer]
+image = "ghcr.io/example/log-viewer:1.0"
+ports = ["8081:8080"]
+
+[dev.services.reverb]
+image = "example/reverb:1"
+ports = ["8080:8080"]
+environment = { REVERB_APP_ID = "1" }
+depends_on = ["redis"]
+```
 
 **Dev compose (smart merge):** if `docker-compose.yml` already exists, parse it to a YAML AST. For each service pier owns (the always-on `laravel.test` plus everything in `pier.toml` `services`), replace the block with the freshly-generated version from pier's templates. For each service pier doesn't own (user-added sidecars, third-party services, anything not in pier's registry), preserve it byte-for-byte. For pier-owned services, preserve unknown top-level keys the user has added (e.g. `extra_hosts`, a custom `command` override, `labels`) — pier only rewrites the keys it knows about. If the existing file contains a key pier doesn't recognize AND the file is being re-rendered (i.e. it's a "new" key in pier's vocabulary), warn once per session and ask keep-or-drop. If none exists, generate the full pier layout. The merge is idempotent: running `pier dev` twice produces the same file. Implementation lives in `internal/stack/laravel/merge.go` and `internal/compose/merge.go`.
 
@@ -165,6 +176,10 @@ type = "laravel"
 php = "8.3"
 node = "22"
 services = ["redis", "mailpit", "s3"]
+
+[dev.services.log-viewer]
+image = "ghcr.io/example/log-viewer:1.0"
+ports = ["8081:8080"]
 
 [deploy.production]
 host = "prod.example.com"
