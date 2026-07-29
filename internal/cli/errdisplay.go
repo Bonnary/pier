@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"errors"
+	"fmt"
 	"io"
 	"os"
 
@@ -55,4 +57,124 @@ func itoa(n int) string {
 		buf[i] = '-'
 	}
 	return string(buf[i:])
+}
+
+// PrintError writes a categorized, multi-line rendering of err to w.
+//
+//   - When color is true, output uses ANSI color codes (terminal use).
+//   - When color is false, output is plain text (logs, CI, pipes).
+//   - When verbose is true, every level of the wrap chain is shown.
+//     When false, consecutive duplicate messages are collapsed.
+//
+// Output format:
+//
+//	error[kind]: <top message>
+//	  |
+//	  |-> <cause 1>
+//	  |-> caused by: <deepest cause>
+//	  |
+//	  = hint: <kind-specific hint>
+//
+// The [kind] bracket is omitted for KindUnknown. The "= hint:" block
+// is omitted when the kind's Hint() returns "".
+func PrintError(w io.Writer, err error, verbose, color bool) {
+	if err == nil {
+		return
+	}
+
+	var (
+		kind    = KindUnknown
+		chain   []string
+		current = err
+	)
+
+	var ee *ExitError
+	if errors_AsTop(err, &ee) {
+		kind = ee.Kind
+	}
+
+	for current != nil {
+		var msg string
+		if exitErr, ok := current.(*ExitError); ok {
+			if exitErr.Err != nil {
+				msg = exitErr.Err.Error()
+			}
+		} else {
+			msg = current.Error()
+		}
+		if msg != "" {
+			chain = append(chain, msg)
+		}
+		next := errors.Unwrap(current)
+		if next == nil {
+			break
+		}
+		current = next
+	}
+
+	if !verbose && len(chain) > 1 {
+		dedup := chain[:1]
+		for i := 1; i < len(chain); i++ {
+			if chain[i] != chain[i-1] {
+				dedup = append(dedup, chain[i])
+			}
+		}
+		chain = dedup
+	}
+
+	topMsg := chain[0]
+	causes := chain[1:]
+
+	if kind == KindUnknown {
+		line := "error: " + topMsg
+		fmt.Fprintln(w, ansiColor(color, 31, line))
+	} else {
+		label := "[" + kind.String() + "]"
+		line := "error" + label + ": " + topMsg
+		code := kindColor(kind)
+		fmt.Fprintln(w, ansiColor(color, code, line))
+	}
+
+	if len(causes) > 0 {
+		fmt.Fprintln(w, "  |")
+		for i, c := range causes {
+			prefix := "|-> "
+			if i == len(causes)-1 {
+				prefix = "|-> caused by: "
+			}
+			fmt.Fprintln(w, "  "+prefix+c)
+		}
+	}
+
+	hint := kind.Hint()
+	if hint != "" {
+		fmt.Fprintln(w, "  |")
+		fmt.Fprintln(w, "= hint: "+hint)
+	}
+}
+
+func kindColor(k Kind) int {
+	switch k {
+	case KindConfig:
+		return 33
+	case KindUser:
+		return 36
+	default:
+		return 31
+	}
+}
+
+func errors_AsTop(err error, target **ExitError) bool {
+	for err != nil {
+		if ee, ok := err.(*ExitError); ok {
+			*target = ee
+			return true
+		}
+		u, ok := err.(interface{ Unwrap() error })
+		if !ok {
+			return false
+		}
+		err = u.Unwrap()
+	}
+	return false
 }
