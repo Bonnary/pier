@@ -27,7 +27,7 @@ type Stack interface {
 	Detect(projectPath string) bool
 	DefaultConfig() config.StackConfig
 	GenerateDevCompose(cfg config.Config) (Files, error)
-	GenerateProdFiles(cfg config.Config) (Files, error)
+	GenerateProdFiles(cfg config.Config, env string) (Files, error)
 	RequiredDirs() []string
 }
 

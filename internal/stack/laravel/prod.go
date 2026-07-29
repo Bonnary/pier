@@ -10,7 +10,7 @@ import (
 	"github.com/pcnerd/pier/internal/stack"
 )
 
-func (s *Stack) GenerateProdFiles(cfg config.Config) (stack.Files, error) {
+func (s *Stack) GenerateProdFiles(cfg config.Config, env string) (stack.Files, error) {
 	prodServices := []string{}
 	for _, name := range cfg.Stack.Services {
 		svc, ok := lookup(name)
@@ -23,7 +23,7 @@ func (s *Stack) GenerateProdFiles(cfg config.Config) (stack.Files, error) {
 		prodServices = append(prodServices, name)
 	}
 
-	compose, err := renderProdCompose(cfg, prodServices)
+	compose, err := renderProdCompose(cfg, env, prodServices)
 	if err != nil {
 		return nil, err
 	}
@@ -47,7 +47,11 @@ func (s *Stack) GenerateProdFiles(cfg config.Config) (stack.Files, error) {
 	}, nil
 }
 
-func renderProdCompose(cfg config.Config, services []string) ([]byte, error) {
+func renderProdCompose(cfg config.Config, env string, services []string) ([]byte, error) {
+	deployCfg, ok := cfg.Deploy[env]
+	if !ok {
+		deployCfg = config.DeployConfig{}
+	}
 	cf := composeFile{
 		Services: map[string]composeService{
 			"app": {
@@ -62,7 +66,7 @@ func renderProdCompose(cfg config.Config, services []string) ([]byte, error) {
 			"webserver": {
 				Image:     "nginx:alpine",
 				Restart:   "unless-stopped",
-				Ports:     []string{"80:80", "443:443"},
+				Ports:     webserverPorts(env, deployCfg.Ports),
 				Volumes:   []string{"./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro"},
 				Networks:  []string{"pier"},
 				DependsOn: []string{"app"},
@@ -86,7 +90,8 @@ func renderProdCompose(cfg config.Config, services []string) ([]byte, error) {
 			return nil, fmt.Errorf("laravel: unknown service %q", name)
 		}
 		cs := composeService{
-			Image: s.Image, Ports: s.Ports, Environment: s.Env, Volumes: s.Volumes,
+			Image: s.Image, Ports: sidecarPorts("production", name, s.PortKeys, s.Ports, deployCfg.Ports),
+			Environment: s.Env, Volumes: s.Volumes,
 			Restart:  "unless-stopped",
 			Networks: []string{"pier"},
 		}
@@ -103,6 +108,28 @@ func renderProdCompose(cfg config.Config, services []string) ([]byte, error) {
 	}
 
 	return yamlMarshal(cf)
+}
+
+// webserverPorts assembles the `ports:` slice for the webserver service.
+// The two keys are "laravel" (HTTPS, the primary visible port) and
+// "webserver_http" (HTTP→HTTPS redirect). Either may be 0 to opt out.
+func webserverPorts(env string, override map[string]int) []string {
+	bind := BindAddr(env)
+	var out []string
+	for _, entry := range []struct {
+		key       string
+		container int
+	}{
+		{"laravel", 443},
+		{"webserver_http", 80},
+	} {
+		host, ok := ResolvePort(entry.key, override, ProdPortDefaults)
+		if !ok {
+			continue
+		}
+		out = append(out, PortBinding(bind, host, entry.container))
+	}
+	return out
 }
 
 func prodEnvForServices(services []string) map[string]string {
