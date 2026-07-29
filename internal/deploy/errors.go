@@ -88,3 +88,18 @@ func DockerError(err error) error  { return &ExitError{Code: ExitGeneral, Kind: 
 func SSHError(err error) error     { return &ExitError{Code: ExitGeneral, Kind: KindSSH, Err: err} }
 func NetworkError(err error) error { return &ExitError{Code: ExitGeneral, Kind: KindNetwork, Err: err} }
 func UserError(err error) error    { return &ExitError{Code: ExitGeneral, Kind: KindUser, Err: err} }
+
+func (k Kind) Hint() string {
+	switch k {
+	case KindConfig:
+		return "see docs/superpowers/specs/2026-07-26-pier-design.md#configuration or run 'cat pier.toml'"
+	case KindDocker:
+		return "run 'pier status' to see container state, then 'pier dev' to (re)start the stack"
+	case KindSSH:
+		return "verify ssh access: 'ssh deploy@<host>', check ~/.ssh/id_ed25519 perms (chmod 600)"
+	case KindNetwork:
+		return "check internet/VPN; 'docker pull <image>' manually to isolate registry vs DNS"
+	default:
+		return ""
+	}
+}

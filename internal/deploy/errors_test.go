@@ -98,3 +98,22 @@ func TestExistingConstructorsDefaultKind(t *testing.T) {
 		})
 	}
 }
+
+func TestKindHint(t *testing.T) {
+	cases := []struct {
+		k    Kind
+		want string
+	}{
+		{KindConfig, "see docs/superpowers/specs/2026-07-26-pier-design.md#configuration or run 'cat pier.toml'"},
+		{KindDocker, "run 'pier status' to see container state, then 'pier dev' to (re)start the stack"},
+		{KindSSH, "verify ssh access: 'ssh deploy@<host>', check ~/.ssh/id_ed25519 perms (chmod 600)"},
+		{KindNetwork, "check internet/VPN; 'docker pull <image>' manually to isolate registry vs DNS"},
+		{KindUser, ""},
+		{KindUnknown, ""},
+	}
+	for _, c := range cases {
+		if got := c.k.Hint(); got != c.want {
+			t.Errorf("Kind(%v).Hint() = %q, want %q", c.k, got, c.want)
+		}
+	}
+}
