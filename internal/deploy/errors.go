@@ -26,6 +26,7 @@ var (
 
 type ExitError struct {
 	Code int
+	Kind Kind
 	Err  error
 }
 
