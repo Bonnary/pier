@@ -173,6 +173,97 @@ func TestGenerateDevComposeCopiesRuntime(t *testing.T) {
 	}
 }
 
+func TestGenerateDevComposeLaravelTestHasPorts(t *testing.T) {
+	s := New()
+	files, err := s.GenerateDevCompose(config.Config{
+		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+	})
+	if err != nil {
+		t.Fatalf("GenerateDevCompose: %v", err)
+	}
+	got := findFile(files, "docker-compose.yml")
+	if got == nil {
+		t.Fatal("docker-compose.yml missing")
+	}
+	var doc struct {
+		Services map[string]struct {
+			Ports []string `yaml:"ports"`
+		} `yaml:"services"`
+	}
+	if err := yaml.Unmarshal(got.Contents, &doc); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	lt, ok := doc.Services["laravel.test"]
+	if !ok {
+		t.Fatal("laravel.test missing")
+	}
+	wantPorts := map[string]bool{
+		"127.0.0.1:8000:8000": false,
+		"127.0.0.1:5173:5173": false,
+	}
+	for _, p := range lt.Ports {
+		if _, ok := wantPorts[p]; ok {
+			wantPorts[p] = true
+		}
+	}
+	for p, found := range wantPorts {
+		if !found {
+			t.Errorf("laravel.test ports missing %q; got %v", p, lt.Ports)
+		}
+	}
+}
+
+func TestGenerateDevComposeSidecarPortsBindLoopback(t *testing.T) {
+	s := New()
+	files, err := s.GenerateDevCompose(config.Config{
+		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22", Services: []string{"redis", "mailpit"}},
+	})
+	if err != nil {
+		t.Fatalf("GenerateDevCompose: %v", err)
+	}
+	got := findFile(files, "docker-compose.yml")
+	if got == nil {
+		t.Fatal("docker-compose.yml missing")
+	}
+	var doc struct {
+		Services map[string]struct {
+			Ports []string `yaml:"ports"`
+		} `yaml:"services"`
+	}
+	if err := yaml.Unmarshal(got.Contents, &doc); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	redis := doc.Services["redis"]
+	wantRedis := map[string]bool{"127.0.0.1:6379:6379": false}
+	for _, p := range redis.Ports {
+		if _, ok := wantRedis[p]; ok {
+			wantRedis[p] = true
+		}
+	}
+	for p, found := range wantRedis {
+		if !found {
+			t.Errorf("redis ports missing %q; got %v", p, redis.Ports)
+		}
+	}
+	mailpit := doc.Services["mailpit"]
+	wantMailpit := map[string]bool{
+		"127.0.0.1:1025:1025": false,
+		"127.0.0.1:8025:8025": false,
+	}
+	for _, p := range mailpit.Ports {
+		if _, ok := wantMailpit[p]; ok {
+			wantMailpit[p] = true
+		}
+	}
+	for p, found := range wantMailpit {
+		if !found {
+			t.Errorf("mailpit ports missing %q; got %v", p, mailpit.Ports)
+		}
+	}
+}
+
 func TestRuntimeDirHasStartContainer(t *testing.T) {
 	for _, v := range SupportedPHPRuntimes() {
 		dir, err := Runtime(v)

@@ -6,6 +6,9 @@ services:
             args:
                 WWWGROUP: "1000"
         image: myapp/test:latest
+        ports:
+            - 127.0.0.1:8000:8000
+            - 127.0.0.1:5173:5173
         environment:
             APP_DEBUG: "true"
             APP_ENV: local
