@@ -49,11 +49,13 @@ func (e *ExitError) Is(target error) bool {
 	return false
 }
 
-func PreflightError(err error) error { return &ExitError{Code: ExitPreflight, Kind: KindConfig, Err: err} }
-func BuildError(err error) error     { return &ExitError{Code: ExitBuild, Kind: KindDocker, Err: err} }
-func UpError(err error) error        { return &ExitError{Code: ExitUp, Kind: KindDocker, Err: err} }
-func ExecDownError() error           { return &ExitError{Code: ExitExecDown, Kind: KindDocker, Err: ErrExecDown} }
-func AbortedError() error            { return &ExitError{Code: ExitAborted, Kind: KindUser, Err: ErrAborted} }
+func PreflightError(err error) error {
+	return &ExitError{Code: ExitPreflight, Kind: KindConfig, Err: err}
+}
+func BuildError(err error) error { return &ExitError{Code: ExitBuild, Kind: KindDocker, Err: err} }
+func UpError(err error) error    { return &ExitError{Code: ExitUp, Kind: KindDocker, Err: err} }
+func ExecDownError() error       { return &ExitError{Code: ExitExecDown, Kind: KindDocker, Err: ErrExecDown} }
+func AbortedError() error        { return &ExitError{Code: ExitAborted, Kind: KindUser, Err: ErrAborted} }
 
 type Kind int
 
