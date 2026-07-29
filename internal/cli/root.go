@@ -68,6 +68,13 @@ func ExitCode(err error) int {
 	return ExitGeneral
 }
 
+// Verbose returns the current value of the --verbose flag, which is set
+// during root command execution.  Used by main.go to decide whether
+// PrintError should show the full error chain.
+func Verbose() bool {
+	return verbose
+}
+
 func errors_As(err error, target **ExitError) bool {
 	for err != nil {
 		if ee, ok := err.(*ExitError); ok {

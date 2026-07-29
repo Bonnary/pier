@@ -13,7 +13,9 @@ const Version = cli.Version
 func main() {
 	root := cli.NewRootCmd(os.Stdout, os.Stderr)
 	if err := root.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, "error:", err)
+		color := cli.IsTerminal(os.Stderr) && os.Getenv("NO_COLOR") == ""
+		cli.PrintError(os.Stderr, err, cli.Verbose(), color)
+		fmt.Fprintln(os.Stderr)
 		os.Exit(cli.ExitCode(err))
 	}
 }
