@@ -4,9 +4,9 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/pcnerd/pier/internal/config"
-	"github.com/pcnerd/pier/internal/stack"
-	_ "github.com/pcnerd/pier/internal/stack/laravel"
+	"github.com/Bonnary/pier/internal/config"
+	"github.com/Bonnary/pier/internal/stack"
+	_ "github.com/Bonnary/pier/internal/stack/laravel"
 )
 
 func TestRegistryHasLaravel(t *testing.T) {

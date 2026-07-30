@@ -7,6 +7,9 @@ import (
 	"time"
 )
 
+// HealthConfig drives Probe: the URL to GET, the overall Timeout, the
+// Interval between attempts, and the MaxAttempts safety cap. The
+// defaults come from DefaultHealthConfig.
 type HealthConfig struct {
 	URL         string
 	Timeout     time.Duration
@@ -14,6 +17,10 @@ type HealthConfig struct {
 	MaxAttempts int
 }
 
+// DefaultHealthConfig returns a sensible default HealthConfig for
+// <domain>: HTTPS GET to https://<domain>/up, 60 s total timeout,
+// 2 s base interval, 30 attempts (interval doubles each attempt up
+// to a 10 s cap).
 func DefaultHealthConfig(domain string) HealthConfig {
 	return HealthConfig{
 		URL:         fmt.Sprintf("https://%s/up", domain),
@@ -23,6 +30,10 @@ func DefaultHealthConfig(domain string) HealthConfig {
 	}
 }
 
+// Probe repeatedly GETs cfg.URL until it returns a 2xx, the Timeout
+// elapses, or MaxAttempts is reached. The interval doubles each
+// attempt, capped at 10 s. Used as stage 6 of the deploy pipeline; a
+// failed probe triggers Rollback.
 func Probe(ctx context.Context, cfg HealthConfig) error {
 	client := &http.Client{Timeout: 5 * time.Second}
 	deadline := time.Now().Add(cfg.Timeout)

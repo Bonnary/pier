@@ -3,7 +3,7 @@ package laravel
 import (
 	"testing"
 
-	"github.com/pcnerd/pier/internal/config"
+	"github.com/Bonnary/pier/internal/config"
 )
 
 func TestDefaultConfig(t *testing.T) {

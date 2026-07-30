@@ -7,8 +7,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/pcnerd/pier/internal/config"
-	"github.com/pcnerd/pier/internal/docker"
+	"github.com/Bonnary/pier/internal/config"
+	"github.com/Bonnary/pier/internal/docker"
 )
 
 func newStopCmd(stdout, stderr io.Writer) *cobra.Command {

@@ -11,7 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/pcnerd/pier/internal/docker"
+	"github.com/Bonnary/pier/internal/config"
+	"github.com/Bonnary/pier/internal/docker"
 )
 
 func writeFile(path string, contents []byte) error {
@@ -94,5 +95,76 @@ func TestDevCommandPortInUse(t *testing.T) {
 	}
 	if !strings.Contains(buf.String(), fmt.Sprintf("port %d", conflictPort)) {
 		t.Errorf("stdout/stderr = %q, want it to mention 'port %d'", buf.String(), conflictPort)
+	}
+}
+
+func TestPrintReadyBlockUsesConfiguredBind(t *testing.T) {
+	cases := []struct {
+		bind         string
+		mustContain  []string
+		mustNotMatch []string
+	}{
+		{
+			bind:         "127.0.0.1",
+			mustContain:  []string{"http://127.0.0.1:8000"},
+			mustNotMatch: []string{"http://0.0.0.0:8000"},
+		},
+		{
+			bind:         "0.0.0.0",
+			mustContain:  []string{"http://0.0.0.0:8000"},
+			mustNotMatch: []string{"http://127.0.0.1:8000"},
+		},
+	}
+	for _, c := range cases {
+		cfg := &config.Config{
+			Project: config.ProjectConfig{Name: "x", Domain: "x.example.com"},
+			Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+			Dev:     config.DevConfig{Bind: c.bind},
+		}
+		var buf bytes.Buffer
+		printReadyBlock(&buf, cfg, []int{8000, 5173})
+		got := buf.String()
+		for _, want := range c.mustContain {
+			if !strings.Contains(got, want) {
+				t.Errorf("bind=%q: ready block = %q, want it to contain %q", c.bind, got, want)
+			}
+		}
+		for _, dont := range c.mustNotMatch {
+			if strings.Contains(got, dont) {
+				t.Errorf("bind=%q: ready block = %q, want it to NOT contain %q", c.bind, got, dont)
+			}
+		}
+	}
+}
+
+func TestMaybeWarnLanExposure(t *testing.T) {
+	cases := []struct {
+		bind       string
+		wantOutput bool
+	}{
+		{"127.0.0.1", false},
+		{"0.0.0.0", true},
+	}
+	for _, c := range cases {
+		cfg := &config.Config{
+			Project: config.ProjectConfig{Name: "x", Domain: "x.example.com"},
+			Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+			Dev:     config.DevConfig{Bind: c.bind},
+		}
+		var buf bytes.Buffer
+		maybeWarnLanExposure(&buf, cfg)
+		got := buf.String()
+		if c.wantOutput {
+			if !strings.Contains(got, "LAN") {
+				t.Errorf("bind=%q: warning = %q, want it to mention 'LAN'", c.bind, got)
+			}
+			if !strings.Contains(got, c.bind) {
+				t.Errorf("bind=%q: warning = %q, want it to mention the bind value", c.bind, got)
+			}
+		} else {
+			if got != "" {
+				t.Errorf("bind=%q: warning = %q, want empty (loopback is the safe default, no warning)", c.bind, got)
+			}
+		}
 	}
 }

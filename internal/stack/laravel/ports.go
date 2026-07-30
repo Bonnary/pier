@@ -7,7 +7,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/pcnerd/pier/internal/config"
+	"github.com/Bonnary/pier/internal/config"
 )
 
 // DevPortDefaults maps every dev port key to its default host port.
@@ -43,15 +43,16 @@ var ProdPortDefaults = map[string]int{
 	"s3_master":      9333,
 }
 
-// BindAddr returns the bind-address prefix for compose `ports:` strings in
-// a given env. Dev binds to 127.0.0.1 (loopback only) to avoid LAN exposure.
-// Prod/staging bind to 0.0.0.0 (no prefix); the host firewall is responsible
-// for restricting access.
-func BindAddr(env string) string {
-	if env == "dev" {
-		return "127.0.0.1"
+// BindAddr returns the bind-address prefix for compose `ports:` strings.
+// bind comes from the user's pier.toml ([dev] bind) or "" for deploy
+// compose (no prefix, the host firewall restricts access). An empty bind
+// falls back to the config default — callers should pass the validated
+// value from cfg.Dev.Bind rather than relying on this fallback.
+func BindAddr(bind string) string {
+	if bind == "" {
+		return config.DefaultDevBind
 	}
-	return ""
+	return bind
 }
 
 // PortBinding formats a compose `ports:` entry. bind comes from BindAddr;

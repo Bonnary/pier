@@ -1,6 +1,6 @@
 package cli
 
-import "github.com/pcnerd/pier/internal/deploy"
+import "github.com/Bonnary/pier/internal/deploy"
 
 const (
 	ExitOK        = deploy.ExitOK

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/pcnerd/pier/internal/docker"
+	"github.com/Bonnary/pier/internal/docker"
 )
 
 func TestStatusNoConfig(t *testing.T) {

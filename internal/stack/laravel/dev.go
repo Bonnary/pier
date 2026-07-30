@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/pcnerd/pier/internal/config"
-	"github.com/pcnerd/pier/internal/stack"
+	"github.com/Bonnary/pier/internal/config"
+	"github.com/Bonnary/pier/internal/stack"
 )
 
 type composeFile struct {
@@ -97,6 +97,20 @@ func (s *Stack) GenerateDevCompose(cfg config.Config) (stack.Files, error) {
 	return files, nil
 }
 
+func hostUID() string {
+	if v := os.Getenv("PIER_WWWUSER"); v != "" {
+		return v
+	}
+	return strconv.Itoa(os.Getuid())
+}
+
+func hostGID() string {
+	if v := os.Getenv("PIER_WWWGROUP"); v != "" {
+		return v
+	}
+	return strconv.Itoa(os.Getgid())
+}
+
 func renderDevCompose(cfg config.Config) ([]byte, error) {
 	svcSet := map[string]bool{}
 	for _, n := range cfg.Stack.Services {
@@ -109,10 +123,13 @@ func renderDevCompose(cfg config.Config) ([]byte, error) {
 				Build: &composeBuild{
 					Context:    fmt.Sprintf("./docker/%s", cfg.Stack.PHP),
 					Dockerfile: "Dockerfile",
-					Args:       map[string]string{"WWWGROUP": "1000"},
+					Args: map[string]string{
+						"WWWGROUP": hostGID(),
+						"WWWUSER":  hostUID(),
+					},
 				},
 				Image:       cfg.Project.Name + "/test:latest",
-				Ports:       laravelTestPorts(cfg.Dev.Ports),
+				Ports:       laravelTestPorts(cfg.Dev.Bind, cfg.Dev.Ports),
 				ExtraHosts:  []string{"host.docker.internal:host-gateway"},
 				Volumes:     []string{"./:/var/www/html"},
 				Environment: devEnvForServices(svcSet),
@@ -138,7 +155,7 @@ func renderDevCompose(cfg config.Config) ([]byte, error) {
 			return nil, fmt.Errorf("laravel: unknown service %q", name)
 		}
 		cs := composeService{
-			Image: s.Image, Ports: sidecarPorts("dev", name, s.PortKeys, s.Ports, cfg.Dev.Ports), Environment: s.Env, Volumes: s.Volumes, Networks: []string{"pier"},
+			Image: s.Image, Ports: sidecarPorts(cfg.Dev.Bind, name, s.PortKeys, s.Ports, cfg.Dev.Ports, DevPortDefaults), Environment: s.Env, Volumes: s.Volumes, Networks: []string{"pier"},
 		}
 		if s.Healthcheck != nil {
 			cs.Healthcheck = &composeHealthcheck{
@@ -233,9 +250,9 @@ func devEnvForServices(svcSet map[string]bool) map[string]string {
 // laravelTestPorts assembles the `ports:` slice for the laravel.test
 // service. Two keys, in fixed order: "laravel" (the php artisan dev HTTP
 // port) and "vite" (the Vite dev server). Either key may be set to 0 in
-// cfg.Dev.Ports to opt out of exposing that port.
-func laravelTestPorts(override map[string]int) []string {
-	bind := BindAddr("dev")
+// cfg.Dev.Ports to opt out of exposing that port. bind is the host-side
+// bind address from cfg.Dev.Bind.
+func laravelTestPorts(bind string, override map[string]int) []string {
 	var out []string
 	for _, key := range []string{"laravel", "vite"} {
 		host, ok := ResolvePort(key, override, DevPortDefaults)
@@ -248,12 +265,15 @@ func laravelTestPorts(override map[string]int) []string {
 }
 
 // containerPortFor returns the fixed container-side port for a laravel.test
-// port key. The container ports never change — only the host side is
-// overridable.
+// port key. The laravel port is 80 to match the supervisord default
+// (Dockerfile `SUPERVISOR_PHP_COMMAND="... artisan serve --host=0.0.0.0 --port=80"`),
+// so the host-side `laravel` port (default 8000) forwards into the always-on
+// supervisord `artisan serve`. Matching Sail's `EXPOSE 80/tcp` design. The
+// container ports never change — only the host side is overridable.
 func containerPortFor(key string) int {
 	switch key {
 	case "laravel":
-		return 8000
+		return 80
 	case "vite":
 		return 5173
 	}
@@ -263,18 +283,10 @@ func containerPortFor(key string) int {
 // sidecarPorts assembles the `ports:` slice for a registered sidecar
 // service. The container ports (s.Ports) and the keys (s.PortKeys) are
 // parallel slices. Each key is resolved via ResolvePort against the
-// user's override and the env's defaults; resolved entries become
-// `<bind><host>:<container>` strings. Keys that resolve to "don't expose"
-// are omitted.
-func sidecarPorts(env, name string, keys, containerPorts []string, override map[string]int) []string {
-	var defaults map[string]int
-	switch env {
-	case "dev":
-		defaults = DevPortDefaults
-	default:
-		defaults = ProdPortDefaults
-	}
-	bind := BindAddr(env)
+// user's override and the supplied defaults map; resolved entries become
+// `<bind>:<host>:<container>` strings (or `<host>:<container>` when bind
+// is ""). Keys that resolve to "don't expose" are omitted.
+func sidecarPorts(bind, name string, keys, containerPorts []string, override, defaults map[string]int) []string {
 	var out []string
 	for i, key := range keys {
 		if i >= len(containerPorts) {

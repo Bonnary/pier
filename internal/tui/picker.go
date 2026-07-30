@@ -6,12 +6,17 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+// Result is what a Picker Run returns: the chosen indices and
+// values, plus an Aborted flag for "the user hit q / Ctrl+C".
 type Result struct {
 	Indices []int
 	Values  []string
 	Aborted bool
 }
 
+// Picker is a single- or multi-select list backed by Bubble Tea.
+// Construct with NewSinglePicker or NewMultiPicker; the public
+// fields are unexported and are not part of the API.
 type Picker struct {
 	title   string
 	items   []string
@@ -22,6 +27,9 @@ type Picker struct {
 	aborted bool
 }
 
+// NewSinglePicker returns a single-select Picker with the given
+// title, items, and default cursor position. defaultIdx is
+// clamped to [0, len(items)-1].
 func NewSinglePicker(title string, items []string, defaultIdx int) *Picker {
 	if defaultIdx < 0 {
 		defaultIdx = 0
@@ -32,6 +40,9 @@ func NewSinglePicker(title string, items []string, defaultIdx int) *Picker {
 	return &Picker{title: title, items: items, cursor: defaultIdx}
 }
 
+// NewMultiPicker returns a multi-select Picker. presets maps item
+// indices that should be checked at start (typically nil for
+// add-pickers, the current install set for remove-pickers).
 func NewMultiPicker(title string, items []string, presets map[int]bool) *Picker {
 	picked := make(map[int]bool, len(presets))
 	for k, v := range presets {
@@ -121,6 +132,9 @@ func (p *Picker) View() string {
 	return b.String()
 }
 
+// Run drives the Picker via Bubble Tea and returns the result or
+// a Bubble Tea error. Aborts (q / Ctrl+C) surface as Result.Aborted
+// with a nil error.
 func (p *Picker) Run() (Result, error) {
 	final, err := tea.NewProgram(p).Run()
 	if err != nil {

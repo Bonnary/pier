@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/pcnerd/pier/internal/deploy"
+	"github.com/Bonnary/pier/internal/deploy"
 )
 
 func TestDeployMissingEnv(t *testing.T) {

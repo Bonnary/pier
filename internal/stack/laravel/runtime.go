@@ -6,6 +6,10 @@ import (
 	"runtime"
 )
 
+// Runtime returns the absolute path to the runtimes/<php>
+// directory bundled with this module, which contains the
+// Dockerfile, php.ini, supervisord.conf, and start-container that
+// `pier init` copies into docker/<php>/ in the project tree.
 func Runtime(php string) (string, error) {
 	switch php {
 	case "8.2", "8.3", "8.4", "8.5":

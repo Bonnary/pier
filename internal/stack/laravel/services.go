@@ -4,7 +4,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/pcnerd/pier/internal/config"
+	"github.com/Bonnary/pier/internal/config"
 )
 
 const (
@@ -25,6 +25,14 @@ func appImageFor(cfg config.Config, image string) string {
 	return cfg.Project.Name + image
 }
 
+// Service is one registered sidecar in the laravel stack (mysql,
+// redis, mailpit, etc.). The render code (renderDevCompose /
+// renderProdCompose) reads Image, Ports, Env, Volumes, and
+// Healthcheck verbatim into the compose service. PortKeys is a
+// parallel slice to Ports and is the set of keys looked up in
+// DevPortDefaults / ProdPortDefaults for the host-side port.
+// DevOnly is "true" for services that must not appear in
+// docker-compose.prod.yml (e.g. mailpit).
 type Service struct {
 	Name        string
 	Image       string
@@ -37,6 +45,9 @@ type Service struct {
 	DependsOn   []string
 }
 
+// Healthcheck is the type-safe shape of a compose `healthcheck:`
+// block. The fields map 1:1 to compose's hyphenated YAML keys and
+// are written verbatim.
 type Healthcheck struct {
 	Test        []string
 	Interval    string

@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/pcnerd/pier/internal/config"
-	"github.com/pcnerd/pier/internal/stack"
+	"github.com/Bonnary/pier/internal/config"
+	"github.com/Bonnary/pier/internal/stack"
 )
 
 func (s *Stack) GenerateProdFiles(cfg config.Config, env string) (stack.Files, error) {
@@ -66,7 +66,7 @@ func renderProdCompose(cfg config.Config, env string, services []string) ([]byte
 			"webserver": {
 				Image:     "nginx:alpine",
 				Restart:   "unless-stopped",
-				Ports:     webserverPorts(env, deployCfg.Ports),
+				Ports:     webserverPorts("", deployCfg.Ports),
 				Volumes:   []string{"./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro"},
 				Networks:  []string{"pier"},
 				DependsOn: []string{"app"},
@@ -90,7 +90,7 @@ func renderProdCompose(cfg config.Config, env string, services []string) ([]byte
 			return nil, fmt.Errorf("laravel: unknown service %q", name)
 		}
 		cs := composeService{
-			Image: s.Image, Ports: sidecarPorts("production", name, s.PortKeys, s.Ports, deployCfg.Ports),
+			Image: s.Image, Ports: sidecarPorts("", name, s.PortKeys, s.Ports, deployCfg.Ports, ProdPortDefaults),
 			Environment: s.Env, Volumes: s.Volumes,
 			Restart:  "unless-stopped",
 			Networks: []string{"pier"},
@@ -113,8 +113,9 @@ func renderProdCompose(cfg config.Config, env string, services []string) ([]byte
 // webserverPorts assembles the `ports:` slice for the webserver service.
 // The two keys are "laravel" (HTTPS, the primary visible port) and
 // "webserver_http" (HTTP→HTTPS redirect). Either may be 0 to opt out.
-func webserverPorts(env string, override map[string]int) []string {
-	bind := BindAddr(env)
+// bind is the host-side bind prefix ("" = no prefix, host firewall
+// restricts access; the deploy path always passes "").
+func webserverPorts(bind string, override map[string]int) []string {
 	var out []string
 	for _, entry := range []struct {
 		key       string

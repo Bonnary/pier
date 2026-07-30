@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/pcnerd/pier/internal/docker"
+	"github.com/Bonnary/pier/internal/docker"
 )
 
 type capturingRunner struct {

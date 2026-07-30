@@ -10,7 +10,7 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 
-	"github.com/pcnerd/pier/internal/config"
+	"github.com/Bonnary/pier/internal/config"
 )
 
 func TestPipelineEndToEnd(t *testing.T) {

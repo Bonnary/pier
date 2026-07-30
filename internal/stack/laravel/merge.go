@@ -5,17 +5,28 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/pcnerd/pier/internal/compose"
-	"github.com/pcnerd/pier/internal/config"
+	"github.com/Bonnary/pier/internal/compose"
+	"github.com/Bonnary/pier/internal/config"
 )
 
+// Decision is the user's response to a MergeWarning. The decision
+// callback the caller passes to MergeDev returns one of these.
 type Decision int
 
 const (
+	// DecisionKeep means "preserve the user-owned content from the
+	// existing docker-compose.yml in the merged output."
 	DecisionKeep Decision = iota
+	// DecisionDrop means "discard the user-owned content; let
+	// pier's fresh render win."
 	DecisionDrop
 )
 
+// MergeWarning describes one piece of user-owned content found
+// during a smart-merge. The laravel stack emits a warning for
+// every top-level key in docker-compose.yml that pier does not
+// own (services, networks, volumes are owned; everything else is
+// not).
 type MergeWarning struct {
 	Service    string
 	Key        string
@@ -39,6 +50,15 @@ var knownTopLevelKeys = map[string]bool{
 	"volumes":  true,
 }
 
+// MergeDev renders the fresh dev compose from cfg and merges it
+// into existing. When existing is empty, the fresh render is
+// returned with no warnings. Otherwise MergeDev walks the existing
+// top-level keys: pier-owned keys (services, networks, volumes) are
+// merged key-by-key (fresh wins on collisions); every other
+// top-level key triggers a MergeWarning that the caller resolves
+// via the decision callback. The returned warnings slice includes
+// the warnings the caller has not yet seen (regardless of
+// decision).
 func MergeDev(existing string, cfg config.Config, decision func(MergeWarning) Decision) (string, []MergeWarning, error) {
 	files, err := New().GenerateDevCompose(cfg)
 	if err != nil {

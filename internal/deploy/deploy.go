@@ -1,3 +1,8 @@
+// Package deploy runs the production deploy pipeline over SSH:
+// preflight, render, sync, build, up, health probe, and commit (the
+// .pier/state.json write that records the active image tag for
+// `pier rollback`). The package owns the typed error contract
+// (ExitError, Kind) and the SSH client used for every remote command.
 package deploy
 
 import (
@@ -5,10 +10,12 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/pcnerd/pier/internal/config"
-	laravelpkg "github.com/pcnerd/pier/internal/stack/laravel"
+	"github.com/Bonnary/pier/internal/config"
+	laravelpkg "github.com/Bonnary/pier/internal/stack/laravel"
 )
 
+// Pipeline is the top-level deploy driver. One Pipeline is constructed
+// per `pier deploy <env>` invocation and Run is called exactly once.
 type Pipeline struct {
 	Config    *config.Config
 	Env       string
@@ -19,6 +26,11 @@ type Pipeline struct {
 	Now       func() time.Time
 }
 
+// Run executes the full deploy pipeline: preflight, render, sync,
+// build, up, health probe, commit. On any up- or health-stage failure
+// the previous image is retagged and re-deployed (Rollback) before the
+// error is returned. Now is set to time.Now if nil so tests can pin
+// the timestamp written to state.json.
 func (p *Pipeline) Run(ctx context.Context) error {
 	if p.Now == nil {
 		p.Now = time.Now

@@ -1,7 +1,17 @@
+// Package compose holds pier's YAML-based docker-compose merge
+// primitives. It is intentionally tiny: decode, deep-merge two
+// node trees (overlay wins on conflicts), encode, write. The actual
+// pier-aware merge that respects "owned services" lives in
+// internal/stack/laravel.
 package compose
 
 import "gopkg.in/yaml.v3"
 
+// MergeNodes returns the result of deep-merging base and overlay.
+// Mappings are merged key-by-key (overlay wins on key collisions),
+// sequences are replaced (base is dropped), scalars and unknowns
+// are replaced with the overlay value. Either argument may be nil;
+// the non-nil one is returned as-is.
 func MergeNodes(base, overlay *yaml.Node) *yaml.Node {
 	if base == nil {
 		return overlay

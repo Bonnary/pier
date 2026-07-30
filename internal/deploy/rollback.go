@@ -5,6 +5,11 @@ import (
 	"fmt"
 )
 
+// Rollback retags the previous deploy's image to :current and re-runs
+// Up. The "previous" image comes from .pier/state.json (written by
+// Pipeline.commit at the end of every successful deploy). Returns an
+// error if state.json is missing or if the previous image tag is
+// empty (i.e. there is no prior deploy to roll back to).
 func Rollback(ctx context.Context, r runner, dir, project string) error {
 	state, err := LoadState(dir)
 	if err != nil {

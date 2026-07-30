@@ -13,6 +13,9 @@ const (
 	stateDone
 )
 
+// InitResult is what RunInit returns: the user's PHP and Node
+// choices, the list of services they ticked in the multi-select,
+// and an Aborted flag for q / Ctrl+C.
 type InitResult struct {
 	PHP      string
 	Node     string
@@ -100,6 +103,9 @@ func (m initModel) View() string {
 	return ""
 }
 
+// RunInit drives the three-picker init flow (PHP → Node →
+// services). It is a thin wrapper around the internal model; the
+// CLI uses it after the ShouldRun check passes.
 func RunInit(phpVersions, nodeVersions, services []string) (InitResult, error) {
 	m := newInitModel(phpVersions, nodeVersions, services)
 	final, err := tea.NewProgram(m).Run()

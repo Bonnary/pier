@@ -27,6 +27,10 @@ func newRemovePicker(installed []string) *Picker {
 	return NewMultiPicker("Services to remove (space to toggle)", items, nil)
 }
 
+// PickServicesToAdd opens a multi-select Picker of every service
+// in available minus every service in installed. Returns ErrAborted
+// (wrapped in the error) if the user hits q / Ctrl+C. Returns
+// (nil, nil) when the available list is empty (nothing to add).
 func PickServicesToAdd(available, installed []string) ([]string, error) {
 	p := newAddPicker(available, installed)
 	if len(p.items) == 0 {
@@ -42,6 +46,9 @@ func PickServicesToAdd(available, installed []string) ([]string, error) {
 	return res.Values, nil
 }
 
+// PickServicesToRemove opens a multi-select Picker of the
+// currently installed services (sorted for stable display). Same
+// abort / empty-list contract as PickServicesToAdd.
 func PickServicesToRemove(installed []string) ([]string, error) {
 	p := newRemovePicker(installed)
 	if len(p.items) == 0 {
@@ -57,6 +64,9 @@ func PickServicesToRemove(installed []string) ([]string, error) {
 	return res.Values, nil
 }
 
+// ErrAborted is returned by PickServicesToAdd and
+// PickServicesToRemove when the user aborts the TUI. Use
+// errors.Is to detect it; the CLI maps it to AbortedError().
 var ErrAborted = errAborted{}
 
 type errAborted struct{}

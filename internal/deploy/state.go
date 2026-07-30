@@ -7,8 +7,13 @@ import (
 	"path/filepath"
 )
 
+// stateFile is the per-project deploy record, relative to the remote
+// project root. Carries the active and previous image tags so
+// Rollback knows what to retag.
 const stateFile = ".pier/state.json"
 
+// State is the parsed .pier/state.json from a remote project. The
+// JSON tags are the wire format; do not rename without a migration.
 type State struct {
 	Current    string `json:"current"`
 	Previous   string `json:"previous"`
@@ -16,8 +21,15 @@ type State struct {
 	DeployedBy string `json:"deployed_by"`
 }
 
+// HasPrevious reports whether State carries a non-empty Previous
+// image tag. Rollback short-circuits to "no previous deploy" when
+// this is false.
 func (s *State) HasPrevious() bool { return s.Previous != "" }
 
+// LoadState reads .pier/state.json from dir and decodes it. Returns
+// (nil, nil) when the file does not exist (a fresh project, no
+// deploys yet) so the caller can treat "no state" as a normal
+// condition.
 func LoadState(dir string) (*State, error) {
 	path := filepath.Join(dir, stateFile)
 	b, err := os.ReadFile(path)
@@ -34,6 +46,10 @@ func LoadState(dir string) (*State, error) {
 	return &s, nil
 }
 
+// SaveState atomically writes s to .pier/state.json in dir. The
+// .pier/ directory is created with 0755 if missing; the file is
+// written to a sibling .tmp first and renamed into place so a crash
+// mid-write can't corrupt the deploy record.
 func SaveState(dir string, s *State) error {
 	dirPath := filepath.Join(dir, ".pier")
 	if err := os.MkdirAll(dirPath, 0755); err != nil {

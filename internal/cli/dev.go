@@ -11,10 +11,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/pcnerd/pier/internal/config"
-	"github.com/pcnerd/pier/internal/docker"
-	"github.com/pcnerd/pier/internal/portcheck"
-	laravelpkg "github.com/pcnerd/pier/internal/stack/laravel"
+	"github.com/Bonnary/pier/internal/config"
+	"github.com/Bonnary/pier/internal/docker"
+	"github.com/Bonnary/pier/internal/portcheck"
+	laravelpkg "github.com/Bonnary/pier/internal/stack/laravel"
 )
 
 func newDevCmd(stdout, stderr io.Writer) *cobra.Command {
@@ -35,6 +35,7 @@ func runDev(cmd *cobra.Command, services []string, noBuild bool) error {
 	if err != nil {
 		return err
 	}
+	maybeWarnLanExposure(cmd.ErrOrStderr(), cfg)
 	dir := filepath.Dir(cfgPath)
 	composePath := filepath.Join(dir, "docker-compose.yml")
 	var existing string
@@ -109,23 +110,38 @@ func hostPortsTaken(taken map[int]string) []int {
 }
 
 func printReadyBlock(w io.Writer, cfg *config.Config, hostPorts []int) {
+	bind := cfg.Dev.Bind
 	fmt.Fprintln(w, "pier dev: ready")
 	if v, ok := laravelpkg.ResolvePort("laravel", cfg.Dev.Ports, laravelpkg.DevPortDefaults); ok {
-		fmt.Fprintf(w, "  App:    http://127.0.0.1:%d\n", v)
+		fmt.Fprintf(w, "  App:    http://%s:%d\n", bind, v)
 	}
 	if v, ok := laravelpkg.ResolvePort("vite", cfg.Dev.Ports, laravelpkg.DevPortDefaults); ok {
-		fmt.Fprintf(w, "  Vite:   http://127.0.0.1:%d\n", v)
+		fmt.Fprintf(w, "  Vite:   http://%s:%d\n", bind, v)
 	}
 	for _, key := range []string{"mysql", "postgres", "redis", "meilisearch"} {
 		if v, ok := laravelpkg.ResolvePort(key, cfg.Dev.Ports, laravelpkg.DevPortDefaults); ok {
-			fmt.Fprintf(w, "  %s:  127.0.0.1:%d\n", capitalize(key), v)
+			fmt.Fprintf(w, "  %s:  %s:%d\n", capitalize(key), bind, v)
 		}
 	}
 	for _, key := range []string{"mailpit_smtp", "mailpit_ui", "s3_api", "s3_filer", "s3_master"} {
 		if v, ok := laravelpkg.ResolvePort(key, cfg.Dev.Ports, laravelpkg.DevPortDefaults); ok {
-			fmt.Fprintf(w, "  %s: 127.0.0.1:%d\n", strings.ToUpper(key), v)
+			fmt.Fprintf(w, "  %s: %s:%d\n", strings.ToUpper(key), bind, v)
 		}
 	}
+}
+
+// maybeWarnLanExposure prints a one-time warning to w when the user has
+// opted in to LAN exposure via [dev] bind = "0.0.0.0". Loopback is the
+// safe default; this only fires for the explicit opt-in. The warning
+// points the user at the loopback default to restore safety.
+func maybeWarnLanExposure(w io.Writer, cfg *config.Config) {
+	if cfg.Dev.Bind == config.DefaultDevBind {
+		return
+	}
+	fmt.Fprintf(w,
+		"warning: [dev] bind = %q — dev ports are reachable from your LAN\n"+
+			"         set [dev] bind = %q in pier.toml to restore loopback-only\n",
+		cfg.Dev.Bind, config.DefaultDevBind)
 }
 
 func capitalize(s string) string {

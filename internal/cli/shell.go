@@ -9,8 +9,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/pcnerd/pier/internal/config"
-	"github.com/pcnerd/pier/internal/docker"
+	"github.com/Bonnary/pier/internal/config"
+	"github.com/Bonnary/pier/internal/docker"
 )
 
 func newShellCmd(stdout, stderr io.Writer) *cobra.Command {
@@ -30,11 +30,10 @@ func runShell(cmd *cobra.Command) error {
 	dir := filepath.Dir(cfgPath)
 	c := &docker.Compose{Workdir: dir, File: filepath.Join(dir, "docker-compose.yml"), Runner: dockerRunner}
 	tty := docker.DetectTTY()
-	user := shellUser()
 	if err := ensureUp(cmd, c); err != nil {
 		return err
 	}
-	return c.Exec(context.Background(), docker.ExecOpts{Service: "laravel.test", User: user, TTY: tty}, "bash")
+	return c.Exec(context.Background(), docker.ExecOpts{Service: "laravel.test", User: "0", TTY: tty}, "bash")
 }
 
 func shellUser() string {

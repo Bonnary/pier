@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pcnerd/pier/internal/config"
+	"github.com/Bonnary/pier/internal/config"
 )
 
 type discardLogger struct{}

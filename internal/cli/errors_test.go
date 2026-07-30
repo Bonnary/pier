@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/pcnerd/pier/internal/deploy"
+	"github.com/Bonnary/pier/internal/deploy"
 )
 
 func TestExitCodes(t *testing.T) {

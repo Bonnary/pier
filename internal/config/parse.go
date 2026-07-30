@@ -33,6 +33,10 @@ var deployPortKeys = map[string]bool{
 	"s3_master":      true,
 }
 
+// Load reads path as a pier.toml file, decodes it into a Config, runs
+// Validate, and returns the result. Errors from the file system are
+// returned directly; decode and validation failures wrap
+// ErrConfigInvalid so callers can use errors.Is.
 func Load(path string) (*Config, error) {
 	var c Config
 	if _, err := os.Stat(path); err != nil {
@@ -47,6 +51,11 @@ func Load(path string) (*Config, error) {
 	return &c, nil
 }
 
+// Validate checks every required field, every enum-style value
+// (stack type, PHP version, Node version, dev bind), and every
+// per-port override. It applies DefaultDevBind when [dev] bind is
+// absent. It returns nil on success, otherwise wraps ErrConfigInvalid
+// with the specific field that failed.
 func (c *Config) Validate() error {
 	if c.Project.Name == "" {
 		return fmt.Errorf("%w: project.name is required", ErrConfigInvalid)
@@ -62,6 +71,12 @@ func (c *Config) Validate() error {
 	}
 	if !validNode[c.Stack.Node] {
 		return fmt.Errorf("%w: stack.node %q not in [20 22]", ErrConfigInvalid, c.Stack.Node)
+	}
+	if c.Dev.Bind == "" {
+		c.Dev.Bind = DefaultDevBind
+	}
+	if !validDevBind[c.Dev.Bind] {
+		return fmt.Errorf("%w: [dev] bind = %q must be %q or %q", ErrConfigInvalid, c.Dev.Bind, "127.0.0.1", "0.0.0.0")
 	}
 	for env, dc := range c.Deploy {
 		if dc.Host == "" || dc.User == "" || dc.Path == "" || dc.Branch == "" {

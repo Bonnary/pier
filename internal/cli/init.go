@@ -9,10 +9,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/pcnerd/pier/internal/config"
-	"github.com/pcnerd/pier/internal/stack"
-	laravelpkg "github.com/pcnerd/pier/internal/stack/laravel"
-	"github.com/pcnerd/pier/internal/tui"
+	"github.com/Bonnary/pier/internal/config"
+	"github.com/Bonnary/pier/internal/stack"
+	laravelpkg "github.com/Bonnary/pier/internal/stack/laravel"
+	"github.com/Bonnary/pier/internal/tui"
 )
 
 type Decision = laravelpkg.Decision
@@ -144,6 +144,14 @@ func runInit(cmd *cobra.Command, path string, f *initFlags) error {
 		if err := os.WriteFile(dest, file.Contents, file.Mode); err != nil {
 			return fmt.Errorf("write %s: %w", dest, err)
 		}
+	}
+	changed, err := laravelpkg.EnsureViteHost(abs)
+	if err != nil {
+		return fmt.Errorf("patch vite.config: %w", err)
+	}
+	if changed {
+		fmt.Fprintf(cmd.OutOrStdout(),
+			"patched vite.config.ts: set server.host=true (required so Vite is reachable from the host through the Docker port forward)\n")
 	}
 	if f.devcontainer {
 		if err := writeDevcontainer(abs); err != nil {

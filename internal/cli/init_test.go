@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	tui "github.com/pcnerd/pier/internal/tui"
+	tui "github.com/Bonnary/pier/internal/tui"
 )
 
 func TestInitWritesPierToml(t *testing.T) {
@@ -65,6 +65,39 @@ func TestInitFailsOnNonLaravel(t *testing.T) {
 	}
 }
 
+func TestInitEmitsDevBindHint(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "artisan"), []byte("#!/usr/bin/env php\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "composer.json"), []byte(`{"require":{"laravel/framework":"^11.0"}}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	root := NewRootCmd(&buf, &buf)
+	root.SetArgs([]string{"--config", filepath.Join(dir, "pier.toml"), "init", dir, "--php", "8.3", "--node", "22"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute: %v\n%s", err, buf.String())
+	}
+	got, err := os.ReadFile(filepath.Join(dir, "pier.toml"))
+	if err != nil {
+		t.Fatalf("read pier.toml: %v", err)
+	}
+	contents := string(got)
+	wantSubstrings := []string{
+		"[dev]",
+		"# bind",
+		"0.0.0.0",
+		"127.0.0.1",
+	}
+	for _, want := range wantSubstrings {
+		if !strings.Contains(contents, want) {
+			t.Errorf("init pier.toml missing %q; got:\n%s", want, contents)
+		}
+	}
+}
+
 func TestInitTUIInvokedWhenTTYAndNoFlags(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "artisan"), []byte("#!/usr/bin/env php\n"), 0644); err != nil {
@@ -110,5 +143,96 @@ func TestInitTUIInvokedWhenTTYAndNoFlags(t *testing.T) {
 	}
 	if !bytes.Contains(got, []byte(`"redis"`)) {
 		t.Errorf("redis not in pier.toml:\n%s", got)
+	}
+}
+
+const inertiaViteConfig = `import { defineConfig } from 'vite';
+import laravel from 'laravel-vite-plugin';
+
+export default defineConfig({
+    plugins: [
+        laravel({
+            input: ['resources/css/app.css', 'resources/js/app.js'],
+            refresh: true,
+        }),
+    ],
+});
+`
+
+func TestInit_PatchesViteConfig(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "artisan"), []byte("#!/usr/bin/env php\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "composer.json"), []byte(`{"require":{"laravel/framework":"^11.0"}}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "vite.config.ts"), []byte(inertiaViteConfig), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	root := NewRootCmd(&buf, &buf)
+	root.SetArgs([]string{"--config", filepath.Join(dir, "pier.toml"), "init", dir, "--php", "8.3", "--node", "22"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute: %v\n%s", err, buf.String())
+	}
+	if !strings.Contains(buf.String(), "patched vite.config.ts: set server.host=true") {
+		t.Errorf("stdout missing patch message; got:\n%s", buf.String())
+	}
+	ts, err := os.ReadFile(filepath.Join(dir, "vite.config.ts"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(ts), "server: { host: true },") {
+		t.Errorf("vite.config.ts missing server: { host: true },:\n%s", ts)
+	}
+}
+
+func TestInit_NoPatchWhenAlreadyConfigured(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "artisan"), []byte("#!/usr/bin/env php\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "composer.json"), []byte(`{"require":{"laravel/framework":"^11.0"}}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	prePatched := `import { defineConfig } from 'vite';
+export default defineConfig({
+    server: { host: true },
+});
+`
+	if err := os.WriteFile(filepath.Join(dir, "vite.config.ts"), []byte(prePatched), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	root := NewRootCmd(&buf, &buf)
+	root.SetArgs([]string{"--config", filepath.Join(dir, "pier.toml"), "init", dir, "--php", "8.3", "--node", "22"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute: %v\n%s", err, buf.String())
+	}
+	if strings.Contains(buf.String(), "patched vite.config.ts") {
+		t.Errorf("stdout should not mention patch when already configured; got:\n%s", buf.String())
+	}
+}
+
+func TestInit_NoPatchWhenNoViteConfig(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "artisan"), []byte("#!/usr/bin/env php\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "composer.json"), []byte(`{"require":{"laravel/framework":"^11.0"}}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	root := NewRootCmd(&buf, &buf)
+	root.SetArgs([]string{"--config", filepath.Join(dir, "pier.toml"), "init", dir, "--php", "8.3", "--node", "22"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute: %v\n%s", err, buf.String())
+	}
+	if strings.Contains(buf.String(), "patched vite.config.ts") {
+		t.Errorf("stdout should not mention patch when no vite config exists; got:\n%s", buf.String())
 	}
 }

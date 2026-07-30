@@ -9,7 +9,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/pcnerd/pier/internal/deploy"
+	"github.com/Bonnary/pier/internal/deploy"
 )
 
 var (

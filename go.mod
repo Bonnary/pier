@@ -1,4 +1,4 @@
-module github.com/pcnerd/pier
+module github.com/Bonnary/pier
 
 go 1.25.0
 

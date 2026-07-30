@@ -13,6 +13,9 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
+// SSHConfig is everything Dial needs to open a connection: target
+// host, login user, path to the private key on the local filesystem,
+// and the TCP port (0 means 22).
 type SSHConfig struct {
 	Host    string
 	User    string
@@ -27,13 +30,23 @@ func (c *SSHConfig) port() int {
 	return c.Port
 }
 
+// ErrPreflight is the sentinel for every error returned by Dial
+// (empty host, missing key, bad permissions, handshake failure).
+// Callers use errors.Is to surface a KindConfig error with a clear
+// message.
 var ErrPreflight = errors.New("deploy: preflight failed")
 
+// Client is a thin wrapper around an *ssh.Client. It implements the
+// internal runner interface (Run / RunStream) used by every other
+// stage of the deploy pipeline.
 type Client struct {
 	Config SSHConfig
 	conn   *ssh.Client
 }
 
+// Dial opens an SSH connection to cfg and returns a ready Client.
+// The host key is NOT verified (InsecureIgnoreHostKey) — the
+// out-of-scope v1 list explicitly defers strict host-key checking.
 func Dial(ctx context.Context, cfg SSHConfig) (*Client, error) {
 	if cfg.Host == "" {
 		return nil, fmt.Errorf("%w: empty host", ErrPreflight)
@@ -67,6 +80,10 @@ func Dial(ctx context.Context, cfg SSHConfig) (*Client, error) {
 	return &Client{Config: cfg, conn: ssh.NewClient(ncc, chans, reqs)}, nil
 }
 
+// Run executes cmd on the remote host and returns the captured
+// stdout, stderr, and the session error. Used by Tag, Up, and Rollback
+// where the caller needs to inspect the output (or where streaming
+// is unnecessary).
 func (c *Client) Run(ctx context.Context, cmd string) ([]byte, []byte, error) {
 	sess, err := c.conn.NewSession()
 	if err != nil {
@@ -82,6 +99,10 @@ func (c *Client) Run(ctx context.Context, cmd string) ([]byte, []byte, error) {
 	return stdout.Bytes(), stderr.Bytes(), nil
 }
 
+// RunStream executes cmd on the remote host and invokes onLine for
+// each line of stdout as it arrives. Used by Build, which needs to
+// surface `docker compose build` progress in the deploy TUI in real
+// time.
 func (c *Client) RunStream(ctx context.Context, cmd string, onLine func(string)) error {
 	sess, err := c.conn.NewSession()
 	if err != nil {
@@ -102,6 +123,8 @@ func (c *Client) RunStream(ctx context.Context, cmd string, onLine func(string))
 	return sess.Wait()
 }
 
+// Close shuts down the underlying SSH connection. Safe to call when
+// the connection was never established.
 func (c *Client) Close() error {
 	if c.conn == nil {
 		return nil

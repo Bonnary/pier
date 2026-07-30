@@ -1,6 +1,15 @@
 # Changelog
 
-## Unreleased
+## v0.0.2-beta
+
+### Added
+
+- Application logo (`assets/logo.png`) is now embedded into the binary via `go:embed` in the new `assets` package and surfaced on the README so pier has a recognizable brand.
+- Comprehensive Go doc comments on every package and on every exported type, function, and method. `go doc ./...` now produces a complete reference (cmd/pier, internal/cli, internal/config, internal/deploy, internal/docker, internal/portcheck, internal/compose, internal/stack, internal/stack/laravel, internal/tui).
+
+### Changed
+
+- Bumped version constant to `0.0.2-beta` (reflected in `pier --version`, `cmd/pier/main_test.go`, and the README status line).
 
 ### Fixed
 

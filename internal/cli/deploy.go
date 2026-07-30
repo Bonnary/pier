@@ -6,8 +6,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/pcnerd/pier/internal/config"
-	"github.com/pcnerd/pier/internal/deploy"
+	"github.com/Bonnary/pier/internal/config"
+	"github.com/Bonnary/pier/internal/deploy"
 )
 
 func newDeployCmd(stdout, stderr io.Writer) *cobra.Command {

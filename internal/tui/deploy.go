@@ -1,3 +1,9 @@
+// Package tui contains the Bubble Tea TUIs pier uses: the init
+// picker, the service add/remove multi-select, and the deploy
+// pipeline viewer (phase list + last-N log lines). RunInit,
+// PickServicesToAdd, and PickServicesToRemove are the only
+// functions mainline code calls; ShouldRun is the "is stdout a
+// terminal" guard every TUI gates on.
 package tui
 
 import (
@@ -9,7 +15,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/pcnerd/pier/internal/deploy"
+	"github.com/Bonnary/pier/internal/deploy"
 )
 
 type phase struct {
@@ -32,6 +38,9 @@ type model struct {
 	ch       chan tea.Msg
 }
 
+// ShouldRun reports whether os.Stdout is a character device. The
+// CLI calls this before any TUI to decide between the interactive
+// picker and the prompt-based fallback.
 func ShouldRun() bool {
 	fi, err := os.Stdout.Stat()
 	if err != nil {
@@ -40,6 +49,10 @@ func ShouldRun() bool {
 	return (fi.Mode() & os.ModeCharDevice) != 0
 }
 
+// Run starts the deploy TUI and concurrently runs p.Run in a
+// background goroutine, feeding the TUI a stream of phase and log
+// messages. Returns the pipeline error (wrapped via the TUI) or
+// the Bubble Tea error if the program itself failed.
 func Run(p *deploy.Pipeline) error {
 	phases := []phase{
 		{Name: "preflight"}, {Name: "render"}, {Name: "sync"},

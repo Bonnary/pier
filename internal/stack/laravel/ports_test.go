@@ -3,7 +3,7 @@ package laravel
 import (
 	"testing"
 
-	"github.com/pcnerd/pier/internal/config"
+	"github.com/Bonnary/pier/internal/config"
 )
 
 func TestResolvePortOverride(t *testing.T) {
@@ -40,21 +40,39 @@ func TestResolvePortUnknownKey(t *testing.T) {
 	}
 }
 
-func TestBindAddrDev(t *testing.T) {
-	if got := BindAddr("dev"); got != "127.0.0.1" {
-		t.Errorf("BindAddr(dev) = %q, want 127.0.0.1", got)
+func TestBindAddrReturnsConfig(t *testing.T) {
+	cases := []struct {
+		bind string
+		want string
+	}{
+		{"127.0.0.1", "127.0.0.1"},
+		{"0.0.0.0", "0.0.0.0"},
+		{"", config.DefaultDevBind},
+	}
+	for _, c := range cases {
+		if got := BindAddr(c.bind); got != c.want {
+			t.Errorf("BindAddr(%q) = %q, want %q", c.bind, got, c.want)
+		}
 	}
 }
 
-func TestBindAddrProd(t *testing.T) {
-	if got := BindAddr("production"); got != "" {
-		t.Errorf("BindAddr(production) = %q, want \"\" (no bind prefix = 0.0.0.0)", got)
+func TestPortBinding(t *testing.T) {
+	cases := []struct {
+		bind      string
+		host      int
+		container int
+		want      string
+	}{
+		{"", 8000, 8000, "8000:8000"},
+		{"127.0.0.1", 8000, 8000, "127.0.0.1:8000:8000"},
+		{"0.0.0.0", 8000, 8000, "0.0.0.0:8000:8000"},
+		{"127.0.0.1", 5173, 5173, "127.0.0.1:5173:5173"},
+		{"0.0.0.0", 6379, 6379, "0.0.0.0:6379:6379"},
 	}
-}
-
-func TestBindAddrStaging(t *testing.T) {
-	if got := BindAddr("staging"); got != "" {
-		t.Errorf("BindAddr(staging) = %q, want \"\"", got)
+	for _, c := range cases {
+		if got := PortBinding(c.bind, c.host, c.container); got != c.want {
+			t.Errorf("PortBinding(%q, %d, %d) = %q, want %q", c.bind, c.host, c.container, got, c.want)
+		}
 	}
 }
 

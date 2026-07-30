@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/pcnerd/pier/internal/docker"
-	"github.com/pcnerd/pier/internal/tui"
+	"github.com/Bonnary/pier/internal/docker"
+	"github.com/Bonnary/pier/internal/tui"
 )
 
 func TestServiceAdd(t *testing.T) {

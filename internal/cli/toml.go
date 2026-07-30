@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/pcnerd/pier/internal/config"
+	"github.com/Bonnary/pier/internal/config"
 )
 
 func tomlEncode(c config.Config) ([]byte, error) {
@@ -19,6 +19,8 @@ func tomlEncode(c config.Config) ([]byte, error) {
 		fmt.Fprintf(&b, "%q", s)
 	}
 	b.WriteString("]\n")
+	fmt.Fprintf(&b, "\n[dev]\n# bind = %q   # uncomment to expose dev ports to your LAN (default: %s)\n",
+		"0.0.0.0", config.DefaultDevBind)
 	for env, dc := range c.Deploy {
 		fmt.Fprintf(&b, "\n[deploy.%s]\n", env)
 		fmt.Fprintf(&b, "host = %q\n", dc.Host)

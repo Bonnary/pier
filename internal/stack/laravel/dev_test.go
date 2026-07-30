@@ -10,17 +10,20 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"gopkg.in/yaml.v3"
 
-	"github.com/pcnerd/pier/internal/config"
-	"github.com/pcnerd/pier/internal/stack"
+	"github.com/Bonnary/pier/internal/config"
+	"github.com/Bonnary/pier/internal/stack"
 )
 
 var update = flag.Bool("update", false, "update golden files")
 
 func TestGenerateDevComposeNoServices(t *testing.T) {
+	t.Setenv("PIER_WWWUSER", "1000")
+	t.Setenv("PIER_WWWGROUP", "1000")
 	s := New()
 	files, err := s.GenerateDevCompose(config.Config{
 		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+		Dev:     config.DevConfig{Bind: "127.0.0.1"},
 	})
 	if err != nil {
 		t.Fatalf("GenerateDevCompose: %v", err)
@@ -37,10 +40,13 @@ func TestGenerateDevComposeNoServices(t *testing.T) {
 }
 
 func TestGenerateDevComposeWithServices(t *testing.T) {
+	t.Setenv("PIER_WWWUSER", "1000")
+	t.Setenv("PIER_WWWGROUP", "1000")
 	s := New()
 	files, err := s.GenerateDevCompose(config.Config{
 		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22", Services: []string{"redis", "mailpit"}},
+		Dev:     config.DevConfig{Bind: "127.0.0.1"},
 	})
 	if err != nil {
 		t.Fatalf("GenerateDevCompose: %v", err)
@@ -173,11 +179,34 @@ func TestGenerateDevComposeCopiesRuntime(t *testing.T) {
 	}
 }
 
+func TestLaravelContainerPortMatchesSupervisord(t *testing.T) {
+	if got := containerPortFor("laravel"); got != 80 {
+		t.Errorf("containerPortFor(%q) = %d, want 80 (must match Dockerfile SUPERVISOR_PHP_COMMAND `--port=80` so the host port can reach the supervisord artisan serve)", "laravel", got)
+	}
+}
+
+func TestLaravelTestPortsForwardHost8000ToContainer80(t *testing.T) {
+	cases := []struct {
+		bind string
+		want []string
+	}{
+		{"127.0.0.1", []string{"127.0.0.1:8000:80", "127.0.0.1:5173:5173"}},
+		{"0.0.0.0", []string{"0.0.0.0:8000:80", "0.0.0.0:5173:5173"}},
+	}
+	for _, c := range cases {
+		got := laravelTestPorts(c.bind, nil)
+		if d := cmp.Diff(c.want, got); d != "" {
+			t.Errorf("laravelTestPorts(%q, nil) mismatch (-want +got):\n%s", c.bind, d)
+		}
+	}
+}
+
 func TestGenerateDevComposeLaravelTestHasPorts(t *testing.T) {
 	s := New()
 	files, err := s.GenerateDevCompose(config.Config{
 		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+		Dev:     config.DevConfig{Bind: "127.0.0.1"},
 	})
 	if err != nil {
 		t.Fatalf("GenerateDevCompose: %v", err)
@@ -199,7 +228,7 @@ func TestGenerateDevComposeLaravelTestHasPorts(t *testing.T) {
 		t.Fatal("laravel.test missing")
 	}
 	wantPorts := map[string]bool{
-		"127.0.0.1:8000:8000": false,
+		"127.0.0.1:8000:80":  false,
 		"127.0.0.1:5173:5173": false,
 	}
 	for _, p := range lt.Ports {
@@ -219,6 +248,7 @@ func TestGenerateDevComposeSidecarPortsBindLoopback(t *testing.T) {
 	files, err := s.GenerateDevCompose(config.Config{
 		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22", Services: []string{"redis", "mailpit"}},
+		Dev:     config.DevConfig{Bind: "127.0.0.1"},
 	})
 	if err != nil {
 		t.Fatalf("GenerateDevCompose: %v", err)
@@ -264,6 +294,54 @@ func TestGenerateDevComposeSidecarPortsBindLoopback(t *testing.T) {
 	}
 }
 
+func TestGenerateDevComposeBindsAllInterfacesWhenOptedIn(t *testing.T) {
+	s := New()
+	files, err := s.GenerateDevCompose(config.Config{
+		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22", Services: []string{"redis", "mailpit"}},
+		Dev:     config.DevConfig{Bind: "0.0.0.0"},
+	})
+	if err != nil {
+		t.Fatalf("GenerateDevCompose: %v", err)
+	}
+	got := findFile(files, "docker-compose.yml")
+	if got == nil {
+		t.Fatal("docker-compose.yml missing")
+	}
+	var doc struct {
+		Services map[string]struct {
+			Ports []string `yaml:"ports"`
+		} `yaml:"services"`
+	}
+	if err := yaml.Unmarshal(got.Contents, &doc); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	wantByService := map[string][]string{
+		"laravel.test": {"0.0.0.0:8000:80", "0.0.0.0:5173:5173"},
+		"redis":        {"0.0.0.0:6379:6379"},
+		"mailpit":      {"0.0.0.0:1025:1025", "0.0.0.0:8025:8025"},
+	}
+	for svc, want := range wantByService {
+		ports, ok := doc.Services[svc]
+		if !ok {
+			t.Errorf("service %q missing from dev compose:\n%s", svc, got.Contents)
+			continue
+		}
+		for _, w := range want {
+			found := false
+			for _, p := range ports.Ports {
+				if p == w {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Errorf("%s ports = %v, want it to include %q (bind=0.0.0.0 opt-in)", svc, ports.Ports, w)
+			}
+		}
+	}
+}
+
 func TestRuntimeDirHasStartContainer(t *testing.T) {
 	for _, v := range SupportedPHPRuntimes() {
 		dir, err := Runtime(v)
@@ -286,6 +364,7 @@ func TestGenerateDevComposePortOverride(t *testing.T) {
 			Services: []string{"redis"},
 		},
 		Dev: config.DevConfig{
+			Bind:  "127.0.0.1",
 			Ports: map[string]int{"redis": 6390, "laravel": 8001},
 		},
 	})
@@ -318,13 +397,13 @@ func TestGenerateDevComposePortOverride(t *testing.T) {
 	lt := doc.Services["laravel.test"]
 	found = false
 	for _, p := range lt.Ports {
-		if p == "127.0.0.1:8001:8000" {
+		if p == "127.0.0.1:8001:80" {
 			found = true
 			break
 		}
 	}
 	if !found {
-		t.Errorf("laravel.test ports = %v, want it to include 127.0.0.1:8001:8000 (host=8001 from [dev.ports.laravel], container=8000)", lt.Ports)
+		t.Errorf("laravel.test ports = %v, want it to include 127.0.0.1:8001:80 (host=8001 from [dev.ports.laravel], container=80 supervisord)", lt.Ports)
 	}
 }
 
@@ -337,6 +416,7 @@ func TestGenerateDevComposePortZeroOptOut(t *testing.T) {
 			Services: []string{"mailpit"},
 		},
 		Dev: config.DevConfig{
+			Bind:  "127.0.0.1",
 			Ports: map[string]int{"mailpit_ui": 0},
 		},
 	})

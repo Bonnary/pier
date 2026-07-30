@@ -194,3 +194,71 @@ func TestValidateDeployPortAcceptsWebserverHTTP(t *testing.T) {
 		t.Errorf("Validate(webserver_http=8080 in production) = %v, want nil", err)
 	}
 }
+
+func TestDevBindDefaults(t *testing.T) {
+	c := &Config{
+		Project: ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Stack:   StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+	}
+	if err := c.Validate(); err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if c.Dev.Bind != "127.0.0.1" {
+		t.Errorf("Dev.Bind = %q, want %q (default when absent)", c.Dev.Bind, "127.0.0.1")
+	}
+}
+
+func TestDevBindEmptyStringTreatedAsAbsent(t *testing.T) {
+	c := &Config{
+		Project: ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Stack:   StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+		Dev:     DevConfig{Bind: ""},
+	}
+	if err := c.Validate(); err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if c.Dev.Bind != "127.0.0.1" {
+		t.Errorf("Dev.Bind = %q, want %q (empty string == absent, apply default)", c.Dev.Bind, "127.0.0.1")
+	}
+}
+
+func TestDevBindLoopbackAccepted(t *testing.T) {
+	c := &Config{
+		Project: ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Stack:   StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+		Dev:     DevConfig{Bind: "127.0.0.1"},
+	}
+	if err := c.Validate(); err != nil {
+		t.Errorf("Validate(bind=127.0.0.1) = %v, want nil", err)
+	}
+}
+
+func TestDevBindAllInterfacesAccepted(t *testing.T) {
+	c := &Config{
+		Project: ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Stack:   StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+		Dev:     DevConfig{Bind: "0.0.0.0"},
+	}
+	if err := c.Validate(); err != nil {
+		t.Errorf("Validate(bind=0.0.0.0) = %v, want nil", err)
+	}
+}
+
+func TestDevBindRejectsUnknown(t *testing.T) {
+	cases := []string{"::", "localhost", "192.168.1.1", "0", "10.0.0.1", "::1", "1.2.3.4"}
+	for _, v := range cases {
+		c := &Config{
+			Project: ProjectConfig{Name: "x", Domain: "x.example.com"},
+			Stack:   StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+			Dev:     DevConfig{Bind: v},
+		}
+		err := c.Validate()
+		if !errors.Is(err, ErrConfigInvalid) {
+			t.Errorf("Validate(bind=%q) = %v, want ErrConfigInvalid", v, err)
+			continue
+		}
+		if !strings.Contains(err.Error(), v) {
+			t.Errorf("Validate(bind=%q) err = %q, want it to mention the bad value", v, err)
+		}
+	}
+}
