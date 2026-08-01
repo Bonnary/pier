@@ -68,6 +68,10 @@ Docker CLI.
 - **`pier deploy <env>`** — Build, sync, up, health-check, and
   commit a production image tag over SSH. A Bubble Tea TUI shows
   live phase progress.
+- **`pier bootstrap [env...]`** — One-time server provisioning:
+  installs Docker Engine + the compose plugin over SSH and grants
+  the deploy user passwordless docker access (hidden one-time sudo
+  password prompt; idempotent, `--all` / `--force`).
 - **Automatic rollback** — Any failure in the `up` or `health`
   phase re-tags the previous image and re-deploys it before the
   command exits non-zero.
@@ -92,7 +96,9 @@ Docker CLI.
   Pre-built binaries are available on the
   [releases page](https://github.com/Bonnary/pier/releases).
 - **Docker Engine 24+** with the `docker compose` plugin (Docker
-  Desktop on macOS/Windows; Docker Engine on Linux).
+  Desktop on macOS/Windows; Docker Engine on Linux). On remote
+  servers this comes from `pier bootstrap <env>` — the deploy user
+  needs password-protected sudo once for the one-time install.
 - **OpenSSH** client (`ssh`, `rsync`-over-ssh) for `pier deploy` and
   `pier rollback`. `pier` uses the host's `~/.ssh/id_ed25519` by
   default; override with `--ssh-key` or `$DEPLOY_SSH_KEY`.
@@ -214,6 +220,7 @@ port forward.
 | `pier service add <name...>` | Add one or more services to `pier.toml` + `docker-compose.yml`. Interactive TUI picker when no names are given. |
 | `pier service remove <name...>` | Remove one or more services from `pier.toml` + `docker-compose.yml`. |
 | `pier deploy <env>` | Build, sync, up, health-check; rollback on failure. Renders a Bubble Tea TUI with live phase progress. |
+| `pier bootstrap [env...]` | Provision one or more servers: install Docker + compose plugin, grant the deploy user docker access. Interactive picker when no env is given; `--all` for every env, `--force` to re-provision. |
 | `pier rollback <env>` | Re-deploy the previous image tag. |
 | `pier status` | Show project and container status for the current env. |
 
@@ -375,6 +382,12 @@ go doc ./...
 - **"ssh: handshake failed"** — run `pier status`, check
   `~/.ssh/id_ed25519` perms (`chmod 600`), and confirm the host is
   reachable.
+- **"server not bootstrapped"** on `pier deploy` — run
+  `pier bootstrap <env>` once on the server. The deploy user needs
+  password-protected sudo for the one-time Docker install.
+- **"wrong sudo password"** on `pier bootstrap` — re-run
+  `pier bootstrap <env>` and enter the deploy user's sudo password
+  (not the SSH key passphrase).
 - **"container not running"** — run `pier dev` first, then
   `pier shell`.
 - **"port N in use"** — `pier dev` runs a pre-flight port probe and
