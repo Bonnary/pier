@@ -14,6 +14,17 @@ import (
 	laravelpkg "github.com/Bonnary/pier/internal/stack/laravel"
 )
 
+// pipelineDial is a seam for tests to inject a fake Dial into the
+// deploy pipeline's preflight phase. It returns a bootstrapConn so
+// tests can observe Close.
+var pipelineDial = func(ctx context.Context, cfg SSHConfig) (bootstrapConn, error) {
+	return Dial(ctx, cfg)
+}
+
+// pipelineProbe is a seam for tests to inject a fake bootstrap probe
+// into the deploy pipeline's preflight phase.
+var pipelineProbe = ProbeBootstrap
+
 // Pipeline is the top-level deploy driver. One Pipeline is constructed
 // per `pier deploy <env>` invocation and Run is called exactly once.
 type Pipeline struct {
@@ -106,6 +117,10 @@ func (p *Pipeline) Run(ctx context.Context) error {
 	return nil
 }
 
+// preflight validates SSH config, dials the host, and probes for a
+// bootstrapped server (docker accessible without sudo). Unbootstrapped
+// hosts fail fast with NotBootstrappedError instead of hanging on a
+// hidden sudo prompt during the build phase.
 func (p *Pipeline) preflight(ctx context.Context) (*Client, error) {
 	if p.SSH.Host == "" {
 		return nil, fmt.Errorf("deploy.%s.host is empty", p.Env)
@@ -113,7 +128,25 @@ func (p *Pipeline) preflight(ctx context.Context) (*Client, error) {
 	if p.SSH.KeyPath == "" {
 		return nil, fmt.Errorf("ssh key path is empty (set --ssh-key or DEPLOY_SSH_KEY)")
 	}
-	return Dial(ctx, p.SSH)
+	conn, err := pipelineDial(ctx, p.SSH)
+	if err != nil {
+		return nil, err
+	}
+	ok, err := pipelineProbe(ctx, conn)
+	if err != nil {
+		conn.Close()
+		return nil, err
+	}
+	if !ok {
+		conn.Close()
+		return nil, NotBootstrappedError(p.Env)
+	}
+	client, ok := conn.(*Client)
+	if !ok {
+		conn.Close()
+		return nil, fmt.Errorf("internal: dial returned %T, want *Client", conn)
+	}
+	return client, nil
 }
 
 func (p *Pipeline) render() (any, error) {

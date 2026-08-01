@@ -3,9 +3,11 @@ package deploy
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/Bonnary/pier/internal/config"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -240,4 +242,63 @@ func TestNotBootstrappedError(t *testing.T) {
 	if !errors.As(err, &ee) || ee.Code != ExitPreflight {
 		t.Errorf("NotBootstrappedError is not an ExitPreflight ExitError")
 	}
+}
+
+func TestPreflightRejectsUnbootstrappedServer(t *testing.T) {
+	origDial := pipelineDial
+	defer func() { pipelineDial = origDial }()
+	conn := &fakeConn{scriptedRunner: &scriptedRunner{}} // no docker: probe fails
+	pipelineDial = func(ctx context.Context, cfg SSHConfig) (bootstrapConn, error) {
+		return conn, nil
+	}
+	origProbe := pipelineProbe
+	defer func() { pipelineProbe = origProbe }()
+	pipelineProbe = func(ctx context.Context, r stdinRunner) (bool, error) {
+		return ProbeBootstrap(ctx, conn.scriptedRunner)
+	}
+	p := &Pipeline{
+		Env:       "production",
+		DeployEnv: config.DeployConfig{Host: "h", User: "u", Path: "/srv/x"},
+		SSH:       SSHConfig{Host: "h", User: "u", KeyPath: filepath.Join("testdata", "id_ed25519")},
+	}
+	client, err := p.preflight(context.Background())
+	if err == nil {
+		t.Fatal("preflight(unbootstrapped) = nil error, want NotBootstrappedError")
+	}
+	if !errors.Is(err, ErrNotBootstrapped) {
+		t.Errorf("preflight err = %v, want ErrNotBootstrapped", err)
+	}
+	if client != nil {
+		t.Error("preflight returned a client despite failure, want nil")
+	}
+	if !conn.closed {
+		t.Error("preflight did not Close the client after a failed probe")
+	}
+}
+
+func TestPreflightAcceptsBootstrappedServer(t *testing.T) {
+	origDial := pipelineDial
+	defer func() { pipelineDial = origDial }()
+	conn := &fakeConn{scriptedRunner: &scriptedRunner{script: []scriptedStep{{match: "docker", ok: true}}}}
+	pipelineDial = func(ctx context.Context, cfg SSHConfig) (bootstrapConn, error) {
+		return &Client{Config: cfg}, nil
+	}
+	origProbe := pipelineProbe
+	defer func() { pipelineProbe = origProbe }()
+	pipelineProbe = func(ctx context.Context, r stdinRunner) (bool, error) {
+		return ProbeBootstrap(ctx, conn.scriptedRunner)
+	}
+	p := &Pipeline{
+		Env:       "production",
+		DeployEnv: config.DeployConfig{Host: "h", User: "u", Path: "/srv/x"},
+		SSH:       SSHConfig{Host: "h", User: "u", KeyPath: filepath.Join("testdata", "id_ed25519")},
+	}
+	client, err := p.preflight(context.Background())
+	if err != nil {
+		t.Fatalf("preflight(bootstrapped): %v", err)
+	}
+	if client == nil {
+		t.Error("preflight returned nil client, want non-nil")
+	}
+	client.Close()
 }
