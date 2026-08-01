@@ -36,6 +36,13 @@ func runRollback(cmd *cobra.Command, env string) error {
 		return err
 	}
 	defer c.Close()
+	bootstrapped, err := deploy.ProbeBootstrap(cmd.Context(), c)
+	if err != nil {
+		return err
+	}
+	if !bootstrapped {
+		return deploy.NotBootstrappedError(env)
+	}
 	logger := NewLogger(jsonOut, cmd.OutOrStdout())
 	logger.PhaseStart("rollback")
 	if err := deploy.Rollback(context.Background(), c, dc.Path, cfg.Project.Name); err != nil {

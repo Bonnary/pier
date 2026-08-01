@@ -56,13 +56,16 @@ func classifySudoErr(stderr []byte, err error) error {
 	case strings.Contains(s, "sorry, try again") || strings.Contains(s, "incorrect password") || strings.Contains(s, "authentication failure"):
 		return ErrSudoWrongPassword
 	default:
-		return fmt.Errorf("sudo failed: %v (stderr: %s)", err, bytes.TrimSpace(stderr))
+		return fmt.Errorf("remote command failed: %v (stderr: %s)", err, bytes.TrimSpace(stderr))
 	}
 }
 
 // runSudo executes cmd via `sudo -S sh -c '<cmd>'` with the password
-// piped on the session's stdin — never on the command line.
+// piped on the session's stdin — never on the command line. Embedded
+// apostrophes are escaped so they cannot break out of the single-quoted
+// sh -c argument.
 func runSudo(ctx context.Context, r stdinRunner, password, cmd string) error {
+	cmd = strings.ReplaceAll(cmd, "'", `'\''`)
 	full := fmt.Sprintf("sudo -S sh -c '%s'", cmd)
 	_, stderr, err := r.RunStdin(ctx, full, password+"\n")
 	if err != nil {

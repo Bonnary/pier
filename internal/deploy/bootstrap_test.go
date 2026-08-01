@@ -149,6 +149,23 @@ func TestProvisionRunsInstallAndUsermod(t *testing.T) {
 	}
 }
 
+func TestRunSudoEscapesApostrophes(t *testing.T) {
+	r := &scriptedRunner{script: []scriptedStep{{match: "sudo -S sh -c", ok: true}}}
+	err := runSudo(context.Background(), r, "pw", `usermod -aG docker "O'Brien"`)
+	if err != nil {
+		t.Fatalf("runSudo: %v", err)
+	}
+	if len(r.cmds) != 1 {
+		t.Fatalf("cmds = %d commands, want 1", len(r.cmds))
+	}
+	if !strings.Contains(r.cmds[0], `O'\''Brien`) {
+		t.Errorf("command %q missing POSIX apostrophe escape", r.cmds[0])
+	}
+	if strings.Contains(r.cmds[0], `O'Brien`) {
+		t.Errorf("command %q leaks an unescaped apostrophe", r.cmds[0])
+	}
+}
+
 func TestVerifyBootstrapChecksDaemonPluginGroup(t *testing.T) {
 	r := &scriptedRunner{script: []scriptedStep{{match: "getent group docker", ok: true}}}
 	if err := VerifyBootstrap(context.Background(), r, "pw", "deploy"); err != nil {
