@@ -49,6 +49,7 @@ func NewRootCmd(stdout, stderr io.Writer) *cobra.Command {
 	root.AddCommand(newExecCmd(stdout, stderr))
 	root.AddCommand(newServiceCmd(stdout, stderr))
 	root.AddCommand(newDeployCmd(stdout, stderr))
+	root.AddCommand(newBootstrapCmd(stdout, stderr))
 	root.AddCommand(newRollbackCmd(stdout, stderr))
 	root.AddCommand(newStatusCmd(stdout, stderr))
 	return root
