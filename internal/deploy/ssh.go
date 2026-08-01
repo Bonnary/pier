@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strings"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -99,6 +100,26 @@ func (c *Client) Run(ctx context.Context, cmd string) ([]byte, []byte, error) {
 	return stdout.Bytes(), stderr.Bytes(), nil
 }
 
+// RunStdin executes cmd on the remote host with stdin piped from the
+// given string. Used by bootstrap to feed the sudo password to
+// `sudo -S` without it ever appearing in the command string (and
+// thus in remote process listings or logs).
+func (c *Client) RunStdin(ctx context.Context, cmd string, stdin string) ([]byte, []byte, error) {
+	sess, err := c.conn.NewSession()
+	if err != nil {
+		return nil, nil, fmt.Errorf("ssh: new session: %w", err)
+	}
+	defer sess.Close()
+	var stdout, stderr bytes.Buffer
+	sess.Stdin = strings.NewReader(stdin)
+	sess.Stdout = &stdout
+	sess.Stderr = &stderr
+	if err := sess.Run(cmd); err != nil {
+		return stdout.Bytes(), stderr.Bytes(), err
+	}
+	return stdout.Bytes(), stderr.Bytes(), nil
+}
+
 // RunStream executes cmd on the remote host and invokes onLine for
 // each line of stdout as it arrives. Used by Build, which needs to
 // surface `docker compose build` progress in the deploy TUI in real
@@ -136,3 +157,12 @@ type runner interface {
 	Run(ctx context.Context, cmd string) ([]byte, []byte, error)
 	RunStream(ctx context.Context, cmd string, onLine func(string)) error
 }
+
+// stdinRunner is the subset of *Client that bootstrap needs: plain
+// Run plus RunStdin for piping the sudo password.
+type stdinRunner interface {
+	Run(ctx context.Context, cmd string) ([]byte, []byte, error)
+	RunStdin(ctx context.Context, cmd string, stdin string) ([]byte, []byte, error)
+}
+
+var _ stdinRunner = (*Client)(nil)
