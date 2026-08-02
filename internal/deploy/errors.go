@@ -105,7 +105,7 @@ func RemoteUpError(host string, err error) error {
 func RemoteDockerError(host string, err error) error {
 	return &ExitError{Code: ExitGeneral, Kind: KindDocker, RemoteHost: host, Err: err}
 }
-func ExecDownError() error       { return &ExitError{Code: ExitExecDown, Kind: KindDocker, Err: ErrExecDown} }
+func ExecDownError() error { return &ExitError{Code: ExitExecDown, Kind: KindDocker, Err: ErrExecDown} }
 
 // PortInUseError builds an error for a pre-flight port-probe collision.
 // ports is the list of host ports that were already listening on
