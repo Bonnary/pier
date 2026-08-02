@@ -144,6 +144,7 @@ func (c *Client) RunStreamStdin(ctx context.Context, cmd, stdin string, onStdout
 		return nil, err
 	}
 	var stderrBuf bytes.Buffer
+	var stderrErr error
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -156,6 +157,7 @@ func (c *Client) RunStreamStdin(ctx context.Context, cmd, stdin string, onStdout
 				onStderr(line)
 			}
 		}
+		stderrErr = sc.Err()
 	}()
 	sc := bufio.NewScanner(stdout)
 	for sc.Scan() {
@@ -164,6 +166,12 @@ func (c *Client) RunStreamStdin(ctx context.Context, cmd, stdin string, onStdout
 		}
 	}
 	<-done
+	if err := sc.Err(); err != nil {
+		return stderrBuf.Bytes(), err
+	}
+	if stderrErr != nil {
+		return stderrBuf.Bytes(), stderrErr
+	}
 	return stderrBuf.Bytes(), sess.Wait()
 }
 
