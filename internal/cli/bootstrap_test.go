@@ -361,6 +361,9 @@ func TestRunBootstrapStreamsOutput(t *testing.T) {
 	if !contains(errOut.String(), "warning: x") {
 		t.Errorf("stderr = %q, want streamed warning line", errOut.String())
 	}
+	if contains(out.String(), "warning: x") {
+		t.Errorf("stdout = %q, must not contain stderr warning line", out.String())
+	}
 }
 
 func equalStrings(a, b []string) bool {

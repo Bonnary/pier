@@ -355,10 +355,6 @@ func equalStr(a, b []string) bool {
 	return true
 }
 
-// TestScriptedRunnerStreamsLines pins the stdinRunner.RunStreamStdin
-// contract the bootstrap layer relies on: stdin is piped, stdout and
-// stderr lines reach their callbacks, and stderr is returned whole
-// for error classification.
 func TestRunSudoStreamsOutputAndClassifies(t *testing.T) {
 	var out, errOut []string
 	r := &scriptedRunner{script: []scriptedStep{{
@@ -437,6 +433,10 @@ func TestBootstrapEnvStreamsOutput(t *testing.T) {
 	}
 }
 
+// TestScriptedRunnerStreamsLines pins the stdinRunner.RunStreamStdin
+// contract the bootstrap layer relies on: stdin is piped, stdout and
+// stderr lines reach their callbacks, and stderr is returned whole
+// for error classification.
 func TestScriptedRunnerStreamsLines(t *testing.T) {
 	r := &scriptedRunner{script: []scriptedStep{{
 		match: "sudo -S -p ''", ok: true,

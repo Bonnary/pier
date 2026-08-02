@@ -214,7 +214,8 @@ type runner interface {
 }
 
 // stdinRunner is the subset of *Client that bootstrap needs: plain
-// Run plus RunStdin for piping the sudo password.
+// Run, RunStdin for piping the sudo password, and RunStreamStdin for
+// streaming output while piping it.
 type stdinRunner interface {
 	Run(ctx context.Context, cmd string) ([]byte, []byte, error)
 	RunStdin(ctx context.Context, cmd string, stdin string) ([]byte, []byte, error)

@@ -60,9 +60,9 @@ func classifySudoErr(stderr []byte, err error) error {
 	}
 }
 
-// runSudo executes cmd via `sudo -S -p '' sh -c '<cmd>'` with the
+// runSudo executes cmd via `sudo -S -p ” sh -c '<cmd>'` with the
 // password piped on the session's stdin — never on the command
-// line — streaming each output line to the callbacks. `-p ''`
+// line — streaming each output line to the callbacks. `-p ”`
 // suppresses sudo's own password prompt (the password is already
 // piped). Embedded apostrophes are escaped so they cannot break out
 // of the single-quoted sh -c argument. On failure the captured
