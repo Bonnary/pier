@@ -328,6 +328,41 @@ func TestBootstrapAbortMapsToCleanExit(t *testing.T) {
 	}
 }
 
+func TestRunBootstrapStreamsOutput(t *testing.T) {
+	dir := t.TempDir()
+	p := writeTestTOML(t, dir)
+	origProbe := probeEnvFn
+	probeEnvFn = func(ctx context.Context, cfg deploy.SSHConfig) (bool, error) { return false, nil }
+	defer func() { probeEnvFn = origProbe }()
+	origBootstrap := bootstrapEnvFn
+	bootstrapEnvFn = func(ctx context.Context, cfg deploy.SSHConfig, pw string, opts deploy.BootstrapOpts) error {
+		if opts.OnStdout == nil || opts.OnStderr == nil {
+			t.Fatal("OnStdout/OnStderr callbacks not wired")
+		}
+		opts.OnStdout("installing docker...")
+		opts.OnStderr("warning: x")
+		return nil
+	}
+	defer func() { bootstrapEnvFn = origBootstrap }()
+	origPwd := readSudoPwd
+	readSudoPwd = func(prompt string) (string, error) { return "pw", nil }
+	defer func() { readSudoPwd = origPwd }()
+
+	var out, errOut bytes.Buffer
+	root := NewRootCmd(&out, &errOut)
+	root.SetArgs([]string{"--config", p, "bootstrap", "stage"})
+	root.SilenceUsage = true
+	if err := root.Execute(); err != nil {
+		t.Fatalf("bootstrap: %v", err)
+	}
+	if !contains(out.String(), "installing docker...") {
+		t.Errorf("stdout = %q, want streamed install line", out.String())
+	}
+	if !contains(errOut.String(), "warning: x") {
+		t.Errorf("stderr = %q, want streamed warning line", errOut.String())
+	}
+}
+
 func equalStrings(a, b []string) bool {
 	if len(a) != len(b) {
 		return false

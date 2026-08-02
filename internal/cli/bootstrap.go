@@ -74,13 +74,23 @@ func runBootstrap(cmd *cobra.Command, args []string, f *bootstrapFlags) error {
 		if err != nil {
 			return err
 		}
-		err = bootstrapEnvFn(cmd.Context(), sshCfg, pw, deploy.BootstrapOpts{User: dc.User, Force: f.force})
+		err = bootstrapEnvFn(cmd.Context(), sshCfg, pw, deploy.BootstrapOpts{
+			User:     dc.User,
+			Force:    f.force,
+			OnStdout: func(line string) { fmt.Fprintln(cmd.OutOrStdout(), line) },
+			OnStderr: func(line string) { fmt.Fprintln(cmd.ErrOrStderr(), line) },
+		})
 		if errors.Is(err, deploy.ErrSudoWrongPassword) {
 			pw, err = readSudoPwd("wrong password — try again: ")
 			if err != nil {
 				return err
 			}
-			err = bootstrapEnvFn(cmd.Context(), sshCfg, pw, deploy.BootstrapOpts{User: dc.User, Force: f.force})
+			err = bootstrapEnvFn(cmd.Context(), sshCfg, pw, deploy.BootstrapOpts{
+				User:     dc.User,
+				Force:    f.force,
+				OnStdout: func(line string) { fmt.Fprintln(cmd.OutOrStdout(), line) },
+				OnStderr: func(line string) { fmt.Fprintln(cmd.ErrOrStderr(), line) },
+			})
 		}
 		if errors.Is(err, deploy.ErrSudoNotSudoers) {
 			return fmt.Errorf("%w: add %q to sudoers on %s first, or bootstrap as a different user",
