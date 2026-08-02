@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.0.3-beta
+
+### Fixed
+
+- Deploy file sync now recreates local symlinks on the remote host over
+  SFTP, so links such as `storage/app/public` survive a `pier deploy`
+  (they were previously skipped). Recreation is idempotent: an existing
+  remote link with the same target is left untouched, a stale regular
+  file at the link path is replaced, and a directory conflict surfaces a
+  clear error instead of being silently deleted.
+- Remote commands (`pier deploy`, `pier bootstrap`, `pier status <env>`)
+  now fail fast with a clear preflight error when the SSH key path
+  exists but cannot be read (e.g. broken permissions), instead of
+  silently falling back to the password prompt.
+
+### Changed
+
+- Bumped version constant to `0.0.3-beta` (reflected in `pier --version`, `cmd/pier/main_test.go`, and the README status line).
+
 ## v0.0.2-beta
 
 ### Added

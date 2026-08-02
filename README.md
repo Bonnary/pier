@@ -26,7 +26,7 @@ rollback. It is a single, self-contained Go binary — no Composer
 dependency, no daemon, no telemetry, no network calls beyond SSH and the
 Docker CLI.
 
-> **Status:** `v0.0.2-beta` — under active development. The Laravel
+> **Status:** `v0.0.3-beta` — under active development. The Laravel
 > stack is feature-complete for the documented workflows; other stacks
 > (Node, Python, Rails, etc.) are explicitly out of scope for v1.
 
@@ -42,8 +42,6 @@ Docker CLI.
 - [Configuration (`pier.toml`)](#configuration-piertoml)
 - [Project structure](#project-structure)
 - [Development](#development)
-- [Manual verification checklist](#manual-verification-checklist)
-- [Out of scope (v1)](#out-of-scope-v1)
 - [Troubleshooting](#troubleshooting)
 - [Contributing](#contributing)
 - [Roadmap](#roadmap)
@@ -164,7 +162,7 @@ sudo mv pier /usr/local/bin/
 
 ```bash
 pier --version
-# pier 0.0.2-beta
+# pier 0.0.3-beta
 ```
 
 ---
