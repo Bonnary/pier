@@ -36,10 +36,8 @@ func runDeploy(cmd *cobra.Command, env string) error {
 		Env:       env,
 		DeployEnv: dc,
 		Logger:    logger,
-		SSH: deploy.SSHConfig{
-			Host: dc.Host, User: dc.User, KeyPath: sshKeyPath(),
-		},
-		Health: deploy.DefaultHealthConfig(cfg.Project.Domain),
+		SSH:       newSSHConfig(dc),
+		Health:    deploy.DefaultHealthConfig(cfg.Project.Domain),
 	}
 	return p.Run(cmd.Context())
 }

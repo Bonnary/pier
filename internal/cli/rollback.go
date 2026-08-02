@@ -30,7 +30,7 @@ func runRollback(cmd *cobra.Command, env string) error {
 	if !ok {
 		return cliError("no [deploy.%s] section in pier.toml", env)
 	}
-	ssh := deploy.SSHConfig{Host: dc.Host, User: dc.User, KeyPath: sshKeyPath()}
+	ssh := newSSHConfig(dc)
 	c, err := deploy.Dial(cmd.Context(), ssh)
 	if err != nil {
 		return err

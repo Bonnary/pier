@@ -217,3 +217,31 @@ func TestStatusRemoteAbortPropagates(t *testing.T) {
 		t.Fatalf("Execute() error = %T, want *ExitError with code %d", err, deploy.ExitAborted)
 	}
 }
+
+func TestStatusRemoteConfigCarriesPasswordPrompt(t *testing.T) {
+	dir := t.TempDir()
+	toml := "[project]\nname=\"x\"\ndomain=\"x.example.com\"\n[stack]\ntype=\"laravel\"\nphp=\"8.3\"\nnode=\"22\"\n[deploy.production]\nbranch=\"main\"\nhost=\"h\"\nuser=\"u\"\npath=\"/srv/x\"\n"
+	if err := os.WriteFile(filepath.Join(dir, "pier.toml"), []byte(toml), 0644); err != nil {
+		t.Fatal(err)
+	}
+	var got deploy.SSHConfig
+	origDial := statusDial
+	statusDial = func(ctx context.Context, cfg deploy.SSHConfig) (deploy.StatusRunner, error) {
+		got = cfg
+		return &fakeStatusRunner{}, nil
+	}
+	defer func() { statusDial = origDial }()
+
+	var buf bytes.Buffer
+	root := NewRootCmd(&buf, &buf)
+	root.SetArgs([]string{"--config", filepath.Join(dir, "pier.toml"), "status", "production"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if got.Host != "h" || got.User != "u" {
+		t.Errorf("SSHConfig host/user = %q/%q, want h/u", got.Host, got.User)
+	}
+	if got.PasswordPrompt == nil {
+		t.Error("SSHConfig.PasswordPrompt is nil, want wired prompt")
+	}
+}

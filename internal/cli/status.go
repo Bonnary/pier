@@ -67,7 +67,7 @@ func runRemoteStatus(cmd *cobra.Command, cfg *config.Config, env string) error {
 	if !ok {
 		return cliError("no [deploy.%s] section in pier.toml", env)
 	}
-	client, err := statusDial(cmd.Context(), deploy.SSHConfig{Host: dc.Host, User: dc.User, KeyPath: sshKeyPath()})
+	client, err := statusDial(cmd.Context(), newSSHConfig(dc))
 	if err != nil {
 		if errors.Is(err, deploy.ErrAborted) {
 			return err

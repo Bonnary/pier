@@ -23,7 +23,7 @@ var (
 	pickEnvTUI     = tui.PickEnv
 	probeEnvFn     = deploy.ProbeEnv
 	bootstrapEnvFn = deploy.BootstrapEnv
-	readSudoPwd    = readSudoPassword
+	readSudoPwd    = readPassword
 )
 
 // newBootstrapCmd returns the `pier bootstrap` command: one-time
@@ -59,7 +59,7 @@ func runBootstrap(cmd *cobra.Command, args []string, f *bootstrapFlags) error {
 	}
 	for _, env := range envs {
 		dc := cfg.Deploy[env]
-		sshCfg := deploy.SSHConfig{Host: dc.Host, User: dc.User, KeyPath: sshKeyPath()}
+		sshCfg := newSSHConfig(dc)
 		if !f.force {
 			ok, err := probeEnvFn(cmd.Context(), sshCfg)
 			if err != nil {
