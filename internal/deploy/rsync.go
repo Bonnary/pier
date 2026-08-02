@@ -2,7 +2,9 @@ package deploy
 
 import (
 	"context"
+	"fmt"
 	"os/exec"
+	"strings"
 )
 
 // CommandRunner abstracts a single-shot command invocation. The real
@@ -12,11 +14,27 @@ type CommandRunner interface {
 	Run(ctx context.Context, name string, args ...string) error
 }
 
+// maxSyncOutput is the cap for the stderr excerpt included in sync
+// error messages. Enough to show the failing rsync paths, never a
+// wall of noise.
+const maxSyncOutput = 4096
+
 type osRunner struct{}
 
 func (osRunner) Run(ctx context.Context, name string, args ...string) error {
 	cmd := exec.CommandContext(ctx, name, args...)
-	return cmd.Run()
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		return nil
+	}
+	s := strings.TrimSpace(string(out))
+	if len(s) > maxSyncOutput {
+		s = s[:maxSyncOutput] + "..."
+	}
+	if s == "" {
+		return err
+	}
+	return fmt.Errorf("%w: %s", err, s)
 }
 
 var defaultRunner CommandRunner = osRunner{}

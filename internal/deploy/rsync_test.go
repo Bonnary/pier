@@ -2,7 +2,10 @@ package deploy
 
 import (
 	"context"
+	"errors"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -65,3 +68,39 @@ func contains(s, sub string) bool {
 }
 
 var _ = filepath.Join
+
+func TestOsRunnerCapturesOutputOnFailure(t *testing.T) {
+	err := (osRunner{}).Run(context.Background(), "sh", "-c", "echo boom >&2; exit 3")
+	if err == nil {
+		t.Fatal("osRunner.Run(failing) = nil error, want non-nil")
+	}
+	if !contains(err.Error(), "boom") {
+		t.Errorf("err %q missing captured stderr", err.Error())
+	}
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Errorf("err is %T, want *exec.ExitError in chain", err)
+	} else if exitErr.ExitCode() != 3 {
+		t.Errorf("exit code = %d, want 3", exitErr.ExitCode())
+	}
+}
+
+func TestOsRunnerSuccessNoError(t *testing.T) {
+	if err := (osRunner{}).Run(context.Background(), "true"); err != nil {
+		t.Fatalf("osRunner.Run(true): %v", err)
+	}
+}
+
+func TestOsRunnerTrimsOutput(t *testing.T) {
+	long := strings.Repeat("x", 8192)
+	err := (osRunner{}).Run(context.Background(), "sh", "-c", "printf '%s' '"+long+"' >&2; exit 1")
+	if err == nil {
+		t.Fatal("osRunner.Run(long) = nil error, want non-nil")
+	}
+	if len(err.Error()) > 4096+64 {
+		t.Errorf("error message length %d exceeds 4KB excerpt + margin", len(err.Error()))
+	}
+	if !strings.HasSuffix(err.Error(), "...") {
+		t.Errorf("error %q missing truncation suffix", err.Error())
+	}
+}
