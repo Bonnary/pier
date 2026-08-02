@@ -39,3 +39,11 @@ func TestOutputTailEmpty(t *testing.T) {
 		t.Errorf("tail = %q, want empty", got)
 	}
 }
+
+func TestOutputTailZeroMaxNoPanic(t *testing.T) {
+	tail := &outputTail{max: 0}
+	tail.add("one")
+	if got := tail.String(); got != "" {
+		t.Errorf("tail = %q, want empty", got)
+	}
+}

@@ -192,6 +192,9 @@ type outputTail struct {
 func (t *outputTail) add(line string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	if t.max <= 0 {
+		return
+	}
 	if len(t.lines) == t.max {
 		copy(t.lines, t.lines[1:])
 		t.lines[len(t.lines)-1] = line
@@ -208,7 +211,9 @@ func (t *outputTail) String() string {
 }
 
 // RunStream executes cmd on the remote host and invokes onLine for
-// each line of stdout or stderr as it arrives. Used by Build, which
+// each line of stdout or stderr as it arrives. onLine may be invoked
+// concurrently from two goroutines (the stdout and stderr readers),
+// so callbacks must be safe for concurrent use. Used by Build, which
 // needs to surface `docker compose build` progress — and, on failure,
 // the compose validation errors that docker writes to stderr — in the
 // deploy TUI in real time. When the remote command exits non-zero,

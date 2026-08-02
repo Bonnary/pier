@@ -105,7 +105,9 @@ const ClockSyncThreshold = 60
 // when they differ by more than ClockSyncThreshold seconds, force-sets
 // the remote clock from the local one under sudo (`date -s @<epoch>`).
 // Needs sudo only when a correction is required. On correction it
-// re-reads the remote epoch and emits one line via onStdout:
+// re-reads the remote epoch, verifies the skew is now within
+// ClockSyncThreshold (erroring out if the set did not apply), and
+// emits one line via onStdout:
 // `remote clock was Ns off; corrected to <RFC3339>`.
 func EnsureClockSynced(ctx context.Context, r stdinRunner, password string, onStdout, onStderr func(string)) error {
 	read := func() (int64, error) {
@@ -137,6 +139,13 @@ func EnsureClockSynced(ctx context.Context, r stdinRunner, password string, onSt
 	remote, err = read()
 	if err != nil {
 		return err
+	}
+	verified := local - remote
+	if verified < 0 {
+		verified = -verified
+	}
+	if verified > ClockSyncThreshold {
+		return fmt.Errorf("sync remote clock: still %ds off after setting date", verified)
 	}
 	if onStdout != nil {
 		onStdout(fmt.Sprintf("remote clock was %ds off; corrected to %s", skew, time.Unix(remote, 0).Format(time.RFC3339)))

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -152,9 +153,14 @@ func TestRunStreamRealServer(t *testing.T) {
 	}
 	defer client.Close()
 	var lines []string
+	var mu sync.Mutex
 	err = client.RunStream(context.Background(),
 		"printf 'out\n'; printf 'err\n' >&2; exit 7",
-		func(l string) { lines = append(lines, l) })
+		func(l string) {
+			mu.Lock()
+			defer mu.Unlock()
+			lines = append(lines, l)
+		})
 	if err == nil {
 		t.Fatal("RunStream(exit 7) = nil error, want non-nil")
 	}

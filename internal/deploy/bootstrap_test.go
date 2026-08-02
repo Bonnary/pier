@@ -16,18 +16,23 @@ import (
 // scriptedRunner answers commands by substring match. A command that
 // matches no step fails with a generic ExitError (like a missing
 // binary). runErr simulates a session-level failure (non-exit).
+// Steps with stdoutSeq return successive values from the slice per
+// match (staying on the last element once exhausted), so tests can
+// script distinct read responses.
 type scriptedRunner struct {
-	cmds   []string
-	stdins []string
-	script []scriptedStep
-	runErr error
+	cmds     []string
+	stdins   []string
+	script   []scriptedStep
+	runErr   error
+	consumed []int
 }
 
 type scriptedStep struct {
-	match  string
-	ok     bool
-	stdout string
-	stderr string
+	match     string
+	ok        bool
+	stdout    string
+	stdoutSeq []string
+	stderr    string
 }
 
 func (f *scriptedRunner) Run(ctx context.Context, cmd string) ([]byte, []byte, error) {
@@ -69,12 +74,24 @@ func (f *scriptedRunner) respond(cmd, stdin string) ([]byte, []byte, error) {
 	if f.runErr != nil {
 		return nil, nil, f.runErr
 	}
-	for _, s := range f.script {
+	for i, s := range f.script {
 		if strings.Contains(cmd, s.match) {
-			if !s.ok {
-				return []byte(s.stdout), []byte(s.stderr), &ssh.ExitError{}
+			stdout := s.stdout
+			if len(s.stdoutSeq) > 0 {
+				if f.consumed == nil {
+					f.consumed = make([]int, len(f.script))
+				}
+				idx := f.consumed[i]
+				if idx >= len(s.stdoutSeq) {
+					idx = len(s.stdoutSeq) - 1
+				}
+				f.consumed[i] = idx + 1
+				stdout = s.stdoutSeq[idx] + "\n"
 			}
-			return []byte(s.stdout), []byte(s.stderr), nil
+			if !s.ok {
+				return []byte(stdout), []byte(s.stderr), &ssh.ExitError{}
+			}
+			return []byte(stdout), []byte(s.stderr), nil
 		}
 	}
 	return nil, nil, &ssh.ExitError{}
@@ -705,7 +722,7 @@ func TestEnsureClockSyncedInSync(t *testing.T) {
 func TestEnsureClockSyncedCorrectsSkew(t *testing.T) {
 	now := time.Now().Unix()
 	r := &scriptedRunner{script: []scriptedStep{
-		{match: "date +%s", ok: true, stdout: fmt.Sprintf("%d\n", now-86400)},
+		{match: "date +%s", ok: true, stdoutSeq: []string{fmt.Sprintf("%d", now-86400), fmt.Sprintf("%d", now)}},
 		{match: "date -s", ok: true},
 	}}
 	var out []string
@@ -767,12 +784,75 @@ func TestEnsureClockSyncedSetFailure(t *testing.T) {
 	}
 }
 
+func TestEnsureClockSyncedSetNotApplied(t *testing.T) {
+	now := time.Now().Unix()
+	r := &scriptedRunner{script: []scriptedStep{
+		{match: "date +%s", ok: true, stdoutSeq: []string{fmt.Sprintf("%d", now-86400), fmt.Sprintf("%d", now-86400)}},
+		{match: "date -s", ok: true},
+	}}
+	var out []string
+	err := EnsureClockSynced(context.Background(), r, "pw",
+		func(l string) { out = append(out, l) }, nil)
+	if err == nil {
+		t.Fatal("EnsureClockSynced(set not applied) = nil, want error")
+	}
+	if !strings.Contains(err.Error(), "sync remote clock") {
+		t.Errorf("err %q missing wrap `sync remote clock`", err.Error())
+	}
+	if len(out) != 0 {
+		t.Errorf("correction line emitted despite stale re-read: %v", out)
+	}
+}
+
+// Boundary determinism: the test's time.Now() runs before the
+// implementation's, so skew = |implLocal - scripted| is the scripted
+// offset ± (0 or 1) second — 59 scripted means skew ∈ {59, 60} (≤ 60,
+// in sync, no set), 61 means skew ∈ {61, 62} (> 60, must correct).
+func TestEnsureClockSyncedAtThresholdInSync(t *testing.T) {
+	now := time.Now().Unix()
+	r := &scriptedRunner{script: []scriptedStep{{
+		match: "date +%s", ok: true, stdout: fmt.Sprintf("%d\n", now-59),
+	}}}
+	if err := EnsureClockSynced(context.Background(), r, "pw", nil, nil); err != nil {
+		t.Fatalf("EnsureClockSynced: %v", err)
+	}
+	if len(r.cmds) != 1 {
+		t.Errorf("cmds = %d, want exactly 1 — `date -s` must not run when skew is at the 60s boundary", len(r.cmds))
+	}
+	if len(r.stdins) != 0 {
+		t.Errorf("stdins = %q, want none (no sudo in the in-sync path)", r.stdins)
+	}
+}
+
+func TestEnsureClockSyncedAtThresholdCorrects(t *testing.T) {
+	now := time.Now().Unix()
+	r := &scriptedRunner{script: []scriptedStep{
+		{match: "date +%s", ok: true, stdoutSeq: []string{fmt.Sprintf("%d", now-61), fmt.Sprintf("%d", now)}},
+		{match: "date -s", ok: true},
+	}}
+	if err := EnsureClockSynced(context.Background(), r, "pw", nil, nil); err != nil {
+		t.Fatalf("EnsureClockSynced: %v", err)
+	}
+	if len(r.cmds) != 3 {
+		t.Errorf("cmds = %d, want 3 (read, set, re-read)", len(r.cmds))
+	}
+	set := false
+	for _, cmd := range r.cmds {
+		if strings.Contains(cmd, "date -s @") {
+			set = true
+		}
+	}
+	if !set {
+		t.Errorf("no `date -s @` issued despite skew > 60: %v", r.cmds)
+	}
+}
+
 func TestBootstrapEnvSyncsClockBeforeProvision(t *testing.T) {
 	orig := dialBootstrap
 	defer func() { dialBootstrap = orig }()
 	conn := &fakeConn{scriptedRunner: &scriptedRunner{script: []scriptedStep{
 		{match: "sudo -S -v", ok: true},
-		{match: "date +%s", ok: true, stdout: fmt.Sprintf("%d\n", time.Now().Unix()-86400)},
+		{match: "date +%s", ok: true, stdoutSeq: []string{fmt.Sprintf("%d", time.Now().Unix()-86400), fmt.Sprintf("%d", time.Now().Unix())}},
 		{match: "date -s", ok: true},
 		{match: "get.docker.com", ok: true},
 		{match: "usermod", ok: true},
