@@ -25,6 +25,12 @@ var pipelineDial = func(ctx context.Context, cfg SSHConfig) (bootstrapConn, erro
 // into the deploy pipeline's preflight phase.
 var pipelineProbe = ProbeBootstrap
 
+// pipelineEnsurePath is a seam for tests to inject a fake path-ensure
+// step into the deploy pipeline's preflight phase.
+var pipelineEnsurePath = func(ctx context.Context, c *Client, path string) error {
+	return EnsureDeployPath(ctx, c, path)
+}
+
 // Pipeline is the top-level deploy driver. One Pipeline is constructed
 // per `pier deploy <env>` invocation and Run is called exactly once.
 type Pipeline struct {
@@ -117,10 +123,12 @@ func (p *Pipeline) Run(ctx context.Context) error {
 	return nil
 }
 
-// preflight validates SSH config, dials the host, and probes for a
-// bootstrapped server (docker accessible without sudo). Unbootstrapped
-// hosts fail fast with NotBootstrappedError instead of hanging on a
-// hidden sudo prompt during the build phase.
+// preflight validates SSH config, dials the host, probes for a
+// bootstrapped server (docker accessible without sudo), and ensures
+// the deploy path exists. Unbootstrapped hosts fail fast with
+// NotBootstrappedError instead of hanging on a hidden sudo prompt
+// during the build phase; an unwritable deploy path fails with an
+// actionable error naming the exact commands to fix it.
 func (p *Pipeline) preflight(ctx context.Context) (*Client, error) {
 	if p.SSH.Host == "" {
 		return nil, fmt.Errorf("deploy.%s.host is empty", p.Env)
@@ -145,6 +153,13 @@ func (p *Pipeline) preflight(ctx context.Context) (*Client, error) {
 	if !ok {
 		conn.Close()
 		return nil, fmt.Errorf("internal: dial returned %T, want *Client", conn)
+	}
+	if err := pipelineEnsurePath(ctx, client, p.DeployEnv.Path); err != nil {
+		client.Close()
+		return nil, fmt.Errorf(
+			"deploy path %s on %s is not writable for %s.\nCreate it once with:\n  sudo mkdir -p %s\n  sudo chown %s:%s %s\n(or re-run `pier bootstrap %s` to create it automatically.)",
+			p.DeployEnv.Path, p.SSH.Host, p.SSH.User,
+			p.DeployEnv.Path, p.SSH.User, p.SSH.User, p.DeployEnv.Path, p.Env)
 	}
 	return client, nil
 }

@@ -328,6 +328,14 @@ func TestPreflightAcceptsBootstrappedServer(t *testing.T) {
 	pipelineProbe = func(ctx context.Context, r stdinRunner) (bool, error) {
 		return ProbeBootstrap(ctx, conn.scriptedRunner)
 	}
+	origEnsure := pipelineEnsurePath
+	defer func() { pipelineEnsurePath = origEnsure }()
+	pipelineEnsurePath = func(ctx context.Context, c *Client, path string) error {
+		if path != "/srv/x" {
+			t.Errorf("ensure path = %q, want %q", path, "/srv/x")
+		}
+		return nil
+	}
 	p := &Pipeline{
 		Env:       "production",
 		DeployEnv: config.DeployConfig{Host: "h", User: "u", Path: "/srv/x"},
@@ -341,6 +349,76 @@ func TestPreflightAcceptsBootstrappedServer(t *testing.T) {
 		t.Error("preflight returned nil client, want non-nil")
 	}
 	client.Close()
+}
+
+func TestPreflightEnsuresDeployPath(t *testing.T) {
+	origDial := pipelineDial
+	defer func() { pipelineDial = origDial }()
+	conn := &fakeConn{scriptedRunner: &scriptedRunner{script: []scriptedStep{{match: "docker", ok: true}}}}
+	pipelineDial = func(ctx context.Context, cfg SSHConfig) (bootstrapConn, error) {
+		return &Client{Config: cfg}, nil
+	}
+	origProbe := pipelineProbe
+	defer func() { pipelineProbe = origProbe }()
+	pipelineProbe = func(ctx context.Context, r stdinRunner) (bool, error) {
+		return ProbeBootstrap(ctx, conn.scriptedRunner)
+	}
+	ensured := ""
+	origEnsure := pipelineEnsurePath
+	defer func() { pipelineEnsurePath = origEnsure }()
+	pipelineEnsurePath = func(ctx context.Context, c *Client, path string) error {
+		ensured = path
+		return nil
+	}
+	p := &Pipeline{
+		Env:       "production",
+		DeployEnv: config.DeployConfig{Host: "h", User: "u", Path: "/srv/x"},
+		SSH:       SSHConfig{Host: "h", User: "u", KeyPath: filepath.Join("testdata", "id_ed25519")},
+	}
+	client, err := p.preflight(context.Background())
+	if err != nil {
+		t.Fatalf("preflight: %v", err)
+	}
+	if ensured != "/srv/x" {
+		t.Errorf("ensured path = %q, want /srv/x", ensured)
+	}
+	client.Close()
+}
+
+func TestPreflightRejectsUnwritableDeployPath(t *testing.T) {
+	origDial := pipelineDial
+	defer func() { pipelineDial = origDial }()
+	conn := &fakeConn{scriptedRunner: &scriptedRunner{script: []scriptedStep{{match: "docker", ok: true}}}}
+	pipelineDial = func(ctx context.Context, cfg SSHConfig) (bootstrapConn, error) {
+		return &Client{Config: cfg}, nil
+	}
+	origProbe := pipelineProbe
+	defer func() { pipelineProbe = origProbe }()
+	pipelineProbe = func(ctx context.Context, r stdinRunner) (bool, error) {
+		return ProbeBootstrap(ctx, conn.scriptedRunner)
+	}
+	origEnsure := pipelineEnsurePath
+	defer func() { pipelineEnsurePath = origEnsure }()
+	pipelineEnsurePath = func(ctx context.Context, c *Client, path string) error {
+		return errors.New("mkdir /srv/x: permission denied")
+	}
+	p := &Pipeline{
+		Env:       "production",
+		DeployEnv: config.DeployConfig{Host: "h", User: "u", Path: "/srv/x"},
+		SSH:       SSHConfig{Host: "h", User: "u", KeyPath: filepath.Join("testdata", "id_ed25519")},
+	}
+	client, err := p.preflight(context.Background())
+	if err == nil {
+		t.Fatal("preflight(unwritable path) = nil error, want error")
+	}
+	for _, want := range []string{"/srv/x", "on h is not writable for u", "sudo mkdir -p /srv/x", "sudo chown u:u /srv/x", "pier bootstrap production"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("err %q missing %q", err.Error(), want)
+		}
+	}
+	if client != nil {
+		t.Error("preflight returned a client despite failure, want nil")
+	}
 }
 
 func equalStr(a, b []string) bool {
