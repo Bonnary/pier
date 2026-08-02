@@ -24,6 +24,11 @@
 
 - Hardcoded `reverb`, `log-viewer`, and `dumps` entries from the service registry. They are no longer in `pier service add` / `pier init` pickers. Use `[dev.services.<name>]` with a real image instead.
 
+### Fixed
+
+- `pier bootstrap` now force-syncs the remote clock when it drifts more than 60 seconds from the local clock, so a freshly-reset VM with a stale RTC no longer fails provisioning with `Release file ... is not valid yet`.
+- `pier deploy` build failures now include the tail of the remote build output, so docker compose validation errors (e.g. `refers to undefined volume`) reach the terminal instead of only an exit status.
+
 ## v0.0.1-beta (2026-07-27)
 
 Initial beta release.
