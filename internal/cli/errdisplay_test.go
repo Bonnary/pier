@@ -142,11 +142,27 @@ func TestPrintError_RemoteGenericHint(t *testing.T) {
 	}
 }
 
+func TestPrintError_RemoteDiskFullDeepNeedle(t *testing.T) {
+	w := &bytes.Buffer{}
+	base := fmt.Errorf("write /var/lib/docker: no space left on device")
+	err := fmt.Errorf("remote build failed: %w", deploy.RemoteBuildError("prod.example.com", base))
+	PrintError(w, err, false, false)
+	got := w.String()
+	want := "host prod.example.com is out of disk space: ssh in and run 'docker builder prune -af', then check 'docker system df'"
+	if !strings.Contains(got, want) {
+		t.Errorf("output missing disk-full hint %q for needle below ExitError wrap\nfull output:\n%s", want, got)
+	}
+}
+
 func TestPrintError_RemoteDiskFullWithoutExitError(t *testing.T) {
 	w := &bytes.Buffer{}
 	PrintError(w, fmt.Errorf("write /var/lib/docker: no space left on device"), false, false)
 	got := w.String()
-	if !strings.Contains(got, "out of disk space") {
-		t.Errorf("plain disk-full error should still get the disk-full hint:\n%s", got)
+	want := "this host is out of disk space: run 'docker builder prune -af', then check 'docker system df'"
+	if !strings.Contains(got, want) {
+		t.Errorf("plain disk-full error missing local hint %q\nfull output:\n%s", want, got)
+	}
+	if strings.Contains(got, "ssh in") {
+		t.Errorf("local disk-full error must not tell the user to ssh in:\n%s", got)
 	}
 }

@@ -73,11 +73,10 @@ const diskFullNeedle = "no space left on device"
 func resolveHint(ee *ExitError, chain []string) string {
 	for _, msg := range chain {
 		if strings.Contains(msg, diskFullNeedle) {
-			host := "the remote host"
 			if ee != nil && ee.RemoteHost != "" {
-				host = ee.RemoteHost
+				return fmt.Sprintf("host %s is out of disk space: ssh in and run 'docker builder prune -af', then check 'docker system df'", ee.RemoteHost)
 			}
-			return fmt.Sprintf("host %s is out of disk space: ssh in and run 'docker builder prune -af', then check 'docker system df'", host)
+			return "this host is out of disk space: run 'docker builder prune -af', then check 'docker system df'"
 		}
 	}
 	if ee != nil && ee.RemoteHost != "" {

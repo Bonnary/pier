@@ -107,6 +107,25 @@ func TestRemoteStatusHealthDown(t *testing.T) {
 	}
 }
 
+func TestRemoteStatusUnparseableState(t *testing.T) {
+	srv := healthServer(200)
+	defer srv.Close()
+	f := &fakeStatusRunner{resp: map[string]string{
+		"docker compose": "abc  app  Up",
+		"df -h":          "Filesystem  Size  Used",
+		"system df":      "Images  5  3",
+		"state.json":     "not json",
+	}}
+	_, err := RemoteStatus(context.Background(), config.DeployConfig{Path: "/srv/x"},
+		HealthConfig{URL: srv.URL, Timeout: 5 * time.Second, Interval: 10 * time.Millisecond, MaxAttempts: 1}, f)
+	if err == nil {
+		t.Fatal("RemoteStatus = nil error, want non-nil for unparseable state.json")
+	}
+	if !strings.Contains(err.Error(), "state.json parse") {
+		t.Errorf("error = %q, want mention of state.json parse", err)
+	}
+}
+
 func TestRemoteStatusCommandFailure(t *testing.T) {
 	f := &fakeStatusRunner{err: errors.New("boom")}
 	_, err := RemoteStatus(context.Background(), config.DeployConfig{Path: "/srv/x"},

@@ -36,8 +36,10 @@ type StatusReport struct {
 // HTTP health check against health.URL. A missing state file is
 // normal (a project with no deploys yet) and yields a nil State. A
 // failed health probe sets Healthy=false instead of failing the
-// probe; a failed probe command (compose, df, docker system df, or
-// an unreadable state file) returns an error.
+// probe; a failed probe command (compose, df, or docker system df)
+// returns an error. For the state file, a failed `cat` (e.g. no
+// deploys yet) yields a nil State; output that cannot be parsed
+// returns an error.
 func RemoteStatus(ctx context.Context, de config.DeployConfig, health HealthConfig, r StatusRunner) (*StatusReport, error) {
 	rep := &StatusReport{}
 
