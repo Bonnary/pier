@@ -4,6 +4,15 @@
 
 ### Added
 
+- SSH password auth fallback: when a deploy host rejects the SSH key
+  (or no key exists), `pier deploy`, `pier rollback`, `pier status <env>`,
+  and `pier bootstrap` prompt once for the password and connect with
+  `password` / `keyboard-interactive` auth. The password is never
+  stored. Cancelling the prompt exits 130.
+- Deploy file sync now runs over SFTP on pier's own SSH connection
+  instead of the `rsync` subprocess, so no local `ssh`/`rsync` binary
+  is required. `.env.production` is now actually synced (the old
+  rsync exclude ordering dropped it).
 - Application logo (`assets/logo.png`) is now embedded into the binary via `go:embed` in the new `assets` package and surfaced on the README so pier has a recognizable brand.
 - Comprehensive Go doc comments on every package and on every exported type, function, and method. `go doc ./...` now produces a complete reference (cmd/pier, internal/cli, internal/config, internal/deploy, internal/docker, internal/portcheck, internal/compose, internal/stack, internal/stack/laravel, internal/tui).
 - `pier status <env>` probes a remote deploy host over SSH: container state, deploy-path and docker disk usage, a one-shot health check, and the last deploy record from `.pier/state.json`. `pier status` with no env still shows local status only.

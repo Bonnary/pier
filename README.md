@@ -67,7 +67,8 @@ Docker CLI.
   from the CLI. Idempotent.
 - **`pier deploy <env>`** — Build, sync, up, health-check, and
   commit a production image tag over SSH. A Bubble Tea TUI shows
-  live phase progress.
+  live phase progress. Key auth is tried first; password-only
+  servers get an interactive prompt.
 - **`pier bootstrap [env...]`** — One-time server provisioning:
   installs Docker Engine + the compose plugin over SSH and grants
   the deploy user passwordless docker access (hidden one-time sudo
@@ -102,9 +103,12 @@ Docker CLI.
   Desktop on macOS/Windows; Docker Engine on Linux). On remote
   servers this comes from `pier bootstrap <env>` — the deploy user
   needs password-protected sudo once for the one-time install.
-- **OpenSSH** client (`ssh`, `rsync`-over-ssh) for `pier deploy` and
-  `pier rollback`. `pier` uses the host's `~/.ssh/id_ed25519` by
-  default; override with `--ssh-key` or `$DEPLOY_SSH_KEY`.
+- **SSH access to the deploy host.** `pier` uses the host's
+  `~/.ssh/id_ed25519` by default; override with `$DEPLOY_SSH_KEY`.
+  If the server rejects the key, `pier` falls back to a one-time
+  interactive password prompt (echo disabled; never stored). File
+  sync runs over SFTP on pier's own connection — no local `ssh` or
+  `rsync` binaries are required.
 - **A Laravel project** — `pier init` requires a `composer.json`
   that requires `laravel/framework` and an `artisan` file at the
   project root.
@@ -384,7 +388,9 @@ go doc ./...
   at fault.
 - **"ssh: handshake failed"** — run `pier status`, check
   `~/.ssh/id_ed25519` perms (`chmod 600`), and confirm the host is
-  reachable.
+  reachable. Password-only servers are handled automatically: pier
+  prompts for the password after key auth is rejected — no key
+  setup needed on the server.
 - **"server not bootstrapped"** on `pier deploy` — run
   `pier bootstrap <env>` once on the server. The deploy user needs
   password-protected sudo for the one-time Docker install.
