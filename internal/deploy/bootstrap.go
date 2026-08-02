@@ -60,14 +60,17 @@ func classifySudoErr(stderr []byte, err error) error {
 	}
 }
 
-// runSudo executes cmd via `sudo -S sh -c '<cmd>'` with the password
-// piped on the session's stdin — never on the command line. Embedded
-// apostrophes are escaped so they cannot break out of the single-quoted
-// sh -c argument.
-func runSudo(ctx context.Context, r stdinRunner, password, cmd string) error {
+// runSudo executes cmd via `sudo -S -p '' sh -c '<cmd>'` with the
+// password piped on the session's stdin — never on the command
+// line — streaming each output line to the callbacks. `-p ''`
+// suppresses sudo's own password prompt (the password is already
+// piped). Embedded apostrophes are escaped so they cannot break out
+// of the single-quoted sh -c argument. On failure the captured
+// stderr is classified into the bootstrap sentinels.
+func runSudo(ctx context.Context, r stdinRunner, password, cmd string, onStdout, onStderr func(string)) error {
 	cmd = strings.ReplaceAll(cmd, "'", `'\''`)
-	full := fmt.Sprintf("sudo -S sh -c '%s'", cmd)
-	_, stderr, err := r.RunStdin(ctx, full, password+"\n")
+	full := fmt.Sprintf("sudo -S -p '' sh -c '%s'", cmd)
+	stderr, err := r.RunStreamStdin(ctx, full, password+"\n", onStdout, onStderr)
 	if err != nil {
 		return classifySudoErr(stderr, err)
 	}
@@ -76,8 +79,8 @@ func runSudo(ctx context.Context, r stdinRunner, password, cmd string) error {
 
 // ValidateSudo proves the password works by running `sudo -S -v`.
 // Returns ErrSudoWrongPassword or ErrSudoNotSudoers on failure.
-func ValidateSudo(ctx context.Context, r stdinRunner, password string) error {
-	_, stderr, err := r.RunStdin(ctx, "sudo -S -v", password+"\n")
+func ValidateSudo(ctx context.Context, r stdinRunner, password string, onStdout, onStderr func(string)) error {
+	stderr, err := r.RunStreamStdin(ctx, "sudo -S -v", password+"\n", onStdout, onStderr)
 	if err != nil {
 		return classifySudoErr(stderr, err)
 	}
@@ -87,11 +90,11 @@ func ValidateSudo(ctx context.Context, r stdinRunner, password string) error {
 // Provision installs Docker Engine + the compose plugin with the
 // official get.docker.com script and adds user to the docker group,
 // both under sudo. Idempotent — safe to re-run with --force.
-func Provision(ctx context.Context, r stdinRunner, password, user string) error {
-	if err := runSudo(ctx, r, password, "curl -fsSL https://get.docker.com | sh"); err != nil {
+func Provision(ctx context.Context, r stdinRunner, password, user string, onStdout, onStderr func(string)) error {
+	if err := runSudo(ctx, r, password, "curl -fsSL https://get.docker.com | sh", onStdout, onStderr); err != nil {
 		return fmt.Errorf("install docker: %w", err)
 	}
-	if err := runSudo(ctx, r, password, "usermod -aG docker "+strconv.Quote(user)); err != nil {
+	if err := runSudo(ctx, r, password, "usermod -aG docker "+strconv.Quote(user), onStdout, onStderr); err != nil {
 		return fmt.Errorf("add user to docker group: %w", err)
 	}
 	return nil
@@ -101,9 +104,9 @@ func Provision(ctx context.Context, r stdinRunner, password, user string) error 
 // present, and the user is a member of the docker group. Group
 // membership only applies to new SSH connections, so the group file
 // is checked directly (getent) instead of re-running docker.
-func VerifyBootstrap(ctx context.Context, r stdinRunner, password, user string) error {
+func VerifyBootstrap(ctx context.Context, r stdinRunner, password, user string, onStdout, onStderr func(string)) error {
 	cmd := fmt.Sprintf("docker info && docker compose version && getent group docker | grep -qw %s", strconv.Quote(user))
-	if err := runSudo(ctx, r, password, cmd); err != nil {
+	if err := runSudo(ctx, r, password, cmd, onStdout, onStderr); err != nil {
 		return fmt.Errorf("verify: %w", err)
 	}
 	return nil
@@ -127,6 +130,10 @@ type BootstrapOpts struct {
 	Force bool
 	// User is the deploy user that gets docker group membership.
 	User string
+	// OnStdout/OnStderr stream each remote output line as it
+	// arrives; may be nil.
+	OnStdout func(string)
+	OnStderr func(string)
 }
 
 // BootstrapEnv runs the full one-time provisioning flow for one
@@ -148,13 +155,13 @@ func BootstrapEnv(ctx context.Context, cfg SSHConfig, password string, opts Boot
 			return ErrAlreadyBootstrapped
 		}
 	}
-	if err := ValidateSudo(ctx, client, password); err != nil {
+	if err := ValidateSudo(ctx, client, password, opts.OnStdout, opts.OnStderr); err != nil {
 		return err
 	}
-	if err := Provision(ctx, client, password, opts.User); err != nil {
+	if err := Provision(ctx, client, password, opts.User, opts.OnStdout, opts.OnStderr); err != nil {
 		return err
 	}
-	return VerifyBootstrap(ctx, client, password, opts.User)
+	return VerifyBootstrap(ctx, client, password, opts.User, opts.OnStdout, opts.OnStderr)
 }
 
 // ProbeEnv dials cfg and runs the bootstrap probe. Convenience for

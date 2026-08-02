@@ -118,7 +118,7 @@ func TestProbeBootstrapSessionFailure(t *testing.T) {
 
 func TestValidateSudoOK(t *testing.T) {
 	r := &scriptedRunner{script: []scriptedStep{{match: "sudo -S -v", ok: true}}}
-	if err := ValidateSudo(context.Background(), r, "sekrit"); err != nil {
+	if err := ValidateSudo(context.Background(), r, "sekrit", nil, nil); err != nil {
 		t.Fatalf("ValidateSudo: %v", err)
 	}
 	if len(r.stdins) != 1 || r.stdins[0] != "sekrit\n" {
@@ -130,7 +130,7 @@ func TestValidateSudoWrongPassword(t *testing.T) {
 	r := &scriptedRunner{script: []scriptedStep{{
 		match: "sudo -S -v", ok: false, stderr: "Sorry, try again.",
 	}}}
-	err := ValidateSudo(context.Background(), r, "nope")
+	err := ValidateSudo(context.Background(), r, "nope", nil, nil)
 	if !errors.Is(err, ErrSudoWrongPassword) {
 		t.Errorf("ValidateSudo = %v, want ErrSudoWrongPassword", err)
 	}
@@ -141,7 +141,7 @@ func TestValidateSudoNotInSudoers(t *testing.T) {
 		match: "sudo -S -v", ok: false,
 		stderr: "deploy is not in the sudoers file. This incident will be reported.",
 	}}}
-	err := ValidateSudo(context.Background(), r, "pw")
+	err := ValidateSudo(context.Background(), r, "pw", nil, nil)
 	if !errors.Is(err, ErrSudoNotSudoers) {
 		t.Errorf("ValidateSudo = %v, want ErrSudoNotSudoers", err)
 	}
@@ -152,11 +152,11 @@ func TestProvisionRunsInstallAndUsermod(t *testing.T) {
 		{match: "get.docker.com", ok: true},
 		{match: "usermod -aG docker", ok: true},
 	}}
-	if err := Provision(context.Background(), r, "pw", "deploy"); err != nil {
+	if err := Provision(context.Background(), r, "pw", "deploy", nil, nil); err != nil {
 		t.Fatalf("Provision: %v", err)
 	}
 	joined := strings.Join(r.cmds, "\n")
-	if !strings.Contains(joined, "sudo -S sh -c") {
+	if !strings.Contains(joined, "sudo -S -p '' sh -c") {
 		t.Errorf("commands not run through sudo -S sh -c:\n%s", joined)
 	}
 	if !strings.Contains(joined, "curl -fsSL https://get.docker.com | sh") {
@@ -173,8 +173,8 @@ func TestProvisionRunsInstallAndUsermod(t *testing.T) {
 }
 
 func TestRunSudoEscapesApostrophes(t *testing.T) {
-	r := &scriptedRunner{script: []scriptedStep{{match: "sudo -S sh -c", ok: true}}}
-	err := runSudo(context.Background(), r, "pw", `usermod -aG docker "O'Brien"`)
+	r := &scriptedRunner{script: []scriptedStep{{match: "sudo -S -p '' sh -c", ok: true}}}
+	err := runSudo(context.Background(), r, "pw", `usermod -aG docker "O'Brien"`, nil, nil)
 	if err != nil {
 		t.Fatalf("runSudo: %v", err)
 	}
@@ -191,7 +191,7 @@ func TestRunSudoEscapesApostrophes(t *testing.T) {
 
 func TestVerifyBootstrapChecksDaemonPluginGroup(t *testing.T) {
 	r := &scriptedRunner{script: []scriptedStep{{match: "getent group docker", ok: true}}}
-	if err := VerifyBootstrap(context.Background(), r, "pw", "deploy"); err != nil {
+	if err := VerifyBootstrap(context.Background(), r, "pw", "deploy", nil, nil); err != nil {
 		t.Fatalf("VerifyBootstrap: %v", err)
 	}
 	joined := strings.Join(r.cmds, "\n")
@@ -359,6 +359,84 @@ func equalStr(a, b []string) bool {
 // contract the bootstrap layer relies on: stdin is piped, stdout and
 // stderr lines reach their callbacks, and stderr is returned whole
 // for error classification.
+func TestRunSudoStreamsOutputAndClassifies(t *testing.T) {
+	var out, errOut []string
+	r := &scriptedRunner{script: []scriptedStep{{
+		match: "sudo -S -p '' sh -c", ok: false,
+		stdout: "Downloading...\nExtracting...\n",
+		stderr: "Sorry, try again.\n",
+	}}}
+	err := runSudo(context.Background(), r, "pw", "apt-get update",
+		func(l string) { out = append(out, l) },
+		func(l string) { errOut = append(errOut, l) })
+	if !errors.Is(err, ErrSudoWrongPassword) {
+		t.Fatalf("runSudo = %v, want ErrSudoWrongPassword", err)
+	}
+	if !equalStr(out, []string{"Downloading...", "Extracting..."}) {
+		t.Errorf("stdout lines = %v, want [Downloading... Extracting...]", out)
+	}
+	if !equalStr(errOut, []string{"Sorry, try again."}) {
+		t.Errorf("stderr lines = %v, want [Sorry, try again.]", errOut)
+	}
+	if len(r.stdins) != 1 || r.stdins[0] != "pw\n" {
+		t.Errorf("stdins = %q, want [pw\n]", r.stdins)
+	}
+}
+
+func TestRunSudoSuppressesPrompt(t *testing.T) {
+	r := &scriptedRunner{script: []scriptedStep{{match: "sudo -S -p '' sh -c", ok: true}}}
+	if err := runSudo(context.Background(), r, "pw", "true", nil, nil); err != nil {
+		t.Fatalf("runSudo: %v", err)
+	}
+	if len(r.cmds) != 1 || !strings.Contains(r.cmds[0], "sudo -S -p '' sh -c") {
+		t.Errorf("command %q missing -p '' prompt suppression", r.cmds)
+	}
+}
+
+func TestProvisionForwardsCallbacks(t *testing.T) {
+	var lines []string
+	r := &scriptedRunner{script: []scriptedStep{
+		{match: "get.docker.com", ok: true, stdout: "install line\n"},
+		{match: "usermod", ok: true},
+	}}
+	err := Provision(context.Background(), r, "pw", "deploy",
+		func(l string) { lines = append(lines, l) },
+		func(l string) { lines = append(lines, "ERR:"+l) })
+	if err != nil {
+		t.Fatalf("Provision: %v", err)
+	}
+	if !equalStr(lines, []string{"install line"}) {
+		t.Errorf("callback lines = %v, want [install line]", lines)
+	}
+}
+
+func TestBootstrapEnvStreamsOutput(t *testing.T) {
+	orig := dialBootstrap
+	defer func() { dialBootstrap = orig }()
+	conn := &fakeConn{scriptedRunner: &scriptedRunner{script: []scriptedStep{
+		{match: "sudo -S -v", ok: true},
+		{match: "get.docker.com", ok: true, stdout: "installing\n"},
+		{match: "usermod", ok: true},
+		{match: "getent group docker", ok: true, stdout: "verify ok\n"},
+	}}}
+	dialBootstrap = func(ctx context.Context, cfg SSHConfig) (bootstrapConn, error) { return conn, nil }
+	var out, errOut []string
+	err := BootstrapEnv(context.Background(), SSHConfig{Host: "h", User: "u"}, "pw", BootstrapOpts{
+		User:     "u",
+		OnStdout: func(l string) { out = append(out, l) },
+		OnStderr: func(l string) { errOut = append(errOut, l) },
+	})
+	if err != nil {
+		t.Fatalf("BootstrapEnv: %v", err)
+	}
+	if !equalStr(out, []string{"installing", "verify ok"}) {
+		t.Errorf("stdout lines = %v, want [installing verify ok]", out)
+	}
+	if len(errOut) != 0 {
+		t.Errorf("stderr lines = %v, want none", errOut)
+	}
+}
+
 func TestScriptedRunnerStreamsLines(t *testing.T) {
 	r := &scriptedRunner{script: []scriptedStep{{
 		match: "sudo -S -p ''", ok: true,
