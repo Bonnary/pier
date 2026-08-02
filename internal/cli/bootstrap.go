@@ -77,6 +77,7 @@ func runBootstrap(cmd *cobra.Command, args []string, f *bootstrapFlags) error {
 		err = bootstrapEnvFn(cmd.Context(), sshCfg, pw, deploy.BootstrapOpts{
 			User:     dc.User,
 			Force:    f.force,
+			Path:     dc.Path,
 			OnStdout: func(line string) { fmt.Fprintln(cmd.OutOrStdout(), line) },
 			OnStderr: func(line string) { fmt.Fprintln(cmd.ErrOrStderr(), line) },
 		})
@@ -88,6 +89,7 @@ func runBootstrap(cmd *cobra.Command, args []string, f *bootstrapFlags) error {
 			err = bootstrapEnvFn(cmd.Context(), sshCfg, pw, deploy.BootstrapOpts{
 				User:     dc.User,
 				Force:    f.force,
+				Path:     dc.Path,
 				OnStdout: func(line string) { fmt.Fprintln(cmd.OutOrStdout(), line) },
 				OnStderr: func(line string) { fmt.Fprintln(cmd.ErrOrStderr(), line) },
 			})

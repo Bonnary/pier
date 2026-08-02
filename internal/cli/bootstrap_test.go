@@ -193,6 +193,9 @@ func TestRunBootstrapProvisions(t *testing.T) {
 	if gotOpts.User != "deploy" || gotOpts.Force {
 		t.Errorf("opts = %+v, want {User: deploy, Force: false}", gotOpts)
 	}
+	if gotOpts.Path != "/srv/x" {
+		t.Errorf("opts.Path = %q, want %q", gotOpts.Path, "/srv/x")
+	}
 	if !contains(out.String(), "stage: done") {
 		t.Errorf("output = %q, want done message", out.String())
 	}
@@ -205,12 +208,14 @@ func TestRunBootstrapRetriesWrongPasswordOnce(t *testing.T) {
 	probeEnvFn = func(ctx context.Context, cfg deploy.SSHConfig) (bool, error) { return false, nil }
 	defer func() { probeEnvFn = origProbe }()
 	attempts := 0
+	var retriedOpts deploy.BootstrapOpts
 	origBootstrap := bootstrapEnvFn
 	bootstrapEnvFn = func(ctx context.Context, cfg deploy.SSHConfig, pw string, opts deploy.BootstrapOpts) error {
 		attempts++
 		if attempts == 1 {
 			return deploy.ErrSudoWrongPassword
 		}
+		retriedOpts = opts
 		return nil
 	}
 	defer func() { bootstrapEnvFn = origBootstrap }()
@@ -232,6 +237,9 @@ func TestRunBootstrapRetriesWrongPasswordOnce(t *testing.T) {
 	}
 	if attempts != 2 {
 		t.Errorf("bootstrapEnvFn attempts = %d, want 2", attempts)
+	}
+	if retriedOpts.Path != "/srv/x" {
+		t.Errorf("retry opts.Path = %q, want %q", retriedOpts.Path, "/srv/x")
 	}
 }
 
