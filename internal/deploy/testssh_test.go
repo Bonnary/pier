@@ -66,7 +66,7 @@ func serveTestSSHConn(nc net.Conn, scfg *ssh.ServerConfig) {
 
 func serveTestSSHChannel(ch ssh.NewChannel) {
 	if ch.ChannelType() != "session" {
-		ch.Reject(ssh.UnknownChannelType, "unsupported channel type")
+		_ = ch.Reject(ssh.UnknownChannelType, "unsupported channel type")
 		return
 	}
 	channel, reqs, err := ch.Accept()
@@ -78,13 +78,13 @@ func serveTestSSHChannel(ch ssh.NewChannel) {
 		switch req.Type {
 		case "subsystem":
 			if string(req.Payload[4:]) == "sftp" {
-				req.Reply(true, nil)
-				sftp.NewServer(channel)
+				_ = req.Reply(true, nil)
+				_, _ = sftp.NewServer(channel)
 				return
 			}
-			req.Reply(false, nil)
+			_ = req.Reply(false, nil)
 		case "exec", "shell", "env", "pty-req":
-			req.Reply(false, nil)
+			_ = req.Reply(false, nil)
 		}
 	}
 }
