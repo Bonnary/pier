@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"golang.org/x/term"
 )
@@ -57,6 +58,35 @@ func itoa(n int) string {
 		buf[i] = '-'
 	}
 	return string(buf[i:])
+}
+
+// diskFullNeedle is the classic ENOSPC message docker surfaces when a
+// host runs out of disk space (e.g. the buildx activity write that
+// fails during a remote build).
+const diskFullNeedle = "no space left on device"
+
+// resolveHint picks the remediation hint for an error render. A
+// disk-full failure anywhere in the chain gets a targeted prune hint;
+// a remote (SSH) command failure gets a remote-inspect hint; anything
+// else falls back to the kind hint (local docker errors keep the
+// `pier status` / `pier dev` hint).
+func resolveHint(ee *ExitError, chain []string) string {
+	for _, msg := range chain {
+		if strings.Contains(msg, diskFullNeedle) {
+			host := "the remote host"
+			if ee != nil && ee.RemoteHost != "" {
+				host = ee.RemoteHost
+			}
+			return fmt.Sprintf("host %s is out of disk space: ssh in and run 'docker builder prune -af', then check 'docker system df'", host)
+		}
+	}
+	if ee != nil && ee.RemoteHost != "" {
+		return fmt.Sprintf("command failed on %s: ssh in and run 'docker compose ps' / 'docker system df' to inspect", ee.RemoteHost)
+	}
+	if ee != nil {
+		return ee.Kind.Hint()
+	}
+	return ""
 }
 
 // PrintError writes a categorized, multi-line rendering of err to w.
@@ -146,7 +176,7 @@ func PrintError(w io.Writer, err error, verbose, color bool) {
 		}
 	}
 
-	hint := kind.Hint()
+	hint := resolveHint(ee, chain)
 	if hint != "" {
 		fmt.Fprintln(w, "  |")
 		fmt.Fprintln(w, "= hint: "+hint)

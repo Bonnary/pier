@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/Bonnary/pier/internal/deploy"
 )
 
 func TestAnsiColorDisabled(t *testing.T) {
@@ -108,5 +110,43 @@ func TestPrintError_Verbose_ShowsDuplicates(t *testing.T) {
 	got := w.String()
 	if !strings.Contains(got, "same") {
 		t.Errorf("verbose should show duplicate line: %q", got)
+	}
+}
+
+func TestPrintError_RemoteDiskFullHint(t *testing.T) {
+	w := &bytes.Buffer{}
+	base := fmt.Errorf("failed to update builder last activity time: write /home/host/.docker/buildx/activity/.tmp-default3263565124: no space left on device")
+	err := deploy.RemoteBuildError("prod.example.com", base)
+	PrintError(w, err, false, false)
+	got := w.String()
+	want := "host prod.example.com is out of disk space: ssh in and run 'docker builder prune -af', then check 'docker system df'"
+	if !strings.Contains(got, want) {
+		t.Errorf("output missing disk-full hint %q\nfull output:\n%s", want, got)
+	}
+	if strings.Contains(got, "pier dev") {
+		t.Errorf("disk-full error must not show local pier hint:\n%s", got)
+	}
+}
+
+func TestPrintError_RemoteGenericHint(t *testing.T) {
+	w := &bytes.Buffer{}
+	err := deploy.RemoteUpError("prod.example.com", errors.New("compose up failed"))
+	PrintError(w, err, false, false)
+	got := w.String()
+	want := "command failed on prod.example.com: ssh in and run 'docker compose ps' / 'docker system df' to inspect"
+	if !strings.Contains(got, want) {
+		t.Errorf("output missing remote hint %q\nfull output:\n%s", want, got)
+	}
+	if strings.Contains(got, "pier dev") {
+		t.Errorf("remote error must not show local pier hint:\n%s", got)
+	}
+}
+
+func TestPrintError_RemoteDiskFullWithoutExitError(t *testing.T) {
+	w := &bytes.Buffer{}
+	PrintError(w, fmt.Errorf("write /var/lib/docker: no space left on device"), false, false)
+	got := w.String()
+	if !strings.Contains(got, "out of disk space") {
+		t.Errorf("plain disk-full error should still get the disk-full hint:\n%s", got)
 	}
 }
