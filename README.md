@@ -71,7 +71,8 @@ Docker CLI.
 - **`pier bootstrap [env...]`** — One-time server provisioning:
   installs Docker Engine + the compose plugin over SSH and grants
   the deploy user passwordless docker access (hidden one-time sudo
-  password prompt; idempotent, `--all` / `--force`).
+  password prompt; installation output streams live; idempotent,
+  `--all` / `--force`).
 - **Automatic rollback** — Any failure in the `up` or `health`
   phase re-tags the previous image and re-deploys it before the
   command exits non-zero.
