@@ -65,3 +65,43 @@ func TestBootstrapRealServer(t *testing.T) {
 		t.Error("ProbeEnv after bootstrap = false, want true")
 	}
 }
+
+// TestRunStreamStdinRealServer streams stdout/stderr lines from a
+// real SSH session and returns captured stderr. Run with
+// PIER_TEST_SSH_HOST (see TestBootstrapRealServer).
+func TestRunStreamStdinRealServer(t *testing.T) {
+	host := os.Getenv("PIER_TEST_SSH_HOST")
+	if host == "" {
+		t.Skip("PIER_TEST_SSH_HOST not set")
+	}
+	user := os.Getenv("PIER_TEST_SSH_USER")
+	if user == "" {
+		user = "root"
+	}
+	key := os.Getenv("PIER_TEST_SSH_KEY")
+	if key == "" {
+		key = filepath.Join(os.Getenv("HOME"), ".ssh", "id_ed25519")
+	}
+	client, err := Dial(context.Background(), SSHConfig{Host: host, User: user, KeyPath: key})
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	defer client.Close()
+	var stdoutLines, stderrLines []string
+	stderr, err := client.RunStreamStdin(context.Background(),
+		"printf 'a\\nb\\n'; printf 'x\\ny\\n' >&2", "ignored\n",
+		func(l string) { stdoutLines = append(stdoutLines, l) },
+		func(l string) { stderrLines = append(stderrLines, l) })
+	if err != nil {
+		t.Fatalf("RunStreamStdin: %v", err)
+	}
+	if !equalStr(stdoutLines, []string{"a", "b"}) {
+		t.Errorf("stdout lines = %v, want [a b]", stdoutLines)
+	}
+	if !equalStr(stderrLines, []string{"x", "y"}) {
+		t.Errorf("stderr lines = %v, want [x y]", stderrLines)
+	}
+	if string(stderr) != "x\ny\n" {
+		t.Errorf("captured stderr = %q, want %q", stderr, "x\ny\n")
+	}
+}

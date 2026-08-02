@@ -120,6 +120,53 @@ func (c *Client) RunStdin(ctx context.Context, cmd string, stdin string) ([]byte
 	return stdout.Bytes(), stderr.Bytes(), nil
 }
 
+// RunStreamStdin executes cmd on the remote host with stdin piped
+// from the given string, invoking onStdout/onStderr for each line
+// as it arrives and returning the captured stderr. Used by bootstrap
+// to stream provisioning output while feeding the sudo password to
+// `sudo -S` without it ever appearing in the command string.
+func (c *Client) RunStreamStdin(ctx context.Context, cmd, stdin string, onStdout, onStderr func(string)) ([]byte, error) {
+	sess, err := c.conn.NewSession()
+	if err != nil {
+		return nil, fmt.Errorf("ssh: new session: %w", err)
+	}
+	defer sess.Close()
+	sess.Stdin = strings.NewReader(stdin)
+	stdout, err := sess.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
+	stderr, err := sess.StderrPipe()
+	if err != nil {
+		return nil, err
+	}
+	if err := sess.Start(cmd); err != nil {
+		return nil, err
+	}
+	var stderrBuf bytes.Buffer
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		sc := bufio.NewScanner(stderr)
+		for sc.Scan() {
+			line := sc.Text()
+			stderrBuf.WriteString(line)
+			stderrBuf.WriteByte('\n')
+			if onStderr != nil {
+				onStderr(line)
+			}
+		}
+	}()
+	sc := bufio.NewScanner(stdout)
+	for sc.Scan() {
+		if onStdout != nil {
+			onStdout(sc.Text())
+		}
+	}
+	<-done
+	return stderrBuf.Bytes(), sess.Wait()
+}
+
 // RunStream executes cmd on the remote host and invokes onLine for
 // each line of stdout as it arrives. Used by Build, which needs to
 // surface `docker compose build` progress in the deploy TUI in real
@@ -163,6 +210,7 @@ type runner interface {
 type stdinRunner interface {
 	Run(ctx context.Context, cmd string) ([]byte, []byte, error)
 	RunStdin(ctx context.Context, cmd string, stdin string) ([]byte, []byte, error)
+	RunStreamStdin(ctx context.Context, cmd, stdin string, onStdout, onStderr func(string)) ([]byte, error)
 }
 
 var _ stdinRunner = (*Client)(nil)

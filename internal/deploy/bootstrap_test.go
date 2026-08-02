@@ -36,6 +36,29 @@ func (f *scriptedRunner) RunStdin(ctx context.Context, cmd string, stdin string)
 	return f.respond(cmd, stdin)
 }
 
+func (f *scriptedRunner) RunStreamStdin(ctx context.Context, cmd, stdin string, onStdout, onStderr func(string)) ([]byte, error) {
+	stdout, stderr, err := f.respond(cmd, stdin)
+	for _, l := range splitLines(stdout) {
+		if onStdout != nil {
+			onStdout(l)
+		}
+	}
+	for _, l := range splitLines(stderr) {
+		if onStderr != nil {
+			onStderr(l)
+		}
+	}
+	return stderr, err
+}
+
+func splitLines(b []byte) []string {
+	s := strings.TrimSuffix(string(b), "\n")
+	if s == "" {
+		return nil
+	}
+	return strings.Split(s, "\n")
+}
+
 func (f *scriptedRunner) respond(cmd, stdin string) ([]byte, []byte, error) {
 	f.cmds = append(f.cmds, cmd)
 	f.stdins = append(f.stdins, stdin)
@@ -318,4 +341,47 @@ func TestPreflightAcceptsBootstrappedServer(t *testing.T) {
 		t.Error("preflight returned nil client, want non-nil")
 	}
 	client.Close()
+}
+
+func equalStr(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// TestScriptedRunnerStreamsLines pins the stdinRunner.RunStreamStdin
+// contract the bootstrap layer relies on: stdin is piped, stdout and
+// stderr lines reach their callbacks, and stderr is returned whole
+// for error classification.
+func TestScriptedRunnerStreamsLines(t *testing.T) {
+	r := &scriptedRunner{script: []scriptedStep{{
+		match: "sudo -S -p ''", ok: true,
+		stdout: "one\ntwo\n",
+		stderr: "warn\n",
+	}}}
+	var out, errOut []string
+	stderr, err := r.RunStreamStdin(context.Background(), "sudo -S -p '' true", "pw\n",
+		func(l string) { out = append(out, l) },
+		func(l string) { errOut = append(errOut, l) })
+	if err != nil {
+		t.Fatalf("RunStreamStdin: %v", err)
+	}
+	if !equalStr(out, []string{"one", "two"}) {
+		t.Errorf("stdout lines = %v, want [one two]", out)
+	}
+	if !equalStr(errOut, []string{"warn"}) {
+		t.Errorf("stderr lines = %v, want [warn]", errOut)
+	}
+	if string(stderr) != "warn\n" {
+		t.Errorf("captured stderr = %q, want %q", stderr, "warn\n")
+	}
+	if len(r.stdins) != 1 || r.stdins[0] != "pw\n" {
+		t.Errorf("stdins = %q, want [pw\n]", r.stdins)
+	}
 }
