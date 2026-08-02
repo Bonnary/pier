@@ -225,6 +225,7 @@ func TestBootstrapEnvProvisionsWhenNeeded(t *testing.T) {
 	defer func() { dialBootstrap = orig }()
 	conn := &fakeConn{scriptedRunner: &scriptedRunner{script: []scriptedStep{
 		{match: "sudo -S -v", ok: true},
+		{match: "date +%s", ok: true, stdout: fmt.Sprintf("%d\n", time.Now().Unix())},
 		{match: "get.docker.com", ok: true},
 		{match: "usermod", ok: true},
 		{match: "getent group docker", ok: true},
@@ -246,6 +247,7 @@ func TestBootstrapEnvForceReprovisions(t *testing.T) {
 		return &fakeConn{scriptedRunner: &scriptedRunner{script: []scriptedStep{
 			{match: "docker", ok: true}, // probe would pass, but Force skips it
 			{match: "sudo -S -v", ok: true},
+			{match: "date +%s", ok: true, stdout: fmt.Sprintf("%d\n", time.Now().Unix())},
 			{match: "get.docker.com", ok: true},
 			{match: "usermod", ok: true},
 			{match: "getent group docker", ok: true},
@@ -493,6 +495,7 @@ func TestBootstrapEnvStreamsOutput(t *testing.T) {
 	defer func() { dialBootstrap = orig }()
 	conn := &fakeConn{scriptedRunner: &scriptedRunner{script: []scriptedStep{
 		{match: "sudo -S -v", ok: true},
+		{match: "date +%s", ok: true, stdout: fmt.Sprintf("%d\n", time.Now().Unix())},
 		{match: "get.docker.com", ok: true, stdout: "installing\n"},
 		{match: "usermod", ok: true},
 		{match: "getent group docker", ok: true, stdout: "verify ok\n"},
@@ -631,6 +634,7 @@ func TestBootstrapEnvCreatesDeployPath(t *testing.T) {
 	defer func() { dialBootstrap = orig }()
 	conn := &fakeConn{scriptedRunner: &scriptedRunner{script: []scriptedStep{
 		{match: "sudo -S -v", ok: true},
+		{match: "date +%s", ok: true, stdout: fmt.Sprintf("%d\n", time.Now().Unix())},
 		{match: "get.docker.com", ok: true},
 		{match: "usermod", ok: true},
 		{match: "chown", ok: true},
@@ -664,6 +668,7 @@ func TestBootstrapEnvSkipsPathWhenEmpty(t *testing.T) {
 	defer func() { dialBootstrap = orig }()
 	conn := &fakeConn{scriptedRunner: &scriptedRunner{script: []scriptedStep{
 		{match: "sudo -S -v", ok: true},
+		{match: "date +%s", ok: true, stdout: fmt.Sprintf("%d\n", time.Now().Unix())},
 		{match: "get.docker.com", ok: true},
 		{match: "usermod", ok: true},
 		{match: "getent group docker", ok: true},
@@ -759,5 +764,53 @@ func TestEnsureClockSyncedSetFailure(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "sync remote clock") {
 		t.Errorf("err %q missing wrap `sync remote clock`", err.Error())
+	}
+}
+
+func TestBootstrapEnvSyncsClockBeforeProvision(t *testing.T) {
+	orig := dialBootstrap
+	defer func() { dialBootstrap = orig }()
+	conn := &fakeConn{scriptedRunner: &scriptedRunner{script: []scriptedStep{
+		{match: "sudo -S -v", ok: true},
+		{match: "date +%s", ok: true, stdout: fmt.Sprintf("%d\n", time.Now().Unix()-86400)},
+		{match: "date -s", ok: true},
+		{match: "get.docker.com", ok: true},
+		{match: "usermod", ok: true},
+		{match: "getent group docker", ok: true},
+	}}}
+	dialBootstrap = func(ctx context.Context, cfg SSHConfig) (bootstrapConn, error) { return conn, nil }
+	var out []string
+	err := BootstrapEnv(context.Background(), SSHConfig{Host: "h", User: "u"}, "pw", BootstrapOpts{
+		User:     "u",
+		OnStdout: func(l string) { out = append(out, l) },
+	})
+	if err != nil {
+		t.Fatalf("BootstrapEnv: %v", err)
+	}
+	firstRead, setIdx, installIdx := -1, -1, -1
+	for i, cmd := range conn.cmds {
+		switch {
+		case strings.Contains(cmd, "date +%s"):
+			if firstRead < 0 {
+				firstRead = i
+			}
+		case strings.Contains(cmd, "date -s"):
+			setIdx = i
+		case strings.Contains(cmd, "get.docker.com"):
+			installIdx = i
+		}
+	}
+	if !(firstRead >= 0 && firstRead < setIdx && setIdx < installIdx) {
+		t.Errorf("step order wrong: read=%d set=%d install=%d, want read < set < install",
+			firstRead, setIdx, installIdx)
+	}
+	found := false
+	for _, l := range out {
+		if strings.HasPrefix(l, "remote clock was ") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("correction line missing from OnStdout output %v", out)
 	}
 }

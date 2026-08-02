@@ -223,8 +223,8 @@ type BootstrapOpts struct {
 }
 
 // BootstrapEnv runs the full one-time provisioning flow for one
-// server: probe (unless Force), sudo validation, provision, deploy
-// path creation (unless Path is empty), verify. Returns
+// server: probe (unless Force), sudo validation, clock sync, provision,
+// deploy path creation (unless Path is empty), verify. Returns
 // ErrAlreadyBootstrapped when the probe passes and Force is false.
 func BootstrapEnv(ctx context.Context, cfg SSHConfig, password string, opts BootstrapOpts) error {
 	client, err := dialBootstrap(ctx, cfg)
@@ -242,6 +242,9 @@ func BootstrapEnv(ctx context.Context, cfg SSHConfig, password string, opts Boot
 		}
 	}
 	if err := ValidateSudo(ctx, client, password, opts.OnStdout, opts.OnStderr); err != nil {
+		return err
+	}
+	if err := EnsureClockSynced(ctx, client, password, opts.OnStdout, opts.OnStderr); err != nil {
 		return err
 	}
 	if err := Provision(ctx, client, password, opts.User, opts.OnStdout, opts.OnStderr); err != nil {
