@@ -88,7 +88,9 @@ func Dial(ctx context.Context, cfg SSHConfig) (*Client, error) {
 	}
 	pw, ok, err := passwordFor(cfg)
 	if err != nil {
-		return nil, err
+		// An interactive cancel surfaces as an abort so the CLI
+		// exits 130 instead of a preflight error.
+		return nil, AbortedError()
 	}
 	if !ok {
 		if firstErr != nil {
