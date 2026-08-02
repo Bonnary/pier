@@ -570,6 +570,10 @@ func TestProvisionDeployPathCommand(t *testing.T) {
 		t.Fatalf("ProvisionDeployPath: %v", err)
 	}
 	joined := strings.Join(r.cmds, "\n")
+	// runSudo's outer quoteShell layer double-escapes the path's own
+	// quoting; these want-strings assert the recorded transport-encoded
+	// form. The decoded remote command is
+	// `mkdir -p '/srv/x' && chown "deploy":"deploy" '/srv/x'`.
 	for _, want := range []string{
 		"sudo -S -p '' sh -c",
 		`mkdir -p '\''/srv/x'\''`,
@@ -591,6 +595,8 @@ func TestProvisionDeployPathEscapesApostrophe(t *testing.T) {
 	if err := ProvisionDeployPath(context.Background(), r, "pw", "u", "/O'Brien/x", nil, nil); err != nil {
 		t.Fatalf("ProvisionDeployPath: %v", err)
 	}
+	// Same double-encoding: the want-string is the recorded transport
+	// form; the decoded remote command is `mkdir -p '/O'\''Brien/x'`.
 	if !strings.Contains(r.cmds[0], `mkdir -p '\''/O'\''\'\'''\''Brien/x'\''`) {
 		t.Errorf("command %q missing escaped path", r.cmds[0])
 	}

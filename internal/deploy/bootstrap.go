@@ -194,7 +194,7 @@ func BootstrapEnv(ctx context.Context, cfg SSHConfig, password string, opts Boot
 		return err
 	}
 	if err := Provision(ctx, client, password, opts.User, opts.OnStdout, opts.OnStderr); err != nil {
-		return fmt.Errorf("install docker: %w", err)
+		return err
 	}
 	if opts.Path != "" {
 		if err := ProvisionDeployPath(ctx, client, password, opts.User, opts.Path, opts.OnStdout, opts.OnStderr); err != nil {
