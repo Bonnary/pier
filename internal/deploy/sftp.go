@@ -46,15 +46,36 @@ func (c *Client) SyncDir(ctx context.Context, local, remote string, excludes []s
 		if d.IsDir() {
 			return nil
 		}
-		if !d.Type().IsRegular() {
-			return nil
+		if d.Type().IsRegular() {
+			info, err := d.Info()
+			if err != nil {
+				return err
+			}
+			return putSFTPFile(sc, path, filepath.ToSlash(filepath.Join(remote, rel)), info)
 		}
-		info, err := d.Info()
-		if err != nil {
-			return err
+		if d.Type()&os.ModeSymlink != 0 {
+			return putSFTPLink(sc, path, filepath.ToSlash(filepath.Join(remote, rel)))
 		}
-		return putSFTPFile(sc, path, filepath.ToSlash(filepath.Join(remote, rel)), info)
+		return nil
 	})
+}
+
+// putSFTPLink recreates a local symlink on the remote side, creating
+// parent directories first. The target is preserved verbatim so
+// relative links stay relative. Symlinked directories are not walked
+// into (filepath.WalkDir never follows symlinks).
+func putSFTPLink(sc *sftp.Client, localPath, remotePath string) error {
+	target, err := os.Readlink(localPath)
+	if err != nil {
+		return fmt.Errorf("readlink %s: %w", localPath, err)
+	}
+	if err := sc.MkdirAll(filepath.ToSlash(filepath.Dir(remotePath))); err != nil {
+		return fmt.Errorf("mkdir %s: %w", filepath.Dir(remotePath), err)
+	}
+	if err := sc.Symlink(target, remotePath); err != nil {
+		return fmt.Errorf("symlink %s: %w", remotePath, err)
+	}
+	return nil
 }
 
 // putSFTPFile writes one local file to the remote path, creating
