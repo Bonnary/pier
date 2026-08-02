@@ -79,7 +79,11 @@ func serveTestSSHChannel(ch ssh.NewChannel) {
 		case "subsystem":
 			if string(req.Payload[4:]) == "sftp" {
 				_ = req.Reply(true, nil)
-				_, _ = sftp.NewServer(channel)
+				srv, err := sftp.NewServer(channel)
+				if err != nil {
+					return
+				}
+				_ = srv.Serve()
 				return
 			}
 			_ = req.Reply(false, nil)
@@ -126,6 +130,14 @@ func writeTestKey(t *testing.T) (string, ssh.PublicKey) {
 		t.Fatalf("WriteFile key: %v", err)
 	}
 	return path, signer.PublicKey()
+}
+
+// writeTestKeyPath is writeTestKey's convenience form for callers
+// that only need the private key path.
+func writeTestKeyPath(t *testing.T) string {
+	t.Helper()
+	path, _ := writeTestKey(t)
+	return path
 }
 
 // passwordOnlyServer returns a ServerConfig accepting password

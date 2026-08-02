@@ -22,6 +22,21 @@ func (f *fakeSSHClient) RunStream(ctx context.Context, cmd string, onLine func(s
 	return nil
 }
 
+func contains(s, sub string) bool {
+	if len(sub) == 0 {
+		return true
+	}
+	if len(s) < len(sub) {
+		return false
+	}
+	for i := 0; i+len(sub) <= len(s); i++ {
+		if s[i:i+len(sub)] == sub {
+			return true
+		}
+	}
+	return false
+}
+
 func TestBuildStreamsOutput(t *testing.T) {
 	f := &fakeSSHClient{}
 	var lines []string

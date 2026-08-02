@@ -81,7 +81,7 @@ func (p *Pipeline) Run(ctx context.Context) error {
 
 	// Phase 3: sync.
 	p.Logger.PhaseStart("sync")
-	if err := Sync(ctx, defaultRunner, ".", p.sshAddr()); err != nil {
+	if err := client.SyncDir(ctx, ".", p.DeployEnv.Path, rsyncExcludes); err != nil {
 		p.Logger.PhaseEnd("sync", err)
 		return PreflightError(err)
 	}
@@ -178,10 +178,6 @@ func (p *Pipeline) render() (any, error) {
 	// 4. Sync to remote as part of the sync phase.
 	// Skeleton: returns a placeholder.
 	return nil, nil
-}
-
-func (p *Pipeline) sshAddr() string {
-	return fmt.Sprintf("%s@%s:%s", p.SSH.User, p.SSH.Host, p.DeployEnv.Path)
 }
 
 func (p *Pipeline) rollback(ctx context.Context, c *Client) error {
