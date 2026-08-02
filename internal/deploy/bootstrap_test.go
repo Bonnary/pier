@@ -3,9 +3,11 @@ package deploy
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Bonnary/pier/internal/config"
 	"golang.org/x/crypto/ssh"
@@ -61,7 +63,9 @@ func splitLines(b []byte) []string {
 
 func (f *scriptedRunner) respond(cmd, stdin string) ([]byte, []byte, error) {
 	f.cmds = append(f.cmds, cmd)
-	f.stdins = append(f.stdins, stdin)
+	if stdin != "" {
+		f.stdins = append(f.stdins, stdin)
+	}
 	if f.runErr != nil {
 		return nil, nil, f.runErr
 	}
@@ -674,5 +678,86 @@ func TestBootstrapEnvSkipsPathWhenEmpty(t *testing.T) {
 		if strings.Contains(cmd, "chown") || strings.Contains(cmd, "mkdir") {
 			t.Errorf("unexpected path command with empty Path: %s", cmd)
 		}
+	}
+}
+
+func TestEnsureClockSyncedInSync(t *testing.T) {
+	now := time.Now().Unix()
+	r := &scriptedRunner{script: []scriptedStep{{
+		match: "date +%s", ok: true, stdout: fmt.Sprintf("%d\n", now),
+	}}}
+	if err := EnsureClockSynced(context.Background(), r, "pw", nil, nil); err != nil {
+		t.Fatalf("EnsureClockSynced: %v", err)
+	}
+	if len(r.cmds) != 1 || !strings.Contains(r.cmds[0], "date +%s") {
+		t.Errorf("cmds = %q, want exactly one `date +%%s` read", r.cmds)
+	}
+	if len(r.stdins) != 0 {
+		t.Errorf("stdins = %q, want none (no sudo in the in-sync path)", r.stdins)
+	}
+}
+
+func TestEnsureClockSyncedCorrectsSkew(t *testing.T) {
+	now := time.Now().Unix()
+	r := &scriptedRunner{script: []scriptedStep{
+		{match: "date +%s", ok: true, stdout: fmt.Sprintf("%d\n", now-86400)},
+		{match: "date -s", ok: true},
+	}}
+	var out []string
+	err := EnsureClockSynced(context.Background(), r, "pw",
+		func(l string) { out = append(out, l) }, nil)
+	if err != nil {
+		t.Fatalf("EnsureClockSynced: %v", err)
+	}
+	if len(r.cmds) != 3 {
+		t.Fatalf("cmds = %d, want 3 (read, set, re-read)", len(r.cmds))
+	}
+	if !strings.Contains(r.cmds[1], "sudo -S -p '' sh -c") || !strings.Contains(r.cmds[1], "date -s @") {
+		t.Errorf("set command %q missing sudo wrapper or `date -s @`", r.cmds[1])
+	}
+	if len(r.stdins) != 1 || r.stdins[0] != "pw\n" {
+		t.Errorf("stdins = %q, want [pw\n]", r.stdins)
+	}
+	if len(out) != 1 || !strings.HasPrefix(out[0], "remote clock was ") || !strings.Contains(out[0], "s off; corrected to ") {
+		t.Errorf("correction line = %q, want `remote clock was Ns off; corrected to <RFC3339>`", out)
+	}
+}
+
+func TestEnsureClockSyncedReadFailure(t *testing.T) {
+	r := &scriptedRunner{runErr: errors.New("connection reset")}
+	err := EnsureClockSynced(context.Background(), r, "pw", nil, nil)
+	if err == nil {
+		t.Fatal("EnsureClockSynced(read failure) = nil, want error")
+	}
+	if !strings.Contains(err.Error(), "read remote clock") {
+		t.Errorf("err %q missing wrap `read remote clock`", err.Error())
+	}
+}
+
+func TestEnsureClockSyncedParseFailure(t *testing.T) {
+	r := &scriptedRunner{script: []scriptedStep{{
+		match: "date +%s", ok: true, stdout: "not-an-epoch\n",
+	}}}
+	err := EnsureClockSynced(context.Background(), r, "pw", nil, nil)
+	if err == nil {
+		t.Fatal("EnsureClockSynced(garbage) = nil, want error")
+	}
+	if !strings.Contains(err.Error(), "read remote clock") {
+		t.Errorf("err %q missing wrap `read remote clock`", err.Error())
+	}
+}
+
+func TestEnsureClockSyncedSetFailure(t *testing.T) {
+	now := time.Now().Unix()
+	r := &scriptedRunner{script: []scriptedStep{
+		{match: "date +%s", ok: true, stdout: fmt.Sprintf("%d\n", now-86400)},
+		{match: "date -s", ok: false, stderr: "Sorry, try again."},
+	}}
+	err := EnsureClockSynced(context.Background(), r, "pw", nil, nil)
+	if !errors.Is(err, ErrSudoWrongPassword) {
+		t.Errorf("EnsureClockSynced = %v, want ErrSudoWrongPassword", err)
+	}
+	if !strings.Contains(err.Error(), "sync remote clock") {
+		t.Errorf("err %q missing wrap `sync remote clock`", err.Error())
 	}
 }

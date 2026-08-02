@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"golang.org/x/crypto/ssh"
 )
@@ -89,6 +90,56 @@ func ValidateSudo(ctx context.Context, r stdinRunner, password string, onStdout,
 	stderr, err := r.RunStreamStdin(ctx, "sudo -S -v", password+"\n", onStdout, onStderr)
 	if err != nil {
 		return classifySudoErr(stderr, err)
+	}
+	return nil
+}
+
+// ClockSyncThreshold is the max |remote - local| offset in seconds
+// tolerated before pier force-sets the remote clock. Freshly-reset
+// VMs boot with a stale RTC; apt rejects signed Release files whose
+// dates fall outside the (wrong) guest clock, so even minutes of
+// skew break provisioning.
+const ClockSyncThreshold = 60
+
+// EnsureClockSynced compares the remote clock to the local clock and,
+// when they differ by more than ClockSyncThreshold seconds, force-sets
+// the remote clock from the local one under sudo (`date -s @<epoch>`).
+// Needs sudo only when a correction is required. On correction it
+// re-reads the remote epoch and emits one line via onStdout:
+// `remote clock was Ns off; corrected to <RFC3339>`.
+func EnsureClockSynced(ctx context.Context, r stdinRunner, password string, onStdout, onStderr func(string)) error {
+	read := func() (int64, error) {
+		stdout, _, err := r.Run(ctx, "date +%s")
+		if err != nil {
+			return 0, fmt.Errorf("read remote clock: %w", err)
+		}
+		epoch, err := strconv.ParseInt(strings.TrimSpace(string(stdout)), 10, 64)
+		if err != nil {
+			return 0, fmt.Errorf("read remote clock: parse %q: %w", strings.TrimSpace(string(stdout)), err)
+		}
+		return epoch, nil
+	}
+	remote, err := read()
+	if err != nil {
+		return err
+	}
+	local := time.Now().Unix()
+	skew := local - remote
+	if skew < 0 {
+		skew = -skew
+	}
+	if skew <= ClockSyncThreshold {
+		return nil
+	}
+	if err := runSudo(ctx, r, password, fmt.Sprintf("date -s @%d", local), onStdout, onStderr); err != nil {
+		return fmt.Errorf("sync remote clock: %w", err)
+	}
+	remote, err = read()
+	if err != nil {
+		return err
+	}
+	if onStdout != nil {
+		onStdout(fmt.Sprintf("remote clock was %ds off; corrected to %s", skew, time.Unix(remote, 0).Format(time.RFC3339)))
 	}
 	return nil
 }
