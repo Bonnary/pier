@@ -22,3 +22,20 @@ func TestDialRejectsEmptyHost(t *testing.T) {
 		t.Fatal("Dial(empty host) = nil error, want non-nil")
 	}
 }
+
+func TestOutputTailKeepsLastLines(t *testing.T) {
+	tail := &outputTail{max: 3}
+	for _, l := range []string{"one", "two", "three", "four", "five"} {
+		tail.add(l)
+	}
+	if got := tail.String(); got != "three\nfour\nfive" {
+		t.Errorf("tail = %q, want %q", got, "three\nfour\nfive")
+	}
+}
+
+func TestOutputTailEmpty(t *testing.T) {
+	tail := &outputTail{max: 3}
+	if got := tail.String(); got != "" {
+		t.Errorf("tail = %q, want empty", got)
+	}
+}

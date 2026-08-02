@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -175,10 +176,44 @@ func (c *Client) RunStreamStdin(ctx context.Context, cmd, stdin string, onStdout
 	return stderrBuf.Bytes(), sess.Wait()
 }
 
+// runStreamTailSize is the number of most-recent streamed lines kept
+// in the error message when a RunStream command exits non-zero.
+const runStreamTailSize = 20
+
+// outputTail keeps the last max streamed lines in order. Shared by
+// RunStream's stdout and stderr readers, so it is mutex-guarded.
+type outputTail struct {
+	mu    sync.Mutex
+	max   int
+	lines []string
+}
+
+// add appends line, dropping the oldest line once max is reached.
+func (t *outputTail) add(line string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if len(t.lines) == t.max {
+		copy(t.lines, t.lines[1:])
+		t.lines[len(t.lines)-1] = line
+		return
+	}
+	t.lines = append(t.lines, line)
+}
+
+// String returns the kept lines joined with newlines, oldest first.
+func (t *outputTail) String() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return strings.Join(t.lines, "\n")
+}
+
 // RunStream executes cmd on the remote host and invokes onLine for
-// each line of stdout as it arrives. Used by Build, which needs to
-// surface `docker compose build` progress in the deploy TUI in real
-// time.
+// each line of stdout or stderr as it arrives. Used by Build, which
+// needs to surface `docker compose build` progress — and, on failure,
+// the compose validation errors that docker writes to stderr — in the
+// deploy TUI in real time. When the remote command exits non-zero,
+// the returned error carries the last runStreamTailSize streamed
+// lines so the failure is diagnosable without re-running.
 func (c *Client) RunStream(ctx context.Context, cmd string, onLine func(string)) error {
 	sess, err := c.conn.NewSession()
 	if err != nil {
@@ -189,14 +224,43 @@ func (c *Client) RunStream(ctx context.Context, cmd string, onLine func(string))
 	if err != nil {
 		return err
 	}
+	stderr, err := sess.StderrPipe()
+	if err != nil {
+		return err
+	}
 	if err := sess.Start(cmd); err != nil {
 		return err
 	}
-	scanner := bufio.NewScanner(stdout)
-	for scanner.Scan() {
-		onLine(scanner.Text())
+	tail := &outputTail{max: runStreamTailSize}
+	var stderrErr error
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		sc := bufio.NewScanner(stderr)
+		for sc.Scan() {
+			line := sc.Text()
+			tail.add(line)
+			onLine(line)
+		}
+		stderrErr = sc.Err()
+	}()
+	sc := bufio.NewScanner(stdout)
+	for sc.Scan() {
+		line := sc.Text()
+		tail.add(line)
+		onLine(line)
 	}
-	return sess.Wait()
+	<-done
+	if err := sc.Err(); err != nil {
+		return err
+	}
+	if stderrErr != nil {
+		return stderrErr
+	}
+	if err := sess.Wait(); err != nil {
+		return fmt.Errorf("remote command failed: %w (last output: %s)", err, tail.String())
+	}
+	return nil
 }
 
 // Close shuts down the underlying SSH connection. Safe to call when

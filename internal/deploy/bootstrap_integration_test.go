@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -125,5 +126,53 @@ func TestRunStreamStdinRealServer(t *testing.T) {
 	}
 	if string(stderr) != "x\ny\n" {
 		t.Errorf("captured stderr = %q, want %q", stderr, "x\ny\n")
+	}
+}
+
+// TestRunStreamRealServer streams stdout and stderr lines from a real
+// SSH session and, on a non-zero exit, returns an error carrying the
+// last streamed lines. Run with PIER_TEST_SSH_HOST (see
+// TestBootstrapRealServer).
+func TestRunStreamRealServer(t *testing.T) {
+	host := os.Getenv("PIER_TEST_SSH_HOST")
+	if host == "" {
+		t.Skip("PIER_TEST_SSH_HOST not set")
+	}
+	user := os.Getenv("PIER_TEST_SSH_USER")
+	if user == "" {
+		user = "root"
+	}
+	key := os.Getenv("PIER_TEST_SSH_KEY")
+	if key == "" {
+		key = filepath.Join(os.Getenv("HOME"), ".ssh", "id_ed25519")
+	}
+	client, err := Dial(context.Background(), SSHConfig{Host: host, User: user, KeyPath: key})
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	defer client.Close()
+	var lines []string
+	err = client.RunStream(context.Background(),
+		"printf 'out\n'; printf 'err\n' >&2; exit 7",
+		func(l string) { lines = append(lines, l) })
+	if err == nil {
+		t.Fatal("RunStream(exit 7) = nil error, want non-nil")
+	}
+	var hasOut, hasErr bool
+	for _, l := range lines {
+		if l == "out" {
+			hasOut = true
+		}
+		if l == "err" {
+			hasErr = true
+		}
+	}
+	if len(lines) != 2 || !hasOut || !hasErr {
+		t.Errorf("streamed lines = %v, want both [out err] in any order", lines)
+	}
+	for _, want := range []string{"last output:", "out", "err"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q missing %q", err.Error(), want)
+		}
 	}
 }
