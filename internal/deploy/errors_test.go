@@ -83,6 +83,9 @@ func TestExistingConstructorsDefaultKind(t *testing.T) {
 		{"ExecDownError", ExecDownError(), ExitExecDown, KindDocker},
 		{"PortInUseError", PortInUseError([]int{8000}), ExitPortInUse, KindUser},
 		{"AbortedError", AbortedError(), ExitAborted, KindUser},
+		{"RemoteBuildError", RemoteBuildError("h", base), ExitBuild, KindDocker},
+		{"RemoteUpError", RemoteUpError("h", base), ExitUp, KindDocker},
+		{"RemoteDockerError", RemoteDockerError("h", base), ExitGeneral, KindDocker},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -95,6 +98,33 @@ func TestExistingConstructorsDefaultKind(t *testing.T) {
 			}
 			if ee.Kind != c.kind {
 				t.Errorf("Kind = %v, want %v", ee.Kind, c.kind)
+			}
+		})
+	}
+}
+
+func TestRemoteConstructorsSetHost(t *testing.T) {
+	base := errors.New("base")
+	cases := []struct {
+		name string
+		got  error
+		want string
+	}{
+		{"RemoteBuildError", RemoteBuildError("prod.example.com", base), "prod.example.com"},
+		{"RemoteUpError", RemoteUpError("prod.example.com", base), "prod.example.com"},
+		{"RemoteDockerError", RemoteDockerError("prod.example.com", base), "prod.example.com"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var ee *ExitError
+			if !errors.As(c.got, &ee) {
+				t.Fatalf("not *ExitError")
+			}
+			if ee.RemoteHost != c.want {
+				t.Errorf("RemoteHost = %q, want %q", ee.RemoteHost, c.want)
+			}
+			if !errors.Is(c.got, base) {
+				t.Errorf("errors.Is(base) = false, want true")
 			}
 		})
 	}

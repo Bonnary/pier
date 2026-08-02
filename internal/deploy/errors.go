@@ -47,11 +47,16 @@ var (
 // ExitError wraps a sentinel with a process exit code and a Kind
 // (config / docker / ssh / network / user / unknown). The CLI's
 // PrintError reads Kind to color the output and to look up a
-// category-specific hint.
+// category-specific hint. RemoteHost, when non-empty, marks the
+// error as a remote (SSH) command failure so PrintError renders a
+// remote-aware hint instead of the local pier hint.
 type ExitError struct {
 	Code int
 	Kind Kind
-	Err  error
+	// RemoteHost is the SSH host a failed remote command ran on.
+	// Empty means the failure was local.
+	RemoteHost string
+	Err        error
 }
 
 func (e *ExitError) Error() string { return fmt.Sprintf("exit %d: %v", e.Code, e.Err) }
@@ -83,6 +88,23 @@ func PreflightError(err error) error {
 }
 func BuildError(err error) error { return &ExitError{Code: ExitBuild, Kind: KindDocker, Err: err} }
 func UpError(err error) error    { return &ExitError{Code: ExitUp, Kind: KindDocker, Err: err} }
+
+// RemoteBuildError is BuildError stamped with the SSH host the build
+// ran on, so the CLI can render a remote-aware hint.
+func RemoteBuildError(host string, err error) error {
+	return &ExitError{Code: ExitBuild, Kind: KindDocker, RemoteHost: host, Err: err}
+}
+
+// RemoteUpError is UpError stamped with the SSH host the up ran on.
+func RemoteUpError(host string, err error) error {
+	return &ExitError{Code: ExitUp, Kind: KindDocker, RemoteHost: host, Err: err}
+}
+
+// RemoteDockerError is a general docker failure stamped with the SSH
+// host, used by `pier status <env>` when a remote probe command fails.
+func RemoteDockerError(host string, err error) error {
+	return &ExitError{Code: ExitGeneral, Kind: KindDocker, RemoteHost: host, Err: err}
+}
 func ExecDownError() error       { return &ExitError{Code: ExitExecDown, Kind: KindDocker, Err: ErrExecDown} }
 
 // PortInUseError builds an error for a pre-flight port-probe collision.

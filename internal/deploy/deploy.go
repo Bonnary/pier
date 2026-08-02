@@ -87,7 +87,7 @@ func (p *Pipeline) Run(ctx context.Context) error {
 		p.Logger.Log("build", "%s", l)
 	}); err != nil {
 		p.Logger.PhaseEnd("build", err)
-		return BuildError(err)
+		return RemoteBuildError(p.SSH.Host, err)
 	}
 	p.Logger.PhaseEnd("build", nil)
 
@@ -180,9 +180,9 @@ func (p *Pipeline) sshAddr() string {
 
 func (p *Pipeline) rollback(ctx context.Context, c *Client) error {
 	if err := Rollback(ctx, c, p.DeployEnv.Path, p.Config.Project.Name); err != nil {
-		return UpError(err)
+		return RemoteUpError(p.SSH.Host, err)
 	}
-	return UpError(fmt.Errorf("health check failed; rolled back"))
+	return RemoteUpError(p.SSH.Host, fmt.Errorf("health check failed; rolled back"))
 }
 
 func (p *Pipeline) commit() error {
