@@ -2,6 +2,7 @@ package deploy
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -62,8 +63,10 @@ func (c *Client) SyncDir(ctx context.Context, local, remote string, excludes []s
 
 // putSFTPLink recreates a local symlink on the remote side, creating
 // parent directories first. The target is preserved verbatim so
-// relative links stay relative. Symlinked directories are not walked
-// into (filepath.WalkDir never follows symlinks).
+// relative links stay relative. It is idempotent: an existing remote
+// symlink with the same target is left untouched, and a stale regular
+// file at the link path is replaced. Symlinked directories are not
+// walked into (filepath.WalkDir never follows symlinks).
 func putSFTPLink(sc *sftp.Client, localPath, remotePath string) error {
 	target, err := os.Readlink(localPath)
 	if err != nil {
@@ -71,6 +74,32 @@ func putSFTPLink(sc *sftp.Client, localPath, remotePath string) error {
 	}
 	if err := sc.MkdirAll(filepath.ToSlash(filepath.Dir(remotePath))); err != nil {
 		return fmt.Errorf("mkdir %s: %w", filepath.Dir(remotePath), err)
+	}
+	existing, err := sc.ReadLink(remotePath)
+	switch {
+	case err == nil && existing == target:
+		return nil
+	case err == nil:
+		if err := sc.Remove(remotePath); err != nil {
+			return fmt.Errorf("remove stale symlink %s: %w", remotePath, err)
+		}
+	case errors.Is(err, os.ErrNotExist):
+		// Remote path is free; create the link below.
+	default:
+		// The path exists as a non-symlink (e.g. a stale regular file
+		// or directory from a layout before this fix). Distinguish so
+		// a directory conflict surfaces as a clear error rather than
+		// being recursively deleted.
+		info, serr := sc.Stat(remotePath)
+		if serr != nil {
+			return fmt.Errorf("stat %s: %w", remotePath, serr)
+		}
+		if info.IsDir() {
+			return fmt.Errorf("symlink conflict: %s exists as a directory; remove it manually", remotePath)
+		}
+		if err := sc.Remove(remotePath); err != nil {
+			return fmt.Errorf("remove stale file %s: %w", remotePath, err)
+		}
 	}
 	if err := sc.Symlink(target, remotePath); err != nil {
 		return fmt.Errorf("symlink %s: %w", remotePath, err)
