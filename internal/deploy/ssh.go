@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net"
 	"os"
 	"strings"
@@ -68,12 +69,15 @@ func Dial(ctx context.Context, cfg SSHConfig) (*Client, error) {
 	}
 	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.port())
 	auth := []ssh.AuthMethod(nil)
-	if key, err := os.ReadFile(cfg.KeyPath); err == nil {
-		signer, err := ssh.ParsePrivateKey(key)
-		if err != nil {
-			return nil, fmt.Errorf("%w: parse key: %v", ErrPreflight, err)
+	key, err := os.ReadFile(cfg.KeyPath)
+	if err == nil {
+		signer, perr := ssh.ParsePrivateKey(key)
+		if perr != nil {
+			return nil, fmt.Errorf("%w: parse key: %v", ErrPreflight, perr)
 		}
 		auth = append(auth, ssh.PublicKeys(signer))
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return nil, fmt.Errorf("%w: read key: %v", ErrPreflight, err)
 	}
 	var firstErr error
 	if len(auth) > 0 {

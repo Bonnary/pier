@@ -195,7 +195,7 @@ func ProvisionDeployPath(ctx context.Context, r stdinRunner, password, user, pat
 }
 
 // EnsureDeployPath creates the deploy path as the deploy user without
-// sudo, so rsync has a writable destination. Fails when the parent
+// sudo, so the deploy path is writable for the file sync. Fails when the parent
 // directory is not writable; the deploy preflight turns that into an
 // actionable error.
 func EnsureDeployPath(ctx context.Context, r cmdRunner, path string) error {

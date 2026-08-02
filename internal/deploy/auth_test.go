@@ -64,6 +64,21 @@ func TestDialMissingKeyFileUsesPassword(t *testing.T) {
 	c.Close()
 }
 
+func TestDialUnreadableKeyFailsFast(t *testing.T) {
+	addr := startSSHServer(t, passwordOnlyServer())
+	host, port := testAddr(t, addr)
+	// A directory as the key path makes os.ReadFile return EISDIR
+	// deterministically (0o000 perms are still readable as root).
+	_, err := Dial(context.Background(), SSHConfig{
+		Host: host, User: "deploy", Port: port,
+		KeyPath:  t.TempDir(),
+		Password: "secret",
+	})
+	if !errors.Is(err, ErrPreflight) {
+		t.Fatalf("Dial(unreadable key + password) = %v, want ErrPreflight, no password fallback", err)
+	}
+}
+
 func TestDialKeyAuthStillWorks(t *testing.T) {
 	keyPath, pub := writeTestKey(t)
 	addr := startSSHServer(t, keyOnlyServer(pub))
