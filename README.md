@@ -75,7 +75,7 @@ Docker CLI.
   password prompt; installation output streams live; idempotent,
   `--all` / `--force`). Also creates each env's deploy directory
   (`[deploy.<env>].path`) and hands it to the deploy user, so
-  `pier deploy` never hits a missing-path rsync error.
+  `pier deploy` never hits a missing-path "not writable" error.
 - **Automatic rollback** — Any failure in the `up` or `health`
   phase re-tags the previous image and re-deploys it before the
   command exits non-zero.
@@ -308,7 +308,7 @@ pier/
 │   ├── cli/                  # cobra command tree
 │   ├── compose/              # YAML generation + smart-merge
 │   ├── config/               # pier.toml parser
-│   ├── deploy/               # SSH, rsync, health, rollback
+│   ├── deploy/               # SSH (key+password), SFTP sync, health, rollback
 │   ├── docker/               # thin wrapper around `docker compose`
 │   ├── portcheck/            # pre-flight host port probe
 │   ├── stack/                # Stack interface + registry
@@ -328,7 +328,7 @@ pier/
   `deploy`.
 - `stack/laravel` never imports SSH or Docker; it returns `Files`
   and lets the caller write/exec them.
-- `deploy` never knows about Laravel; it just rsyncs files, runs
+- `deploy` never knows about Laravel; it just syncs files (SFTP), runs
   commands, and probes.
 
 ---
