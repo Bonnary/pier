@@ -463,3 +463,132 @@ func TestScriptedRunnerStreamsLines(t *testing.T) {
 		t.Errorf("stdins = %q, want [pw\n]", r.stdins)
 	}
 }
+
+func TestQuoteShell(t *testing.T) {
+	for _, tc := range []struct{ in, want string }{
+		{"/srv/x", "'/srv/x'"},
+		{"O'Brien/app", `'O'\''Brien/app'`},
+		{"", "''"},
+	} {
+		if got := quoteShell(tc.in); got != tc.want {
+			t.Errorf("quoteShell(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestRunSudoUsesQuoteShell(t *testing.T) {
+	r := &scriptedRunner{script: []scriptedStep{{match: "sh -c", ok: true}}}
+	if err := runSudo(context.Background(), r, "pw", `usermod -aG docker "O'Brien"`, nil, nil); err != nil {
+		t.Fatalf("runSudo: %v", err)
+	}
+	if !strings.Contains(r.cmds[0], `O'\''Brien`) {
+		t.Errorf("command %q missing POSIX apostrophe escape", r.cmds[0])
+	}
+}
+
+func TestProvisionDeployPathCommand(t *testing.T) {
+	r := &scriptedRunner{script: []scriptedStep{{match: "chown", ok: true}}}
+	if err := ProvisionDeployPath(context.Background(), r, "pw", "deploy", "/srv/x", nil, nil); err != nil {
+		t.Fatalf("ProvisionDeployPath: %v", err)
+	}
+	joined := strings.Join(r.cmds, "\n")
+	for _, want := range []string{
+		"sudo -S -p '' sh -c",
+		`mkdir -p '\''/srv/x'\''`,
+		`chown "deploy":"deploy" '\''/srv/x'\''`,
+	} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("provision command missing %q:\n%s", want, joined)
+		}
+	}
+	for _, s := range r.stdins {
+		if s != "pw\n" {
+			t.Errorf("stdin = %q, want %q", s, "pw\n")
+		}
+	}
+}
+
+func TestProvisionDeployPathEscapesApostrophe(t *testing.T) {
+	r := &scriptedRunner{script: []scriptedStep{{match: "chown", ok: true}}}
+	if err := ProvisionDeployPath(context.Background(), r, "pw", "u", "/O'Brien/x", nil, nil); err != nil {
+		t.Fatalf("ProvisionDeployPath: %v", err)
+	}
+	if !strings.Contains(r.cmds[0], `mkdir -p '\''/O'\''\'\'''\''Brien/x'\''`) {
+		t.Errorf("command %q missing escaped path", r.cmds[0])
+	}
+}
+
+func TestEnsureDeployPathCommand(t *testing.T) {
+	r := &scriptedRunner{script: []scriptedStep{{match: "mkdir -p", ok: true}}}
+	if err := EnsureDeployPath(context.Background(), r, "/srv/x"); err != nil {
+		t.Fatalf("EnsureDeployPath: %v", err)
+	}
+	if len(r.cmds) != 1 || r.cmds[0] != "mkdir -p '/srv/x'" {
+		t.Errorf("commands = %q, want [mkdir -p '/srv/x']", r.cmds)
+	}
+}
+
+func TestProvisionDeployPathSudoFailureClassifies(t *testing.T) {
+	r := &scriptedRunner{script: []scriptedStep{{
+		match: "chown", ok: false, stderr: "Sorry, try again.",
+	}}}
+	err := ProvisionDeployPath(context.Background(), r, "nope", "u", "/srv/x", nil, nil)
+	if !errors.Is(err, ErrSudoWrongPassword) {
+		t.Errorf("ProvisionDeployPath = %v, want ErrSudoWrongPassword", err)
+	}
+}
+
+func TestBootstrapEnvCreatesDeployPath(t *testing.T) {
+	orig := dialBootstrap
+	defer func() { dialBootstrap = orig }()
+	conn := &fakeConn{scriptedRunner: &scriptedRunner{script: []scriptedStep{
+		{match: "sudo -S -v", ok: true},
+		{match: "get.docker.com", ok: true},
+		{match: "usermod", ok: true},
+		{match: "chown", ok: true},
+		{match: "getent group docker", ok: true},
+	}}}
+	dialBootstrap = func(ctx context.Context, cfg SSHConfig) (bootstrapConn, error) { return conn, nil }
+	err := BootstrapEnv(context.Background(), SSHConfig{Host: "h", User: "u"}, "pw",
+		BootstrapOpts{User: "u", Path: "/srv/x"})
+	if err != nil {
+		t.Fatalf("BootstrapEnv: %v", err)
+	}
+	var chownIdx, usermodIdx, verifyIdx int
+	for i, cmd := range conn.cmds {
+		switch {
+		case strings.Contains(cmd, "chown"):
+			chownIdx = i
+		case strings.Contains(cmd, "usermod"):
+			usermodIdx = i
+		case strings.Contains(cmd, "getent group docker"):
+			verifyIdx = i
+		}
+	}
+	if !(usermodIdx < chownIdx && chownIdx < verifyIdx) {
+		t.Errorf("step order wrong: usermod=%d chown=%d verify=%d, want usermod < chown < verify",
+			usermodIdx, chownIdx, verifyIdx)
+	}
+}
+
+func TestBootstrapEnvSkipsPathWhenEmpty(t *testing.T) {
+	orig := dialBootstrap
+	defer func() { dialBootstrap = orig }()
+	conn := &fakeConn{scriptedRunner: &scriptedRunner{script: []scriptedStep{
+		{match: "sudo -S -v", ok: true},
+		{match: "get.docker.com", ok: true},
+		{match: "usermod", ok: true},
+		{match: "getent group docker", ok: true},
+	}}}
+	dialBootstrap = func(ctx context.Context, cfg SSHConfig) (bootstrapConn, error) { return conn, nil }
+	err := BootstrapEnv(context.Background(), SSHConfig{Host: "h", User: "u"}, "pw",
+		BootstrapOpts{User: "u"})
+	if err != nil {
+		t.Fatalf("BootstrapEnv: %v", err)
+	}
+	for _, cmd := range conn.cmds {
+		if strings.Contains(cmd, "chown") || strings.Contains(cmd, "mkdir") {
+			t.Errorf("unexpected path command with empty Path: %s", cmd)
+		}
+	}
+}

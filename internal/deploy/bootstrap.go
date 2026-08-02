@@ -60,6 +60,13 @@ func classifySudoErr(stderr []byte, err error) error {
 	}
 }
 
+// quoteShell wraps s in single quotes with POSIX apostrophe escaping
+// (`'` becomes `'\”`), so it can be embedded in a remote shell
+// command string. runSudo applies this to its whole command body.
+func quoteShell(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
 // runSudo executes cmd via `sudo -S -p ” sh -c '<cmd>'` with the
 // password piped on the session's stdin — never on the command
 // line — streaming each output line to the callbacks. `-p ”`
@@ -68,8 +75,7 @@ func classifySudoErr(stderr []byte, err error) error {
 // of the single-quoted sh -c argument. On failure the captured
 // stderr is classified into the bootstrap sentinels.
 func runSudo(ctx context.Context, r stdinRunner, password, cmd string, onStdout, onStderr func(string)) error {
-	cmd = strings.ReplaceAll(cmd, "'", `'\''`)
-	full := fmt.Sprintf("sudo -S -p '' sh -c '%s'", cmd)
+	full := fmt.Sprintf("sudo -S -p '' sh -c %s", quoteShell(cmd))
 	stderr, err := r.RunStreamStdin(ctx, full, password+"\n", onStdout, onStderr)
 	if err != nil {
 		return classifySudoErr(stderr, err)
@@ -112,6 +118,31 @@ func VerifyBootstrap(ctx context.Context, r stdinRunner, password, user string, 
 	return nil
 }
 
+// cmdRunner is the subset of *Client that EnsureDeployPath needs.
+// Both *Client and the test scriptedRunner satisfy it.
+type cmdRunner interface {
+	Run(ctx context.Context, cmd string) ([]byte, []byte, error)
+}
+
+// ProvisionDeployPath creates the env's deploy path on the remote
+// host under sudo and hands it to the deploy user: `mkdir -p <path>
+// && chown <user>:<user> <path>`. Idempotent, so `--force` re-runs
+// are safe. The user is quoted the same way Provision quotes it.
+func ProvisionDeployPath(ctx context.Context, r stdinRunner, password, user, path string, onStdout, onStderr func(string)) error {
+	cmd := fmt.Sprintf("mkdir -p %s && chown %s:%s %s",
+		quoteShell(path), strconv.Quote(user), strconv.Quote(user), quoteShell(path))
+	return runSudo(ctx, r, password, cmd, onStdout, onStderr)
+}
+
+// EnsureDeployPath creates the deploy path as the deploy user without
+// sudo, so rsync has a writable destination. Fails when the parent
+// directory is not writable; the deploy preflight turns that into an
+// actionable error.
+func EnsureDeployPath(ctx context.Context, r cmdRunner, path string) error {
+	_, _, err := r.Run(ctx, "mkdir -p "+quoteShell(path))
+	return err
+}
+
 // bootstrapConn is the subset of *Client that BootstrapEnv uses.
 type bootstrapConn interface {
 	stdinRunner
@@ -130,6 +161,10 @@ type BootstrapOpts struct {
 	Force bool
 	// User is the deploy user that gets docker group membership.
 	User string
+	// Path is the env's deploy directory ([deploy.<env>].path),
+	// created with sudo and chowned to User. Empty means no path to
+	// create.
+	Path string
 	// OnStdout/OnStderr stream each remote output line as it
 	// arrives; may be nil.
 	OnStdout func(string)
@@ -137,9 +172,9 @@ type BootstrapOpts struct {
 }
 
 // BootstrapEnv runs the full one-time provisioning flow for one
-// server: probe (unless Force), sudo validation, provision, verify.
-// Returns ErrAlreadyBootstrapped when the probe passes and Force is
-// false.
+// server: probe (unless Force), sudo validation, provision, deploy
+// path creation (unless Path is empty), verify. Returns
+// ErrAlreadyBootstrapped when the probe passes and Force is false.
 func BootstrapEnv(ctx context.Context, cfg SSHConfig, password string, opts BootstrapOpts) error {
 	client, err := dialBootstrap(ctx, cfg)
 	if err != nil {
@@ -159,7 +194,12 @@ func BootstrapEnv(ctx context.Context, cfg SSHConfig, password string, opts Boot
 		return err
 	}
 	if err := Provision(ctx, client, password, opts.User, opts.OnStdout, opts.OnStderr); err != nil {
-		return err
+		return fmt.Errorf("install docker: %w", err)
+	}
+	if opts.Path != "" {
+		if err := ProvisionDeployPath(ctx, client, password, opts.User, opts.Path, opts.OnStdout, opts.OnStderr); err != nil {
+			return fmt.Errorf("create deploy path: %w", err)
+		}
 	}
 	return VerifyBootstrap(ctx, client, password, opts.User, opts.OnStdout, opts.OnStderr)
 }
