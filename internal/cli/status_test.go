@@ -212,4 +212,8 @@ func TestStatusRemoteAbortPropagates(t *testing.T) {
 	if !errors.Is(err, deploy.ErrAborted) {
 		t.Fatalf("Execute() = %v, want ErrAborted", err)
 	}
+	var ee *deploy.ExitError
+	if !errors.As(err, &ee) || ee.Code != deploy.ExitAborted {
+		t.Fatalf("Execute() error = %T, want *ExitError with code %d", err, deploy.ExitAborted)
+	}
 }
