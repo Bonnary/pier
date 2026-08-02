@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -68,6 +69,9 @@ func runRemoteStatus(cmd *cobra.Command, cfg *config.Config, env string) error {
 	}
 	client, err := statusDial(cmd.Context(), deploy.SSHConfig{Host: dc.Host, User: dc.User, KeyPath: sshKeyPath()})
 	if err != nil {
+		if errors.Is(err, deploy.ErrAborted) {
+			return err
+		}
 		return SSHError(err)
 	}
 	defer client.Close()

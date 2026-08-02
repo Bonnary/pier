@@ -7,6 +7,7 @@ package deploy
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -58,6 +59,11 @@ func (p *Pipeline) Run(ctx context.Context) error {
 	client, err := p.preflight(ctx)
 	if err != nil {
 		p.Logger.PhaseEnd("preflight", err)
+		// An interactive abort (Ctrl+C on the password prompt) is
+		// not a preflight failure: it must exit 130, not 2.
+		if errors.Is(err, ErrAborted) {
+			return err
+		}
 		return PreflightError(err)
 	}
 	p.Logger.PhaseEnd("preflight", nil)

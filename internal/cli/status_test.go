@@ -192,3 +192,24 @@ func TestStatusRemoteDialFailure(t *testing.T) {
 		t.Errorf("error = %q, want to contain boom", err)
 	}
 }
+
+func TestStatusRemoteAbortPropagates(t *testing.T) {
+	dir := t.TempDir()
+	toml := "[project]\nname=\"x\"\ndomain=\"x.example.com\"\n[stack]\ntype=\"laravel\"\nphp=\"8.3\"\nnode=\"22\"\n[deploy.production]\nbranch=\"main\"\nhost=\"h\"\nuser=\"u\"\npath=\"/srv/x\"\n"
+	if err := os.WriteFile(filepath.Join(dir, "pier.toml"), []byte(toml), 0644); err != nil {
+		t.Fatal(err)
+	}
+	origDial := statusDial
+	statusDial = func(ctx context.Context, cfg deploy.SSHConfig) (deploy.StatusRunner, error) {
+		return nil, deploy.AbortedError()
+	}
+	defer func() { statusDial = origDial }()
+
+	var buf bytes.Buffer
+	root := NewRootCmd(&buf, &buf)
+	root.SetArgs([]string{"--config", filepath.Join(dir, "pier.toml"), "status", "production"})
+	err := root.Execute()
+	if !errors.Is(err, deploy.ErrAborted) {
+		t.Fatalf("Execute() = %v, want ErrAborted", err)
+	}
+}

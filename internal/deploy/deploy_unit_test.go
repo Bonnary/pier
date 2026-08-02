@@ -2,6 +2,7 @@ package deploy
 
 import (
 	"context"
+	"errors"
 	"io"
 	"path/filepath"
 	"testing"
@@ -67,5 +68,37 @@ func TestDeployFinalStateURLDefault(t *testing.T) {
 	want := "https://myapp.example.com:443"
 	if url != want {
 		t.Errorf("ResolvedURL = %q, want %q (no override → default 443)", url, want)
+	}
+}
+
+func TestPipelineAbortPropagates(t *testing.T) {
+	cfg := &config.Config{
+		Project: config.ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+		Deploy: map[string]config.DeployConfig{
+			"production": {Host: "h", User: "u", Path: "/srv/x", Branch: "main"},
+		},
+	}
+	origDial := pipelineDial
+	pipelineDial = func(ctx context.Context, cfg SSHConfig) (bootstrapConn, error) {
+		return nil, AbortedError()
+	}
+	defer func() { pipelineDial = origDial }()
+
+	p := &Pipeline{
+		Config:    cfg,
+		Env:       "production",
+		DeployEnv: cfg.Deploy["production"],
+		Logger:    discardLogger{},
+		SSH:       SSHConfig{Host: "h", User: "u", KeyPath: "/nonexistent"},
+		Now:       time.Now,
+	}
+	err := p.Run(context.Background())
+	if !errors.Is(err, ErrAborted) {
+		t.Fatalf("Run() = %v, want ErrAborted", err)
+	}
+	var ee *ExitError
+	if !errors.As(err, &ee) || ee.Code != ExitAborted {
+		t.Fatalf("Run() error = %T, want *ExitError with code %d", err, ExitAborted)
 	}
 }
