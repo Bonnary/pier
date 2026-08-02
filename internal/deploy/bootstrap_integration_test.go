@@ -5,6 +5,7 @@ package deploy
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -46,16 +47,23 @@ func TestBootstrapRealServer(t *testing.T) {
 		t.Log("PIER_TEST_SUDO_PASSWORD not set; probe-only run")
 		return
 	}
-	err = BootstrapEnv(ctx, cfg, pw, BootstrapOpts{User: user})
-	if err != nil && !errors.Is(err, ErrAlreadyBootstrapped) {
-		t.Fatalf("BootstrapEnv: %v", err)
-	}
-	err = BootstrapEnv(ctx, cfg, pw, BootstrapOpts{User: user})
-	if !errors.Is(err, ErrAlreadyBootstrapped) {
-		t.Fatalf("second BootstrapEnv = %v, want ErrAlreadyBootstrapped (idempotent)", err)
-	}
-	if err := BootstrapEnv(ctx, cfg, pw, BootstrapOpts{User: user, Force: true}); err != nil {
-		t.Fatalf("BootstrapEnv(force): %v", err)
+	deployPath := os.Getenv("PIER_TEST_DEPLOY_PATH")
+	if deployPath != "" && pw != "" {
+		err = BootstrapEnv(ctx, cfg, pw, BootstrapOpts{User: user, Path: deployPath})
+		if err != nil && !errors.Is(err, ErrAlreadyBootstrapped) {
+			t.Fatalf("BootstrapEnv: %v", err)
+		}
+		err = BootstrapEnv(ctx, cfg, pw, BootstrapOpts{User: user, Path: deployPath})
+		if !errors.Is(err, ErrAlreadyBootstrapped) {
+			t.Fatalf("second BootstrapEnv = %v, want ErrAlreadyBootstrapped (idempotent)", err)
+		}
+		if err := BootstrapEnv(ctx, cfg, pw, BootstrapOpts{User: user, Force: true, Path: deployPath}); err != nil {
+			t.Fatalf("BootstrapEnv(force): %v", err)
+		}
+		if err := assertRemotePathOwned(ctx, cfg, deployPath, user); err != nil {
+			t.Fatalf("deploy path ownership: %v", err)
+		}
+		t.Logf("deploy path %s owned by %s", deployPath, user)
 	}
 	ok, err = ProbeEnv(ctx, cfg)
 	if err != nil {
@@ -64,6 +72,20 @@ func TestBootstrapRealServer(t *testing.T) {
 	if !ok {
 		t.Error("ProbeEnv after bootstrap = false, want true")
 	}
+}
+
+// assertRemotePathOwned dials host and asserts path exists and is
+// owned by wantUser.
+func assertRemotePathOwned(ctx context.Context, cfg SSHConfig, path, wantUser string) error {
+	client, err := Dial(ctx, cfg)
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+	_, _, err = client.Run(ctx, fmt.Sprintf(
+		"[ -d %s ] && [ \"$(stat -c '%%U' %s)\" = %s ]",
+		quoteShell(path), quoteShell(path), quoteShell(wantUser)))
+	return err
 }
 
 // TestRunStreamStdinRealServer streams stdout/stderr lines from a

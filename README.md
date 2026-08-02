@@ -72,7 +72,9 @@ Docker CLI.
   installs Docker Engine + the compose plugin over SSH and grants
   the deploy user passwordless docker access (hidden one-time sudo
   password prompt; installation output streams live; idempotent,
-  `--all` / `--force`).
+  `--all` / `--force`). Also creates each env's deploy directory
+  (`[deploy.<env>].path`) and hands it to the deploy user, so
+  `pier deploy` never hits a missing-path rsync error.
 - **Automatic rollback** — Any failure in the `up` or `health`
   phase re-tags the previous image and re-deploys it before the
   command exits non-zero.
@@ -386,6 +388,10 @@ go doc ./...
 - **"server not bootstrapped"** on `pier deploy` — run
   `pier bootstrap <env>` once on the server. The deploy user needs
   password-protected sudo for the one-time Docker install.
+- **"deploy path ... is not writable"** on `pier deploy` — the
+  deploy directory doesn't exist and its parent isn't writable by the
+  deploy user. Re-run `pier bootstrap <env>` to create it, or run the
+  `sudo mkdir -p` / `sudo chown` commands from the error message.
 - **"wrong sudo password"** on `pier bootstrap` — re-run
   `pier bootstrap <env>` and enter the deploy user's sudo password
   (not the SSH key passphrase).
