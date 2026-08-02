@@ -17,12 +17,17 @@ import (
 
 // SSHConfig is everything Dial needs to open a connection: target
 // host, login user, path to the private key on the local filesystem,
-// and the TCP port (0 means 22).
+// and the TCP port (0 means 22). When the server rejects the key
+// (or the key file does not exist), Dial falls back to a password:
+// Password wins, then PasswordPrompt (which may be nil to forbid
+// prompting).
 type SSHConfig struct {
-	Host    string
-	User    string
-	KeyPath string
-	Port    int
+	Host           string
+	User           string
+	KeyPath        string
+	Port           int
+	Password       string
+	PasswordPrompt func() (string, error)
 }
 
 func (c *SSHConfig) port() int {
@@ -49,6 +54,11 @@ type Client struct {
 // Dial opens an SSH connection to cfg and returns a ready Client.
 // The host key is NOT verified (InsecureIgnoreHostKey) — the
 // out-of-scope v1 list explicitly defers strict host-key checking.
+// Key auth is tried first; if the key file is missing or the server
+// rejects every offered key (an auth-class failure), Dial falls back
+// to the password from cfg.Password or cfg.PasswordPrompt and retries
+// once. A password fallback is attempted only when a password source
+// exists; otherwise the original handshake error is returned.
 func Dial(ctx context.Context, cfg SSHConfig) (*Client, error) {
 	if cfg.Host == "" {
 		return nil, fmt.Errorf("%w: empty host", ErrPreflight)
@@ -56,30 +66,111 @@ func Dial(ctx context.Context, cfg SSHConfig) (*Client, error) {
 	if cfg.KeyPath == "" {
 		return nil, fmt.Errorf("%w: empty key path", ErrPreflight)
 	}
-	key, err := os.ReadFile(cfg.KeyPath)
-	if err != nil {
-		return nil, fmt.Errorf("%w: read key: %v", ErrPreflight, err)
-	}
-	signer, err := ssh.ParsePrivateKey(key)
-	if err != nil {
-		return nil, fmt.Errorf("%w: parse key: %v", ErrPreflight, err)
-	}
 	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.port())
+	auth := []ssh.AuthMethod(nil)
+	if key, err := os.ReadFile(cfg.KeyPath); err == nil {
+		signer, err := ssh.ParsePrivateKey(key)
+		if err != nil {
+			return nil, fmt.Errorf("%w: parse key: %v", ErrPreflight, err)
+		}
+		auth = append(auth, ssh.PublicKeys(signer))
+	}
+	var firstErr error
+	if len(auth) > 0 {
+		conn, err := dialOnce(ctx, addr, cfg, auth)
+		if err == nil {
+			return &Client{Config: cfg, conn: conn}, nil
+		}
+		firstErr = err
+		if !isAuthFailure(err) {
+			return nil, fmt.Errorf("%w: handshake %s: %v", ErrPreflight, addr, err)
+		}
+	}
+	pw, ok, err := passwordFor(cfg)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		if firstErr != nil {
+			return nil, fmt.Errorf("%w: handshake %s: %v", ErrPreflight, addr, firstErr)
+		}
+		return nil, fmt.Errorf("%w: no ssh key at %s and no password source", ErrPreflight, cfg.KeyPath)
+	}
+	conn, err := dialOnce(ctx, addr, cfg, []ssh.AuthMethod{
+		ssh.Password(pw),
+		ssh.KeyboardInteractive(keyboardResponder(pw)),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("%w: handshake %s: %v", ErrPreflight, addr, err)
+	}
+	return &Client{Config: cfg, conn: conn}, nil
+}
+
+// dialOnce opens a TCP connection and performs the SSH handshake
+// with the given auth methods. The TCP connection is closed on
+// handshake failure.
+func dialOnce(ctx context.Context, addr string, cfg SSHConfig, auth []ssh.AuthMethod) (*ssh.Client, error) {
 	d := net.Dialer{Timeout: 10 * time.Second}
 	tcpConn, err := d.DialContext(ctx, "tcp", addr)
 	if err != nil {
-		return nil, fmt.Errorf("%w: dial %s: %v", ErrPreflight, addr, err)
+		return nil, err
 	}
 	ncc, chans, reqs, err := ssh.NewClientConn(tcpConn, addr, &ssh.ClientConfig{
 		User:            cfg.User,
-		Auth:            []ssh.AuthMethod{ssh.PublicKeys(signer)},
+		Auth:            auth,
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 	})
 	if err != nil {
 		tcpConn.Close()
-		return nil, fmt.Errorf("%w: handshake %s: %v", ErrPreflight, addr, err)
+		return nil, err
 	}
-	return &Client{Config: cfg, conn: ssh.NewClient(ncc, chans, reqs)}, nil
+	return ssh.NewClient(ncc, chans, reqs), nil
+}
+
+// isAuthFailure reports whether err is an SSH authentication-class
+// failure (the server rejected the offered methods) rather than a
+// network, protocol, or negotiation error.
+func isAuthFailure(err error) bool {
+	var sae *ssh.ServerAuthError
+	if errors.As(err, &sae) {
+		return true
+	}
+	// *ssh.ServerAuthError is only produced by the server side; the
+	// client's rejection error is a plain fmt.Errorf ("ssh: unable to
+	// authenticate, attempted methods %v, no supported methods
+	// remain"). Match on its stable message text.
+	return strings.Contains(err.Error(), "unable to authenticate")
+}
+
+// passwordFor resolves the password for the fallback auth attempt:
+// the pre-supplied Password field wins, then PasswordPrompt. ok is
+// false when neither source exists. Prompt errors are returned as-is
+// so an interactive cancel can surface as an abort.
+func passwordFor(cfg SSHConfig) (pw string, ok bool, err error) {
+	if cfg.Password != "" {
+		return cfg.Password, true, nil
+	}
+	if cfg.PasswordPrompt != nil {
+		pw, err := cfg.PasswordPrompt()
+		if err != nil {
+			return "", false, err
+		}
+		return pw, true, nil
+	}
+	return "", false, nil
+}
+
+// keyboardResponder returns an ssh.KeyboardInteractive responder that
+// answers every prompt with pw. Used for servers that only advertise
+// the keyboard-interactive method (typical PAM setups).
+func keyboardResponder(pw string) ssh.KeyboardInteractiveChallenge {
+	return func(user, instruction string, questions []string, echos []bool) ([]string, error) {
+		answers := make([]string, len(questions))
+		for i := range answers {
+			answers[i] = pw
+		}
+		return answers, nil
+	}
 }
 
 // Run executes cmd on the remote host and returns the captured
