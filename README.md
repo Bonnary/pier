@@ -80,7 +80,7 @@ Docker CLI.
   command exits non-zero.
 - **`pier rollback <env>`** — Re-deploy the previous image tag on
   demand.
-- **`pier status`** — One-glance project + container status.
+- **`pier status [env]`** — One-glance project + container status, locally or on a remote deploy host (containers, disk, health, last deploy).
 - **Dev-only sidecars** — `[dev.services.<name>]` in `pier.toml` for
   opt-in dev-only services (log viewers, Reverb, dump inspectors,
   etc.). Never appear in the production compose.
@@ -225,7 +225,7 @@ port forward.
 | `pier deploy <env>` | Build, sync, up, health-check; rollback on failure. Renders a Bubble Tea TUI with live phase progress. |
 | `pier bootstrap [env...]` | Provision one or more servers: install Docker + compose plugin, grant the deploy user docker access. Interactive picker when no env is given; `--all` for every env, `--force` to re-provision. |
 | `pier rollback <env>` | Re-deploy the previous image tag. |
-| `pier status` | Show project and container status for the current env. |
+| `pier status [env]` | Show project and container status; pass an env name to probe the remote host over SSH (containers, disk, health, last deploy). |
 
 ### Global flags
 

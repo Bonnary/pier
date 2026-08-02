@@ -6,6 +6,7 @@
 
 - Application logo (`assets/logo.png`) is now embedded into the binary via `go:embed` in the new `assets` package and surfaced on the README so pier has a recognizable brand.
 - Comprehensive Go doc comments on every package and on every exported type, function, and method. `go doc ./...` now produces a complete reference (cmd/pier, internal/cli, internal/config, internal/deploy, internal/docker, internal/portcheck, internal/compose, internal/stack, internal/stack/laravel, internal/tui).
+- `pier status <env>` probes a remote deploy host over SSH: container state, deploy-path and docker disk usage, a one-shot health check, and the last deploy record from `.pier/state.json`. `pier status` with no env still shows local status only.
 
 ### Changed
 
