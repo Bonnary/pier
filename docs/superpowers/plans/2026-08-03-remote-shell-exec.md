@@ -598,6 +598,8 @@ import (
 ```
 
 Then append to `internal/deploy/shell.go`:
+
+```go
 // not a terminal; an interactive remote shell would be unusable.
 var ErrShellNoTTY = errors.New("remote shell requires a terminal")
 
@@ -1413,3 +1415,4 @@ git commit -m "chore: final touches" || true
 ```
 
 (Empty when everything was already committed; `|| true` makes the commit a no-op in that case.)
+```
