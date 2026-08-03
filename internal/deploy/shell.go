@@ -8,6 +8,8 @@ import (
 	"os"
 	"strings"
 
+	"golang.org/x/term"
+
 	"golang.org/x/crypto/ssh"
 )
 
@@ -117,6 +119,101 @@ func (c *Client) remoteExec(ctx context.Context, host, dir string, args []string
 	<-done
 	if err := sess.Wait(); err != nil {
 		return RemoteCommandError(host, err)
+	}
+	return nil
+}
+
+// not a terminal; an interactive remote shell would be unusable.
+var ErrShellNoTTY = errors.New("remote shell requires a terminal")
+
+// terminal seams, overridable in tests.
+var (
+	shellIsTerminal = func(fd int) bool { return term.IsTerminal(fd) }
+	shellGetSize    = func(fd int) (int, int, error) { return term.GetSize(fd) }
+	shellMakeRaw    = func(fd int) (func() error, error) {
+		old, err := term.MakeRaw(fd)
+		if err != nil {
+			return nil, err
+		}
+		return func() error { return term.Restore(fd, old) }, nil
+	}
+)
+
+// RemoteShell opens an interactive bash in the app service of the
+// prod compose file on the remote host and returns when the remote
+// shell exits. The remote exit status becomes pier's exit code.
+func RemoteShell(ctx context.Context, cfg SSHConfig, dir string) error {
+	client, err := Dial(ctx, cfg)
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+	return client.InteractiveShell(ctx, dir)
+}
+
+// InteractiveShell runs the remote interactive bash session: local
+// terminal size → pty request, raw-mode stdin with restore (also on
+// error paths), SIGWINCH → WindowChange forwarding, and byte-copying
+// of stdin/stdout/stderr through the session. Requires a TTY on
+// local stdin.
+func (c *Client) InteractiveShell(ctx context.Context, dir string) error {
+	fd := int(os.Stdin.Fd())
+	if !shellIsTerminal(fd) {
+		return UserError(fmt.Errorf("%w: local stdin is not a terminal", ErrShellNoTTY))
+	}
+	w, h, err := shellGetSize(fd)
+	if err != nil {
+		return SessionError(c.Config.Host, fmt.Errorf("read terminal size: %w", err))
+	}
+	restore, err := shellMakeRaw(fd)
+	if err != nil {
+		return SessionError(c.Config.Host, fmt.Errorf("raw mode: %w", err))
+	}
+	defer func() { _ = restore() }()
+
+	sess, err := c.conn.NewSession()
+	if err != nil {
+		return SessionError(c.Config.Host, err)
+	}
+	defer sess.Close()
+
+	if err := sess.RequestPty("xterm-256color", h, w, ssh.TerminalModes{
+		ssh.ECHO:          1,
+		ssh.TTY_OP_ISPEED: 14400,
+		ssh.TTY_OP_OSPEED: 14400,
+	}); err != nil {
+		return SessionError(c.Config.Host, err)
+	}
+	sess.Stdin = os.Stdin
+	sess.Stdout = os.Stdout
+	sess.Stderr = os.Stderr
+
+	winch := make(chan os.Signal, 1)
+	done := make(chan struct{})
+	go func() {
+		notifyWindowChanges(winch)
+		defer stopWindowChanges(winch)
+		for {
+			select {
+			case <-winch:
+				w, h, err := shellGetSize(fd)
+				if err == nil {
+					_ = sess.WindowChange(h, w)
+				}
+			case <-done:
+				return
+			}
+		}
+	}()
+
+	if err := sess.Start(remoteShellCommand(dir)); err != nil {
+		close(done)
+		return SessionError(c.Config.Host, err)
+	}
+	err = sess.Wait()
+	close(done)
+	if err != nil {
+		return RemoteCommandError(c.Config.Host, err)
 	}
 	return nil
 }

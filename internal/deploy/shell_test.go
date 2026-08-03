@@ -243,3 +243,114 @@ func TestRemoteExecSessionRejected(t *testing.T) {
 		t.Errorf("code = %d, want ExitGeneral", ee.Code)
 	}
 }
+
+func TestRemoteShellRequiresTTY(t *testing.T) {
+	keyPath, pub := writeTestKey(t)
+	fs := &fakeSession{}
+	host, port := testAddr(t, startFakeSession(t, keyOnlyServer(pub), fs))
+	err := RemoteShell(context.Background(), SSHConfig{User: "deploy", Host: host, Port: port, KeyPath: keyPath}, "/srv/x")
+	if !errors.Is(err, ErrShellNoTTY) {
+		t.Fatalf("err = %v, want ErrShellNoTTY", err)
+	}
+	if len(fs.cmds) != 0 {
+		t.Errorf("cmds = %v, want none (no shell without a TTY)", fs.cmds)
+	}
+}
+
+func TestInteractiveShellPTYAndStreams(t *testing.T) {
+	keyPath, pub := writeTestKey(t)
+	fs := &fakeSession{output: []byte("hi there\n"), status: 0}
+	host, port := testAddr(t, startFakeSession(t, keyOnlyServer(pub), fs))
+
+	origIsT, origSize, origRaw := shellIsTerminal, shellGetSize, shellMakeRaw
+	shellIsTerminal = func(int) bool { return true }
+	shellGetSize = func(int) (int, int, error) { return 80, 24, nil }
+	restored := false
+	shellMakeRaw = func(int) (func() error, error) {
+		return func() error { restored = true; return nil }, nil
+	}
+	defer func() { shellIsTerminal, shellGetSize, shellMakeRaw = origIsT, origSize, origRaw }()
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe: %v", err)
+	}
+	if _, err := w.WriteString("exit\n"); err != nil {
+		t.Fatalf("write stdin: %v", err)
+	}
+	_ = w.Close()
+	rOut, wOut, _ := os.Pipe()
+	oldStdin, oldStdout := os.Stdin, os.Stdout
+	os.Stdin, os.Stdout = r, wOut
+	defer func() { os.Stdin, os.Stdout = oldStdin, oldStdout; _ = r.Close(); _ = rOut.Close() }()
+
+	client := dialTestClient(t, SSHConfig{User: "deploy", Host: host, Port: port, KeyPath: keyPath})
+	defer client.Close()
+	if err := client.InteractiveShell(context.Background(), "/srv/x"); err != nil {
+		t.Fatalf("InteractiveShell: %v", err)
+	}
+	wOut.Close()
+	var out bytes.Buffer
+	_, _ = io.Copy(&out, rOut)
+	if !restored {
+		t.Error("terminal restore func not called")
+	}
+	if fs.ptyTerm != "xterm-256color" {
+		t.Errorf("pty term = %q, want xterm-256color", fs.ptyTerm)
+	}
+	if fs.ptyCols != 80 || fs.ptyRows != 24 {
+		t.Errorf("pty size = %dx%d, want 80x24", fs.ptyCols, fs.ptyRows)
+	}
+	if got := out.String(); got != "hi there\n" {
+		t.Errorf("stdout = %q, want %q", got, "hi there\n")
+	}
+	if len(fs.cmds) != 1 {
+		t.Fatalf("recorded commands = %v, want 1", fs.cmds)
+	}
+	// The want-string is the transport-encoded form: the dir is wrapped
+	// by quoteShell, and the remote shell strips the quotes at runtime
+	// (functionally identical to the unquoted form, matching Task 1's
+	// TestRemoteExecCommand).
+	want := "cd '/srv/x' && docker compose -f docker-compose.prod.yml exec app bash"
+	if fs.cmds[0] != want {
+		t.Errorf("command = %q, want %q", fs.cmds[0], want)
+	}
+}
+
+func TestInteractiveShellExitStatus(t *testing.T) {
+	keyPath, pub := writeTestKey(t)
+	fs := &fakeSession{status: 42}
+	host, port := testAddr(t, startFakeSession(t, keyOnlyServer(pub), fs))
+
+	origIsT, origSize, origRaw := shellIsTerminal, shellGetSize, shellMakeRaw
+	shellIsTerminal = func(int) bool { return true }
+	shellGetSize = func(int) (int, int, error) { return 80, 24, nil }
+	shellMakeRaw = func(int) (func() error, error) {
+		return func() error { return nil }, nil
+	}
+	defer func() { shellIsTerminal, shellGetSize, shellMakeRaw = origIsT, origSize, origRaw }()
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe: %v", err)
+	}
+	_, _ = w.WriteString("exit\n")
+	_ = w.Close()
+	rOut, wOut, _ := os.Pipe()
+	oldStdin, oldStdout := os.Stdin, os.Stdout
+	os.Stdin, os.Stdout = r, wOut
+	defer func() { os.Stdin, os.Stdout = oldStdin, oldStdout; _ = r.Close(); _ = rOut.Close() }()
+
+	client := dialTestClient(t, SSHConfig{User: "deploy", Host: host, Port: port, KeyPath: keyPath})
+	defer client.Close()
+	err = client.InteractiveShell(context.Background(), "/srv/x")
+	wOut.Close()
+	_, _ = io.Copy(io.Discard, rOut)
+	var ee *ExitError
+	if !errors.As(err, &ee) {
+		t.Fatalf("err = %v, want *ExitError", err)
+	}
+	if ee.Code != 42 {
+		t.Errorf("exit code = %d, want 42", ee.Code)
+	}
+}
