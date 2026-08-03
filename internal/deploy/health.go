@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+
+	"github.com/Bonnary/pier/internal/config"
 )
 
 // HealthConfig drives Probe: the URL to GET, the overall Timeout, the
@@ -17,13 +19,14 @@ type HealthConfig struct {
 	MaxAttempts int
 }
 
-// DefaultHealthConfig returns a sensible default HealthConfig for
-// <domain>: HTTPS GET to https://<domain>/up, 60 s total timeout,
-// 2 s base interval, 30 attempts (interval doubles each attempt up
-// to a 10 s cap).
-func DefaultHealthConfig(domain string) HealthConfig {
+// DefaultHealthConfig returns a sensible default HealthConfig for a
+// deploy env: GET to the deploy host's web endpoint (scheme and port
+// resolved from [deploy.<env>].tls and the "laravel" port), 60 s
+// total timeout, 2 s base interval, 30 attempts (interval doubles
+// each attempt up to a 10 s cap).
+func DefaultHealthConfig(cfg config.Config, env string) HealthConfig {
 	return HealthConfig{
-		URL:         fmt.Sprintf("https://%s/up", domain),
+		URL:         HealthURL(cfg, env),
 		Timeout:     60 * time.Second,
 		Interval:    2 * time.Second,
 		MaxAttempts: 30,

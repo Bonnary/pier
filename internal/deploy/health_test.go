@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/Bonnary/pier/internal/config"
 )
 
 func TestProbeSuccess(t *testing.T) {
@@ -47,5 +49,20 @@ func TestProbeBackoff(t *testing.T) {
 	}
 	if count < 2 {
 		t.Errorf("count = %d, want >= 2", count)
+	}
+}
+
+func TestDefaultHealthConfig(t *testing.T) {
+	cfg := config.Config{
+		Project: config.ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+		Deploy:  map[string]config.DeployConfig{"production": {Host: "192.168.1.10", User: "u", Path: "p", Branch: "b"}},
+	}
+	h := DefaultHealthConfig(cfg, "production")
+	if h.URL != "http://192.168.1.10:80/up" {
+		t.Errorf("URL = %q, want http://192.168.1.10:80/up (host IP, plain HTTP)", h.URL)
+	}
+	if h.Timeout != 60*time.Second || h.Interval != 2*time.Second || h.MaxAttempts != 30 {
+		t.Errorf("DefaultHealthConfig = %+v, want 60s timeout / 2s interval / 30 attempts", h)
 	}
 }

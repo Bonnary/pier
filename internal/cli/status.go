@@ -23,9 +23,9 @@ var statusDial = func(ctx context.Context, cfg deploy.SSHConfig) (deploy.StatusR
 }
 
 // statusHealthURL is a seam for tests to point the remote health
-// probe at a local test server instead of the project domain.
+// probe at a local test server instead of the deploy host.
 var statusHealthURL = func(cfg *config.Config, env string) string {
-	return deploy.ResolvedURL(*cfg, env) + "/up"
+	return deploy.HealthURL(*cfg, env)
 }
 
 func newStatusCmd(stdout, stderr io.Writer) *cobra.Command {
@@ -76,7 +76,7 @@ func runRemoteStatus(cmd *cobra.Command, cfg *config.Config, env string) error {
 	}
 	defer client.Close()
 
-	health := deploy.DefaultHealthConfig(cfg.Project.Domain)
+	health := deploy.DefaultHealthConfig(*cfg, env)
 	health.URL = statusHealthURL(cfg, env)
 	health.Timeout = 10 * time.Second
 	health.Interval = 100 * time.Millisecond

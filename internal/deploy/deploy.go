@@ -201,17 +201,23 @@ func (p *Pipeline) commit() error {
 	return SaveState(dir, s)
 }
 
-// ResolvedURL returns the public HTTPS URL for the deployed env, using
-// the resolved "laravel" port (the laravelpkg.ProdPortDefaults default
-// of 443, or the per-env override from [deploy.<env>.ports.laravel]).
+// ResolvedURL returns the public URL for the deployed env: scheme
+// and port resolved from [deploy.<env>].tls and the "laravel" port
+// (default 443 when TLS is enabled, 80 for plain HTTP, or the
+// per-env override from [deploy.<env>.ports.laravel]).
 func ResolvedURL(cfg config.Config, env string) string {
+	return fmt.Sprintf("%s://%s:%d", laravelpkg.WebScheme(cfg, env), cfg.Project.Domain, laravelpkg.WebPort(cfg, env))
+}
+
+// HealthURL returns the URL the health probe GETs for env: the
+// deploy host IP from [deploy.<env>].host with the resolved scheme
+// and "laravel" port, plus "/up". Probing the host IP instead of the
+// public domain means health checks pass before DNS/hosts entries
+// point the domain at the server.
+func HealthURL(cfg config.Config, env string) string {
 	deployCfg, ok := cfg.Deploy[env]
 	if !ok {
 		deployCfg = config.DeployConfig{}
 	}
-	host, _ := laravelpkg.ResolvePort("laravel", deployCfg.Ports, laravelpkg.ProdPortDefaults)
-	if host == 0 {
-		host = laravelpkg.ProdPortDefaults["laravel"]
-	}
-	return fmt.Sprintf("https://%s:%d", cfg.Project.Domain, host)
+	return fmt.Sprintf("%s://%s:%d/up", laravelpkg.WebScheme(cfg, env), deployCfg.Host, laravelpkg.WebPort(cfg, env))
 }

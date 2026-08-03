@@ -53,7 +53,7 @@ func TestDeployFinalStateURL(t *testing.T) {
 			"production": {Host: "h", User: "u", Path: "p", Branch: "b", Ports: map[string]int{"laravel": 8383}},
 		},
 	}, "production")
-	want := "https://myapp.example.com:8383"
+	want := "http://myapp.example.com:8383"
 	if url != want {
 		t.Errorf("ResolvedURL = %q, want %q", url, want)
 	}
@@ -67,9 +67,53 @@ func TestDeployFinalStateURLDefault(t *testing.T) {
 			"production": {Host: "h", User: "u", Path: "p", Branch: "b"},
 		},
 	}, "production")
-	want := "https://myapp.example.com:443"
+	want := "http://myapp.example.com:80"
 	if url != want {
-		t.Errorf("ResolvedURL = %q, want %q (no override → default 443)", url, want)
+		t.Errorf("ResolvedURL = %q, want %q (no override → default 80 over plain HTTP)", url, want)
+	}
+}
+
+func TestDeployFinalStateURLTLS(t *testing.T) {
+	cases := []struct {
+		name string
+		dc   config.DeployConfig
+		want string
+	}{
+		{"tls on, no override", config.DeployConfig{Host: "h", User: "u", Path: "p", Branch: "b", TLS: true}, "https://myapp.example.com:443"},
+		{"tls on, override", config.DeployConfig{Host: "h", User: "u", Path: "p", Branch: "b", TLS: true, Ports: map[string]int{"laravel": 8443}}, "https://myapp.example.com:8443"},
+		{"tls on, laravel=0 falls back to 443", config.DeployConfig{Host: "h", User: "u", Path: "p", Branch: "b", TLS: true, Ports: map[string]int{"laravel": 0}}, "https://myapp.example.com:443"},
+	}
+	for _, c := range cases {
+		url := ResolvedURL(config.Config{
+			Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+			Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+			Deploy:  map[string]config.DeployConfig{"production": c.dc},
+		}, "production")
+		if url != c.want {
+			t.Errorf("%s: ResolvedURL = %q, want %q", c.name, url, c.want)
+		}
+	}
+}
+
+func TestHealthURL(t *testing.T) {
+	cases := []struct {
+		name string
+		dc   config.DeployConfig
+		want string
+	}{
+		{"plain http default", config.DeployConfig{Host: "192.168.1.10", User: "u", Path: "p", Branch: "b"}, "http://192.168.1.10:80/up"},
+		{"laravel override", config.DeployConfig{Host: "192.168.1.10", User: "u", Path: "p", Branch: "b", Ports: map[string]int{"laravel": 8383}}, "http://192.168.1.10:8383/up"},
+		{"tls on", config.DeployConfig{Host: "192.168.1.10", User: "u", Path: "p", Branch: "b", TLS: true}, "https://192.168.1.10:443/up"},
+	}
+	for _, c := range cases {
+		url := HealthURL(config.Config{
+			Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+			Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+			Deploy:  map[string]config.DeployConfig{"production": c.dc},
+		}, "production")
+		if url != c.want {
+			t.Errorf("%s: HealthURL = %q, want %q", c.name, url, c.want)
+		}
 	}
 }
 
