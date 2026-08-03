@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `[deploy.<env>].tls` flag (default `false`): production serves plain
+  HTTP end-to-end. `tls = true` renders HTTPS URLs and the 443 port
+  mapping; SSL certificate provisioning ships in a later release.
+
+### Changed
+
+- Deploy and `pier status <env>` health probes now target
+  `http://<host-ip>:<port>/up` (the `[deploy.<env>].host` address)
+  instead of the public domain, so health checks pass without DNS or
+  `/etc/hosts` entries. `APP_URL` and the displayed deploy URL now
+  follow the env's scheme.
+
 ## v0.0.3-beta
 
 ### Fixed

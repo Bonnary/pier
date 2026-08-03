@@ -267,10 +267,20 @@ host   = "prod.example.com"
 user   = "deploy"
 path   = "/srv/myapp"
 branch = "main"
+tls    = false   # false (default): plain HTTP. true: HTTPS URLs + 443 — requires the upcoming cert feature
 
 [deploy.production.ports]
 laravel = 443   # only the keys the user writes are applied
 ```
+
+`[deploy.<env>]` fields: `host`, `user`, `path`, `branch`, optional
+`tls`, and optional `ports` overrides. `tls = false` (the default)
+serves plain HTTP end-to-end: the deploy health check probes
+`http://<host-ip>:<laravel-port>/up` directly on the deploy host IP,
+so it passes before DNS or `/etc/hosts` entries point the domain at
+the server. `tls = true` renders HTTPS URLs and the 443 mapping, but
+SSL certificate provisioning is not shipped yet — keep it `false`
+for now.
 
 ### `[dev.services.<name>]` — opt-in dev sidecars
 
