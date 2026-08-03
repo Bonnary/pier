@@ -84,6 +84,38 @@ func ResolvePort(key string, override, defaults map[string]int) (host int, ok bo
 	return 0, false
 }
 
+// WebScheme returns the URL scheme for the env's primary web
+// endpoint: "https" when [deploy.<env>].tls is set, else "http"
+// (the default; TLS certificate provisioning is not shipped yet).
+func WebScheme(cfg config.Config, env string) string {
+	deployCfg, ok := cfg.Deploy[env]
+	if !ok {
+		deployCfg = config.DeployConfig{}
+	}
+	if deployCfg.TLS {
+		return "https"
+	}
+	return "http"
+}
+
+// WebPort returns the host port for the env's primary web endpoint:
+// the [deploy.<env>.ports.laravel] override when set (0 = don't
+// expose falls back to the default), else 443 when TLS is enabled or
+// 80 for the plain-HTTP default.
+func WebPort(cfg config.Config, env string) int {
+	deployCfg, ok := cfg.Deploy[env]
+	if !ok {
+		deployCfg = config.DeployConfig{}
+	}
+	if v, set := deployCfg.Ports["laravel"]; set && v != 0 {
+		return v
+	}
+	if deployCfg.TLS {
+		return 443
+	}
+	return 80
+}
+
 // CollectHostPorts parses a rendered docker-compose YAML and returns the
 // host-side port number of every <bind>:<host>:<container> binding, plus
 // the host-side of every DevService.Ports entry passed in. Used by the

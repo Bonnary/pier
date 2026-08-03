@@ -169,3 +169,48 @@ services:
 		t.Errorf("CollectHostPorts = %v, want it to include 8081 from user-defined dev service", hostPorts)
 	}
 }
+
+func TestWebScheme(t *testing.T) {
+	base := func(tls bool) config.Config {
+		return config.Config{
+			Project: config.ProjectConfig{Name: "x", Domain: "x.example.com"},
+			Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+			Deploy:  map[string]config.DeployConfig{"production": {TLS: tls}},
+		}
+	}
+	if got := WebScheme(base(false), "production"); got != "http" {
+		t.Errorf("WebScheme(tls=false) = %q, want http", got)
+	}
+	if got := WebScheme(base(true), "production"); got != "https" {
+		t.Errorf("WebScheme(tls=true) = %q, want https", got)
+	}
+	if got := WebScheme(config.Config{}, "missing"); got != "http" {
+		t.Errorf("WebScheme(missing env) = %q, want http (zero-value default)", got)
+	}
+}
+
+func TestWebPort(t *testing.T) {
+	cfgWith := func(tls bool, ports map[string]int) config.Config {
+		return config.Config{
+			Project: config.ProjectConfig{Name: "x", Domain: "x.example.com"},
+			Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+			Deploy:  map[string]config.DeployConfig{"production": {TLS: tls, Ports: ports}},
+		}
+	}
+	cases := []struct {
+		name string
+		cfg  config.Config
+		want int
+	}{
+		{"no tls, no override", cfgWith(false, nil), 80},
+		{"no tls, override 8383", cfgWith(false, map[string]int{"laravel": 8383}), 8383},
+		{"tls, no override", cfgWith(true, nil), 443},
+		{"tls, override 8443", cfgWith(true, map[string]int{"laravel": 8443}), 8443},
+		{"laravel=0 falls back to default", cfgWith(false, map[string]int{"laravel": 0}), 80},
+	}
+	for _, c := range cases {
+		if got := WebPort(c.cfg, "production"); got != c.want {
+			t.Errorf("%s: WebPort = %d, want %d", c.name, got, c.want)
+		}
+	}
+}
