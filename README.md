@@ -58,8 +58,14 @@ Docker CLI.
   `docker-compose.yml` with warn-and-confirm on unknown keys.
 - **`pier dev` / `pier stop`** — Bring up (or stop) the dev stack
   with a pre-flight port probe and a clear ready block.
-- **`pier shell` / `pier exec`** — Interactive bash in the
-  `laravel.test` container, or a one-off command against it.
+- **`pier shell [env]` / `pier exec [env] <cmd...>`** — Interactive
+  bash in the `laravel.test` container, or one-off commands in it
+  (e.g. `pier exec php artisan migrate`). Add a deploy env name to
+  target the remote host instead: `pier shell production` opens an
+  interactive bash in the production `app` container (PTY, resize
+  forwarding); `pier exec production php artisan migrate` runs a
+  one-off command there. Remote exit codes propagate to pier's exit
+  code.
 - **`pier service add|remove`** — Manage auxiliary services
   (`redis`, `mailpit`, `s3`, `meilisearch`, etc.) interactively or
   from the CLI. Idempotent.
@@ -180,8 +186,10 @@ pier init
 pier dev
 
 # 3. Open a shell in laravel.test, or run a one-off command.
-pier shell             # interactive bash in laravel.test
+pier shell                        # interactive bash in laravel.test
 pier exec php artisan migrate
+pier shell production             # interactive bash in the prod app container
+pier exec production php artisan migrate   # one-off command on prod
 
 # 4. Add an aux service (e.g. redis) — interactive TUI picker.
 pier service add redis
@@ -220,8 +228,8 @@ port forward.
 | `pier init --devcontainer` | Also generate `.devcontainer/devcontainer.json` for VS Code. |
 | `pier dev` | Bring up the dev stack. Runs a pre-flight port probe; exits with code 6 if a pier-owned host port is taken. |
 | `pier stop` | Stop the dev stack (volumes preserved). |
-| `pier shell` | Interactive `bash` in the `laravel.test` container. |
-| `pier exec <cmd...>` | Run a one-off command in `laravel.test`. |
+| `pier shell [env]` | Interactive `bash` in the `laravel.test` container, or in the remote `app` container when `<env>` names a deploy host (PTY, resize forwarding). |
+| `pier exec [env] <cmd...>` | Run a one-off command in `laravel.test`, or in the remote `app` container when the first arg names a deploy env. |
 | `pier service add <name...>` | Add one or more services to `pier.toml` + `docker-compose.yml`. Interactive TUI picker when no names are given. |
 | `pier service remove <name...>` | Remove one or more services from `pier.toml` + `docker-compose.yml`. |
 | `pier deploy <env>` | Build, sync, up, health-check; rollback on failure. Renders a Bubble Tea TUI with live phase progress. |
