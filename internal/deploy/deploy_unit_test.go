@@ -45,7 +45,22 @@ func TestPipelineDryRun(t *testing.T) {
 	_ = context.Background
 }
 
+// pinLookup makes the DNS seam deterministic for a test: resolves
+// returns the resolver behavior ResolvedURL should observe.
+func pinLookup(t *testing.T, resolves bool) {
+	t.Helper()
+	old := lookupHost
+	lookupHost = func(string) ([]string, error) {
+		if resolves {
+			return []string{"127.0.0.1"}, nil
+		}
+		return nil, fmt.Errorf("no such host")
+	}
+	t.Cleanup(func() { lookupHost = old })
+}
+
 func TestDeployFinalStateURL(t *testing.T) {
+	pinLookup(t, true)
 	url := ResolvedURL(config.Config{
 		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
@@ -60,6 +75,7 @@ func TestDeployFinalStateURL(t *testing.T) {
 }
 
 func TestDeployFinalStateURLDefault(t *testing.T) {
+	pinLookup(t, true)
 	url := ResolvedURL(config.Config{
 		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
@@ -74,6 +90,7 @@ func TestDeployFinalStateURLDefault(t *testing.T) {
 }
 
 func TestDeployFinalStateURLTLS(t *testing.T) {
+	pinLookup(t, true)
 	cases := []struct {
 		name string
 		dc   config.DeployConfig
@@ -114,6 +131,54 @@ func TestHealthURL(t *testing.T) {
 		if url != c.want {
 			t.Errorf("%s: HealthURL = %q, want %q", c.name, url, c.want)
 		}
+	}
+}
+
+func TestResolvedURLFallsBackToHostIPWhenDomainDoesNotResolve(t *testing.T) {
+	pinLookup(t, false)
+	cases := []struct {
+		name string
+		dc   config.DeployConfig
+		want string
+	}{
+		{"plain http default", config.DeployConfig{Host: "192.168.122.30", User: "u", Path: "p", Branch: "b"}, "http://192.168.122.30:80"},
+		{"laravel override", config.DeployConfig{Host: "192.168.122.30", User: "u", Path: "p", Branch: "b", Ports: map[string]int{"laravel": 8383}}, "http://192.168.122.30:8383"},
+		{"tls on", config.DeployConfig{Host: "192.168.122.30", User: "u", Path: "p", Branch: "b", TLS: true}, "https://192.168.122.30:443"},
+	}
+	for _, c := range cases {
+		url := ResolvedURL(config.Config{
+			Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+			Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+			Deploy:  map[string]config.DeployConfig{"production": c.dc},
+		}, "production")
+		if url != c.want {
+			t.Errorf("%s: ResolvedURL = %q, want %q", c.name, url, c.want)
+		}
+	}
+}
+
+func TestResolvedURLKeepsDomainWithoutDeployHost(t *testing.T) {
+	pinLookup(t, false)
+	url := ResolvedURL(config.Config{
+		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+	}, "production")
+	want := "http://myapp.example.com:80"
+	if url != want {
+		t.Errorf("ResolvedURL = %q, want %q (no deploy host to fall back to)", url, want)
+	}
+}
+
+func TestResolvedURLBareIPDomain(t *testing.T) {
+	pinLookup(t, true)
+	url := ResolvedURL(config.Config{
+		Project: config.ProjectConfig{Name: "myapp", Domain: "192.168.122.30"},
+		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+		Deploy:  map[string]config.DeployConfig{"production": {Host: "10.0.0.1", User: "u", Path: "p", Branch: "b"}},
+	}, "production")
+	want := "http://192.168.122.30:80"
+	if url != want {
+		t.Errorf("ResolvedURL = %q, want %q (IP domain passes through)", url, want)
 	}
 }
 

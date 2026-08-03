@@ -27,7 +27,7 @@ func (f *fakeRollbackRunner) RunStream(ctx context.Context, cmd string, onLine f
 func TestRollbackNoPrevious(t *testing.T) {
 	dir := t.TempDir()
 	r := &fakeRollbackRunner{}
-	if err := Rollback(context.Background(), r, dir, "myapp"); err == nil {
+	if err := Rollback(context.Background(), nil, r, dir, "myapp"); err == nil {
 		t.Error("Rollback(no previous) = nil error, want non-nil")
 	}
 }
@@ -38,7 +38,7 @@ func TestRollbackSwitchesToPrevious(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := &fakeRollbackRunner{}
-	if err := Rollback(context.Background(), r, dir, "myapp"); err != nil {
+	if err := Rollback(context.Background(), localStateStore{}, r, dir, "myapp"); err != nil {
 		t.Fatalf("Rollback: %v", err)
 	}
 	found := false

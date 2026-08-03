@@ -61,6 +61,79 @@ func (c *Client) SyncDir(ctx context.Context, local, remote string, excludes []s
 	})
 }
 
+// ReadFile reads a remote file over SFTP on the already-open SSH
+// connection. Returns (nil, nil) when the path does not exist.
+func (c *Client) ReadFile(ctx context.Context, remotePath string) ([]byte, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	sc, err := sftp.NewClient(c.conn)
+	if err != nil {
+		return nil, fmt.Errorf("sftp: %w", err)
+	}
+	defer sc.Close()
+	f, err := sc.Open(remotePath)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("sftp open %s: %w", remotePath, err)
+	}
+	defer f.Close()
+	return io.ReadAll(f)
+}
+
+// WriteFile writes bytes to a remote file over SFTP, creating parent
+// directories. The content lands in a sibling .tmp file first and is
+// renamed into place, so a reader never observes a partial write.
+func (c *Client) WriteFile(ctx context.Context, remotePath string, b []byte) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	sc, err := sftp.NewClient(c.conn)
+	if err != nil {
+		return fmt.Errorf("sftp: %w", err)
+	}
+	defer sc.Close()
+	if err := sc.MkdirAll(filepath.ToSlash(filepath.Dir(remotePath))); err != nil {
+		return fmt.Errorf("sftp mkdir %s: %w", filepath.Dir(remotePath), err)
+	}
+	tmp := remotePath + ".tmp"
+	f, err := sc.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC)
+	if err != nil {
+		return fmt.Errorf("sftp open %s: %w", tmp, err)
+	}
+	if _, err := f.Write(b); err != nil {
+		f.Close()
+		return fmt.Errorf("sftp write %s: %w", tmp, err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("sftp close %s: %w", tmp, err)
+	}
+	if err := sc.Rename(tmp, remotePath); err != nil {
+		// OpenSSH's sftp-server implements the draft literally: the
+		// standard rename request fails when the target already
+		// exists, so overwriting a file (e.g. a second deploy writing
+		// .pier/state.json) errors with SSH_FX_FAILURE. Prefer the
+		// posix-rename@openssh.com extension, which replaces the
+		// target atomically; servers without the extension
+		// (SSH_FX_OP_UNSUPPORTED) get a remove-then-rename fallback.
+		if err := sc.PosixRename(tmp, remotePath); err != nil {
+			var se *sftp.StatusError
+			if !errors.As(err, &se) || se.Code != uint32(sftp.ErrSSHFxOpUnsupported) {
+				return fmt.Errorf("sftp rename %s: %w", remotePath, err)
+			}
+			if err := sc.Remove(remotePath); err != nil && !errors.Is(err, os.ErrNotExist) {
+				return fmt.Errorf("sftp remove %s: %w", remotePath, err)
+			}
+			if err := sc.Rename(tmp, remotePath); err != nil {
+				return fmt.Errorf("sftp rename %s: %w", remotePath, err)
+			}
+		}
+	}
+	return nil
+}
+
 // putSFTPLink recreates a local symlink on the remote side, creating
 // parent directories first. The target is preserved verbatim so
 // relative links stay relative. It is idempotent: an existing remote

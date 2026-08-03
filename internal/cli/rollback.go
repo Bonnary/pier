@@ -45,7 +45,7 @@ func runRollback(cmd *cobra.Command, env string) error {
 	}
 	logger := NewLogger(jsonOut, cmd.OutOrStdout())
 	logger.PhaseStart("rollback")
-	if err := deploy.Rollback(context.Background(), c, dc.Path, cfg.Project.Name); err != nil {
+	if err := deploy.Rollback(context.Background(), deploy.SFTPStateStore{Client: c}, c, dc.Path, cfg.Project.Name); err != nil {
 		logger.PhaseEnd("rollback", err)
 		return err
 	}

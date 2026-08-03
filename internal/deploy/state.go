@@ -1,6 +1,7 @@
 package deploy
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -64,4 +65,52 @@ func SaveState(dir string, s *State) error {
 		return fmt.Errorf("deploy: write tmp state: %w", err)
 	}
 	return os.Rename(tmp, filepath.Join(dirPath, "state.json"))
+}
+
+// stateStore abstracts .pier/state.json access on a deploy host. The
+// real pipeline uses sftpStateStore over the deploy SSH connection;
+// tests use localStateStore against a temp dir.
+type stateStore interface {
+	ReadState(ctx context.Context, dir string) (*State, error)
+	WriteState(ctx context.Context, dir string, s *State) error
+}
+
+// localStateStore reads and writes .pier/state.json with local os
+// calls (unit tests).
+type localStateStore struct{}
+
+func (localStateStore) ReadState(ctx context.Context, dir string) (*State, error) {
+	return LoadState(dir)
+}
+
+func (localStateStore) WriteState(ctx context.Context, dir string, s *State) error {
+	return SaveState(dir, s)
+}
+
+// SFTPStateStore reads and writes .pier/state.json over SFTP on the
+// deploy SSH connection, so the deploy record lives on the remote
+// host where Rollback and `pier status <env>` can find it. Client is
+// the already-dialed deploy connection.
+type SFTPStateStore struct {
+	Client *Client
+}
+
+func (s SFTPStateStore) ReadState(ctx context.Context, dir string) (*State, error) {
+	b, err := s.Client.ReadFile(ctx, filepath.ToSlash(filepath.Join(dir, stateFile)))
+	if err != nil || b == nil {
+		return nil, err
+	}
+	var st State
+	if err := json.Unmarshal(b, &st); err != nil {
+		return nil, fmt.Errorf("deploy: parse state: %w", err)
+	}
+	return &st, nil
+}
+
+func (s SFTPStateStore) WriteState(ctx context.Context, dir string, st *State) error {
+	b, err := json.MarshalIndent(st, "", "  ")
+	if err != nil {
+		return err
+	}
+	return s.Client.WriteFile(ctx, filepath.ToSlash(filepath.Join(dir, stateFile)), b)
 }

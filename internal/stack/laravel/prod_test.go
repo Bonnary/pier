@@ -1,6 +1,7 @@
 package laravel
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 
@@ -20,6 +21,9 @@ func TestGenerateProdFilesNoServices(t *testing.T) {
 	}
 	if findFile(files, "docker-compose.prod.yml") == nil {
 		t.Error("docker-compose.prod.yml missing")
+	}
+	if findFile(files, ".env.production") == nil {
+		t.Error(".env.production missing")
 	}
 	if findFile(files, ".env.production.example") == nil {
 		t.Error(".env.production.example missing")
@@ -44,6 +48,184 @@ func TestGenerateProdFilesWithServices(t *testing.T) {
 	compose := string(findFile(files, "docker-compose.prod.yml").Contents)
 	if !contains(compose, "redis:") {
 		t.Errorf("prod compose missing redis service:\n%s", compose)
+	}
+}
+
+func TestGenerateProdFilesAppBuildArgs(t *testing.T) {
+	s := New()
+	files, err := s.GenerateProdFiles(config.Config{
+		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+	}, "production")
+	if err != nil {
+		t.Fatalf("GenerateProdFiles: %v", err)
+	}
+	got := findFile(files, "docker-compose.prod.yml")
+	if got == nil {
+		t.Fatal("docker-compose.prod.yml missing")
+	}
+	var doc struct {
+		Services map[string]struct {
+			Build *struct {
+				Args map[string]string `yaml:"args"`
+			} `yaml:"build"`
+		} `yaml:"services"`
+	}
+	if err := yaml.Unmarshal(got.Contents, &doc); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	app, ok := doc.Services["app"]
+	if !ok {
+		t.Fatal("app service missing")
+	}
+	if app.Build == nil {
+		t.Fatal("app build block missing")
+	}
+	for _, key := range []string{"WWWUSER", "WWWGROUP"} {
+		v, ok := app.Build.Args[key]
+		if !ok {
+			t.Errorf("app build args missing %q; got %v (the runtime Dockerfile's `groupadd -g $WWWGROUP` fails with 'invalid group ID' when the arg is absent)", key, app.Build.Args)
+			continue
+		}
+		if _, err := strconv.Atoi(v); err != nil {
+			t.Errorf("app build arg %s = %q, want a numeric UID/GID (groupadd rejects non-numeric)", key, v)
+		}
+	}
+}
+
+func TestGenerateProdFilesAppBuildsFromProdDockerfile(t *testing.T) {
+	s := New()
+	files, err := s.GenerateProdFiles(config.Config{
+		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+	}, "production")
+	if err != nil {
+		t.Fatalf("GenerateProdFiles: %v", err)
+	}
+	got := findFile(files, "docker-compose.prod.yml")
+	if got == nil {
+		t.Fatal("docker-compose.prod.yml missing")
+	}
+	var doc struct {
+		Services map[string]struct {
+			Build *struct {
+				Context    string `yaml:"context"`
+				Dockerfile string `yaml:"dockerfile"`
+			} `yaml:"build"`
+		} `yaml:"services"`
+	}
+	if err := yaml.Unmarshal(got.Contents, &doc); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	app, ok := doc.Services["app"]
+	if !ok {
+		t.Fatal("app service missing")
+	}
+	if app.Build == nil {
+		t.Fatal("app build block missing")
+	}
+	if app.Build.Context != "." {
+		t.Errorf("app build context = %q, want %q (the app code must be in the build context so Dockerfile.prod can COPY it; a ./docker/<php> context contains only the runtime and the image has no application code)", app.Build.Context, ".")
+	}
+	if app.Build.Dockerfile != "docker/8.3/Dockerfile.prod" {
+		t.Errorf("app build dockerfile = %q, want %q (the runtime Dockerfile never COPYs the app — dev bind-mounts ./:/var/www/html, prod must bake it in)", app.Build.Dockerfile, "docker/8.3/Dockerfile.prod")
+	}
+}
+
+func TestGenerateProdFilesRendersProdDockerfile(t *testing.T) {
+	s := New()
+	files, err := s.GenerateProdFiles(config.Config{
+		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+	}, "production")
+	if err != nil {
+		t.Fatalf("GenerateProdFiles: %v", err)
+	}
+	df := findFile(files, "docker/8.3/Dockerfile.prod")
+	if df == nil {
+		t.Fatal("docker/8.3/Dockerfile.prod missing (the prod image must bake the application; without it containers fail with 'Could not open input file: /var/www/html/artisan')")
+	}
+	body := string(df.Contents)
+	checks := []struct {
+		want string
+		msg  string
+	}{
+		{"FROM ubuntu:24.04 AS runtime", "prod Dockerfile must name the runtime stage so the app stage can derive from it"},
+		{"FROM runtime AS app", "prod Dockerfile must bake the app into a final stage derived from the runtime"},
+		{"COPY . /var/www/html", "prod Dockerfile must COPY the project into /var/www/html (build context is the project root)"},
+		{"composer install --no-dev", "prod Dockerfile must install prod composer dependencies (vendor/ is excluded from the deploy sync)"},
+		{"npm run build", "prod Dockerfile must build frontend assets (node_modules/ is excluded from the deploy sync)"},
+		{"chown", "prod Dockerfile must hand storage and bootstrap/cache to the sail user (COPY preserves root ownership)"},
+		{"COPY docker/8.3/start-container /usr/local/bin/start-container", "runtime COPYs must be rewritten for the project-root build context (a plain `COPY start-container` now resolves to /start-container and the build fails with 'not found')"},
+		{"COPY docker/8.3/supervisord.conf /etc/supervisor/conf.d/supervisord.conf", "runtime COPYs must be rewritten for the project-root build context"},
+		{"COPY docker/8.3/php.ini /etc/php/8.3/cli/conf.d/99-sail.ini", "runtime COPYs must be rewritten for the project-root build context"},
+	}
+	for _, c := range checks {
+		if !strings.Contains(body, c.want) {
+			t.Errorf("Dockerfile.prod missing %q: %s\n%s", c.want, c.msg, body)
+		}
+	}
+	if !strings.Contains(body, "COPY docker/8.3/start-container") {
+		t.Errorf("Dockerfile.prod must keep the runtime base (start-container, supervisord) — got:\n%s", body)
+	}
+}
+
+func TestGenerateProdFilesNginxProxiesToAppHTTPServer(t *testing.T) {
+	s := New()
+	files, err := s.GenerateProdFiles(config.Config{
+		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+	}, "production")
+	if err != nil {
+		t.Fatalf("GenerateProdFiles: %v", err)
+	}
+	conf := findFile(files, "docker/nginx/default.conf")
+	if conf == nil {
+		t.Fatal("docker/nginx/default.conf missing")
+	}
+	body := string(conf.Contents)
+	if strings.Contains(body, "fastcgi_pass") {
+		t.Errorf("nginx conf must not use fastcgi_pass: the app container runs `artisan serve` (PHP built-in server on port 80), not php-fpm — there is no php-fpm binary in the runtime image (apt installs php8.x-cli only), so every request 502s:\n%s", body)
+	}
+	if strings.Contains(body, "try_files") {
+		t.Errorf("nginx conf must not rewrite to /index.php via try_files: the built-in server executes an existing public file directly (bypassing the Laravel router) and returns 500 'headers already sent' for /index.php — every non-file request like /up 500s:\n%s", body)
+	}
+	if !strings.Contains(body, "proxy_pass http://app:80") {
+		t.Errorf("nginx conf must proxy requests verbatim to the app's HTTP listener (proxy_pass http://app:80), matching the runtime's `artisan serve --host=0.0.0.0 --port=80`:\n%s", body)
+	}
+}
+
+func TestGenerateProdFilesDeclaresNamedVolumes(t *testing.T) {
+	s := New()
+	files, err := s.GenerateProdFiles(config.Config{
+		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22", Services: []string{"mysql", "postgres", "redis", "meilisearch", "s3"}},
+	}, "production")
+	if err != nil {
+		t.Fatalf("GenerateProdFiles: %v", err)
+	}
+	got := findFile(files, "docker-compose.prod.yml")
+	if got == nil {
+		t.Fatal("docker-compose.prod.yml missing")
+	}
+	var doc struct {
+		Volumes map[string]struct{} `yaml:"volumes"`
+	}
+	if err := yaml.Unmarshal(got.Contents, &doc); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	want := map[string]string{
+		"mysql":       "mysql_data",
+		"postgres":    "postgres_data",
+		"redis":       "redis_data",
+		"meilisearch": "meili_data",
+		"s3":          "s3_data",
+	}
+	for svc, vol := range want {
+		if _, ok := doc.Volumes[vol]; !ok {
+			t.Errorf("prod compose service %q mounts named volume %q but top-level volumes: does not declare it; docker compose rejects this with 'invalid compose project'. Got volumes: %v",
+				svc, vol, doc.Volumes)
+		}
 	}
 }
 
@@ -343,12 +525,15 @@ func TestGenerateProdEnvExampleAPPURL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateProdFiles (http): %v", err)
 	}
-	httpEnv := findFile(httpFiles, ".env.production.example")
+	httpEnv := findFile(httpFiles, ".env.production")
 	if httpEnv == nil {
-		t.Fatal(".env.production.example missing (http)")
+		t.Fatal(".env.production missing (http)")
+	}
+	if contains(string(httpEnv.Contents), "Copy to") {
+		t.Errorf(".env.production should not contain copy instructions:\n%s", httpEnv.Contents)
 	}
 	if !contains(string(httpEnv.Contents), "APP_URL=http://myapp.example.com") {
-		t.Errorf("env example missing plain-HTTP APP_URL:\n%s", httpEnv.Contents)
+		t.Errorf("env missing plain-HTTP APP_URL:\n%s", httpEnv.Contents)
 	}
 
 	httpsFiles, err := s.GenerateProdFiles(config.Config{
@@ -359,11 +544,11 @@ func TestGenerateProdEnvExampleAPPURL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateProdFiles (https): %v", err)
 	}
-	httpsEnv := findFile(httpsFiles, ".env.production.example")
+	httpsEnv := findFile(httpsFiles, ".env.production")
 	if httpsEnv == nil {
-		t.Fatal(".env.production.example missing (https)")
+		t.Fatal(".env.production missing (https)")
 	}
 	if !contains(string(httpsEnv.Contents), "APP_URL=https://myapp.example.com") {
-		t.Errorf("env example missing HTTPS APP_URL:\n%s", httpsEnv.Contents)
+		t.Errorf("env missing HTTPS APP_URL:\n%s", httpsEnv.Contents)
 	}
 }

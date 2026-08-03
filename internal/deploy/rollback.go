@@ -6,12 +6,17 @@ import (
 )
 
 // Rollback retags the previous deploy's image to :current and re-runs
-// Up. The "previous" image comes from .pier/state.json (written by
-// Pipeline.commit at the end of every successful deploy). Returns an
-// error if state.json is missing or if the previous image tag is
-// empty (i.e. there is no prior deploy to roll back to).
-func Rollback(ctx context.Context, r runner, dir, project string) error {
-	state, err := LoadState(dir)
+// Up. The "previous" image comes from .pier/state.json on the deploy
+// host (written by Pipeline.commit at the end of every successful
+// deploy). Returns an error if state.json is missing or if the
+// previous image tag is empty (i.e. there is no prior deploy to roll
+// back to). st may be nil, in which case local disk is used (unit
+// tests); the pipeline always passes sftpStateStore.
+func Rollback(ctx context.Context, st stateStore, r runner, dir, project string) error {
+	if st == nil {
+		st = localStateStore{}
+	}
+	state, err := st.ReadState(ctx, dir)
 	if err != nil {
 		return fmt.Errorf("deploy: rollback: %w", err)
 	}

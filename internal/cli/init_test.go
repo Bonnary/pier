@@ -25,7 +25,7 @@ func TestInitWritesPierToml(t *testing.T) {
 	if err := root.Execute(); err != nil {
 		t.Fatalf("Execute: %v\n%s", err, buf.String())
 	}
-	for _, want := range []string{"pier.toml", "docker-compose.yml", "docker-compose.prod.yml", "docker/8.3/Dockerfile"} {
+	for _, want := range []string{"pier.toml", "docker-compose.yml", "docker-compose.prod.yml", "docker/8.3/Dockerfile", ".env", ".env.production"} {
 		if _, err := os.Stat(filepath.Join(dir, want)); err != nil {
 			t.Errorf("expected %s after init: %v", want, err)
 		}

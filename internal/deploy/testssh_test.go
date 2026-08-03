@@ -17,7 +17,8 @@ import (
 
 // startSSHServer starts an in-process SSH server on 127.0.0.1 that
 // authenticates via scfg and serves the sftp subsystem on "session"
-// channels. It returns the listen address ("127.0.0.1:PORT").
+// channels using pkg/sftp's own server. It returns the listen address
+// ("127.0.0.1:PORT").
 //
 // A generated ed25519 host key is added to scfg: ssh.NewServerConn
 // refuses to run without one (the brief's server configs did not set
@@ -25,6 +26,19 @@ import (
 // Tests that need a specific host key can add their own via
 // scfg.AddHostKey before calling this helper.
 func startSSHServer(t *testing.T, scfg *ssh.ServerConfig) string {
+	return startSSHServerWithSFTP(t, scfg, func(ch ssh.Channel) {
+		srv, err := sftp.NewServer(ch)
+		if err != nil {
+			return
+		}
+		_ = srv.Serve()
+	})
+}
+
+// startSSHServerWithSFTP is startSSHServer with a pluggable sftp
+// subsystem handler, for tests that must emulate a specific server's
+// protocol quirks (e.g. OpenSSH's rename-over-existing failure).
+func startSSHServerWithSFTP(t *testing.T, scfg *ssh.ServerConfig, handle func(ssh.Channel)) string {
 	t.Helper()
 	_, priv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
@@ -46,13 +60,13 @@ func startSSHServer(t *testing.T, scfg *ssh.ServerConfig) string {
 			if err != nil {
 				return
 			}
-			go serveTestSSHConn(nc, scfg)
+			go serveTestSSHConn(nc, scfg, handle)
 		}
 	}()
 	return ln.Addr().String()
 }
 
-func serveTestSSHConn(nc net.Conn, scfg *ssh.ServerConfig) {
+func serveTestSSHConn(nc net.Conn, scfg *ssh.ServerConfig, handle func(ssh.Channel)) {
 	conn, chans, reqs, err := ssh.NewServerConn(nc, scfg)
 	if err != nil {
 		return
@@ -60,11 +74,11 @@ func serveTestSSHConn(nc net.Conn, scfg *ssh.ServerConfig) {
 	defer conn.Close()
 	go ssh.DiscardRequests(reqs)
 	for ch := range chans {
-		go serveTestSSHChannel(ch)
+		go serveTestSSHChannel(ch, handle)
 	}
 }
 
-func serveTestSSHChannel(ch ssh.NewChannel) {
+func serveTestSSHChannel(ch ssh.NewChannel, handle func(ssh.Channel)) {
 	if ch.ChannelType() != "session" {
 		_ = ch.Reject(ssh.UnknownChannelType, "unsupported channel type")
 		return
@@ -79,11 +93,7 @@ func serveTestSSHChannel(ch ssh.NewChannel) {
 		case "subsystem":
 			if string(req.Payload[4:]) == "sftp" {
 				_ = req.Reply(true, nil)
-				srv, err := sftp.NewServer(channel)
-				if err != nil {
-					return
-				}
-				_ = srv.Serve()
+				handle(channel)
 				return
 			}
 			_ = req.Reply(false, nil)

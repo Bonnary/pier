@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"time"
 
 	"github.com/Bonnary/pier/internal/config"
@@ -115,7 +116,7 @@ func (p *Pipeline) Run(ctx context.Context) error {
 
 	// Phase 7: commit.
 	p.Logger.PhaseStart("commit")
-	if err := p.commit(); err != nil {
+	if err := p.commit(ctx, client); err != nil {
 		p.Logger.PhaseEnd("commit", err)
 		return err
 	}
@@ -181,15 +182,18 @@ func (p *Pipeline) render() (any, error) {
 }
 
 func (p *Pipeline) rollback(ctx context.Context, c *Client) error {
-	if err := Rollback(ctx, c, p.DeployEnv.Path, p.Config.Project.Name); err != nil {
+	if err := Rollback(ctx, SFTPStateStore{Client: c}, c, p.DeployEnv.Path, p.Config.Project.Name); err != nil {
 		return RemoteUpError(p.SSH.Host, err)
 	}
 	return RemoteUpError(p.SSH.Host, fmt.Errorf("health check failed; rolled back"))
 }
 
-func (p *Pipeline) commit() error {
-	dir := p.DeployEnv.Path
-	prev, _ := LoadState(dir)
+func (p *Pipeline) commit(ctx context.Context, c *Client) error {
+	st := SFTPStateStore{Client: c}
+	prev, err := st.ReadState(ctx, p.DeployEnv.Path)
+	if err != nil {
+		return fmt.Errorf("deploy: read state: %w", err)
+	}
 	s := &State{
 		Current:    "gitsha",
 		DeployedAt: p.Now().UTC().Format(time.RFC3339),
@@ -198,15 +202,35 @@ func (p *Pipeline) commit() error {
 	if prev != nil && prev.Current != "" {
 		s.Previous = prev.Current
 	}
-	return SaveState(dir, s)
+	return st.WriteState(ctx, p.DeployEnv.Path, s)
 }
 
 // ResolvedURL returns the public URL for the deployed env: scheme
 // and port resolved from [deploy.<env>].tls and the "laravel" port
 // (default 443 when TLS is enabled, 80 for plain HTTP, or the
-// per-env override from [deploy.<env>.ports.laravel]).
+// per-env override from [deploy.<env>.ports.laravel]). The host is
+// the project domain when it resolves (DNS or /etc/hosts); otherwise
+// it falls back to the deploy host IP, so the printed URL is usable
+// before DNS entries point the domain at the server.
 func ResolvedURL(cfg config.Config, env string) string {
-	return fmt.Sprintf("%s://%s:%d", laravelpkg.WebScheme(cfg, env), cfg.Project.Domain, laravelpkg.WebPort(cfg, env))
+	host := cfg.Project.Domain
+	if !hostResolvable(host) {
+		if dc, ok := cfg.Deploy[env]; ok && dc.Host != "" {
+			host = dc.Host
+		}
+	}
+	return fmt.Sprintf("%s://%s:%d", laravelpkg.WebScheme(cfg, env), host, laravelpkg.WebPort(cfg, env))
+}
+
+// lookupHost resolves a hostname to its IP addresses; a seam so tests
+// can pin DNS outcomes instead of depending on the ambient resolver.
+var lookupHost = net.LookupHost
+
+// hostResolvable reports whether host resolves to at least one IP
+// address. Bare IPs pass through (net.LookupHost echoes them back).
+func hostResolvable(host string) bool {
+	addrs, err := lookupHost(host)
+	return err == nil && len(addrs) > 0
 }
 
 // HealthURL returns the URL the health probe GETs for env: the
