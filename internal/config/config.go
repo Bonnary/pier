@@ -75,11 +75,14 @@ type DevService struct {
 }
 
 // DeployConfig is one [deploy.<env>] table: SSH target, remote path,
-// branch to build from, and per-env host-port overrides.
+// branch to build from, per-env host-port overrides, and the TLS
+// toggle. TLS is false by default (plain HTTP; SSL certificate
+// provisioning is not shipped yet).
 type DeployConfig struct {
 	Host   string         `toml:"host"`
 	User   string         `toml:"user"`
 	Path   string         `toml:"path"`
 	Branch string         `toml:"branch"`
 	Ports  map[string]int `toml:"ports"`
+	TLS    bool           `toml:"tls"`
 }

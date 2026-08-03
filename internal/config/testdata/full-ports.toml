@@ -13,10 +13,11 @@ laravel = 8080
 vite = 5174
 
 [deploy.production]
-host = "prod.example.com"
-user = "deploy"
-path = "/srv/myapp"
+host   = "prod.example.com"
+user   = "deploy"
+path   = "/srv/myapp"
 branch = "main"
+tls    = true
 
 [deploy.production.ports]
 laravel = 8383

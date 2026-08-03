@@ -22,6 +22,9 @@ func TestLoadFullWithPorts(t *testing.T) {
 	if got := prod.Ports["laravel"]; got != 8383 {
 		t.Errorf("Deploy[production].Ports[laravel] = %d, want 8383", got)
 	}
+	if !prod.TLS {
+		t.Error("Deploy[production].TLS = false, want true (tls = true in full-ports.toml)")
+	}
 }
 
 func TestLoadMinimal(t *testing.T) {
@@ -64,6 +67,9 @@ func TestLoadFull(t *testing.T) {
 	}
 	if staging.Branch != "develop" {
 		t.Errorf("staging.Branch = %q, want develop", staging.Branch)
+	}
+	if staging.TLS {
+		t.Errorf("staging.TLS = true, want false (tls absent in full.toml → default false)")
 	}
 }
 
