@@ -83,7 +83,7 @@ func SessionError(host string, err error) error {
 // compose file on the remote host, streaming stdout/stderr to
 // pier's own streams as they arrive. The remote exit status becomes
 // pier's exit code via RemoteCommandError; a status-0 exit returns
-// nil.
+// nil. Cancelling ctx aborts the in-flight session.
 func RemoteExec(ctx context.Context, cfg SSHConfig, dir string, args []string) error {
 	client, err := Dial(ctx, cfg)
 	if err != nil {
@@ -93,6 +93,9 @@ func RemoteExec(ctx context.Context, cfg SSHConfig, dir string, args []string) e
 	return client.remoteExec(ctx, cfg.Host, dir, args)
 }
 
+// remoteExec runs a one-off command in the app service of the prod
+// compose file on the remote host, streaming stdout/stderr to pier's
+// own streams. Cancelling ctx aborts the in-flight session.
 func (c *Client) remoteExec(ctx context.Context, host, dir string, args []string) error {
 	sess, err := c.conn.NewSession()
 	if err != nil {
@@ -110,6 +113,15 @@ func (c *Client) remoteExec(ctx context.Context, host, dir string, args []string
 	if err := sess.Start(remoteExecCommand(dir, args)); err != nil {
 		return SessionError(host, err)
 	}
+	cancelled := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			_ = sess.Close()
+		case <-cancelled:
+		}
+	}()
+	defer close(cancelled)
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -142,6 +154,7 @@ var (
 // RemoteShell opens an interactive bash in the app service of the
 // prod compose file on the remote host and returns when the remote
 // shell exits. The remote exit status becomes pier's exit code.
+// Cancelling ctx aborts the in-flight session.
 func RemoteShell(ctx context.Context, cfg SSHConfig, dir string) error {
 	client, err := Dial(ctx, cfg)
 	if err != nil {
@@ -155,7 +168,7 @@ func RemoteShell(ctx context.Context, cfg SSHConfig, dir string) error {
 // terminal size → pty request, raw-mode stdin with restore (also on
 // error paths), SIGWINCH → WindowChange forwarding, and byte-copying
 // of stdin/stdout/stderr through the session. Requires a TTY on
-// local stdin.
+// local stdin. Cancelling ctx aborts the in-flight session.
 func (c *Client) InteractiveShell(ctx context.Context, dir string) error {
 	fd := int(os.Stdin.Fd())
 	if !shellIsTerminal(fd) {
@@ -210,6 +223,13 @@ func (c *Client) InteractiveShell(ctx context.Context, dir string) error {
 		close(done)
 		return SessionError(c.Config.Host, err)
 	}
+	go func() {
+		select {
+		case <-ctx.Done():
+			_ = sess.Close()
+		case <-done:
+		}
+	}()
 	err = sess.Wait()
 	close(done)
 	if err != nil {

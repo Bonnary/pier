@@ -12,6 +12,7 @@ import (
 	"os"
 	"sync"
 	"testing"
+	"time"
 
 	"golang.org/x/crypto/ssh"
 )
@@ -138,6 +139,10 @@ func parsePtyReq(payload []byte) (term string, cols, rows uint32) {
 
 func finishFakeSession(ch ssh.Channel, status int) {
 	_, _ = ch.SendRequest("exit-status", false, ssh.Marshal(struct{ Status uint32 }{uint32(status)}))
+	// Give the client's request-handler goroutine time to process the
+	// exit-status before the channel EOF, or sess.Wait() races the
+	// request delivery against the close and returns io.EOF.
+	time.Sleep(10 * time.Millisecond)
 	_ = ch.Close()
 }
 
