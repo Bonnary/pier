@@ -27,7 +27,7 @@ func (s *Stack) GenerateProdFiles(cfg config.Config, env string) (stack.Files, e
 	if err != nil {
 		return nil, err
 	}
-	envExample := renderProdEnvExample(cfg, prodServices)
+	envExample := renderProdEnvExample(cfg, env, prodServices)
 	nginx := renderNginx(cfg)
 
 	runtimeDir, err := Runtime(cfg.Stack.PHP)
@@ -66,7 +66,7 @@ func renderProdCompose(cfg config.Config, env string, services []string) ([]byte
 			"webserver": {
 				Image:     "nginx:alpine",
 				Restart:   "unless-stopped",
-				Ports:     webserverPorts("", deployCfg.Ports),
+				Ports:     webserverPorts("", deployCfg.Ports, deployCfg.TLS),
 				Volumes:   []string{"./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro"},
 				Networks:  []string{"pier"},
 				DependsOn: []string{"app"},
@@ -111,24 +111,29 @@ func renderProdCompose(cfg config.Config, env string, services []string) ([]byte
 }
 
 // webserverPorts assembles the `ports:` slice for the webserver service.
-// The two keys are "laravel" (HTTPS, the primary visible port) and
-// "webserver_http" (HTTP→HTTPS redirect). Either may be 0 to opt out.
-// bind is the host-side bind prefix ("" = no prefix, host firewall
-// restricts access; the deploy path always passes "").
-func webserverPorts(bind string, override map[string]int) []string {
+// The "laravel" key is the primary visible port: container 443 when TLS
+// is enabled, container 80 for the plain-HTTP default. "webserver_http"
+// (the HTTP→HTTPS redirect listener) is only published when TLS is
+// enabled, unless the user explicitly set it while TLS is off. Either
+// key may be 0 in the override to opt out. bind is the host-side bind
+// prefix ("" = no prefix, host firewall restricts access; the deploy
+// path always passes "").
+func webserverPorts(bind string, override map[string]int, tls bool) []string {
+	laravelDefault, laravelContainer := 80, 80
+	if tls {
+		laravelDefault, laravelContainer = 443, 443
+	}
+	defaults := map[string]int{"laravel": laravelDefault, "webserver_http": 80}
 	var out []string
-	for _, entry := range []struct {
-		key       string
-		container int
-	}{
-		{"laravel", 443},
-		{"webserver_http", 80},
-	} {
-		host, ok := ResolvePort(entry.key, override, ProdPortDefaults)
-		if !ok {
-			continue
+	if host, ok := ResolvePort("laravel", override, defaults); ok {
+		out = append(out, PortBinding(bind, host, laravelContainer))
+	}
+	if tls {
+		if host, ok := ResolvePort("webserver_http", override, defaults); ok {
+			out = append(out, PortBinding(bind, host, 80))
 		}
-		out = append(out, PortBinding(bind, host, entry.container))
+	} else if v, set := override["webserver_http"]; set && v != 0 {
+		out = append(out, PortBinding(bind, v, 80))
 	}
 	return out
 }
@@ -162,7 +167,7 @@ func prodEnvForServices(services []string) map[string]string {
 	return env
 }
 
-func renderProdEnvExample(cfg config.Config, services []string) []byte {
+func renderProdEnvExample(cfg config.Config, env string, services []string) []byte {
 	var b bytes.Buffer
 	fmt.Fprintf(&b, "# %s production environment\n", cfg.Project.Name)
 	fmt.Fprintf(&b, "# Copy to .env.production and fill in real values.\n\n")
@@ -170,7 +175,7 @@ func renderProdEnvExample(cfg config.Config, services []string) []byte {
 	fmt.Fprintln(&b, "APP_ENV=production")
 	fmt.Fprintln(&b, "APP_KEY=")
 	fmt.Fprintln(&b, "APP_DEBUG=false")
-	fmt.Fprintf(&b, "APP_URL=https://%s\n\n", cfg.Project.Domain)
+	fmt.Fprintf(&b, "APP_URL=%s://%s\n\n", WebScheme(cfg, env), cfg.Project.Domain)
 	set := map[string]bool{}
 	for _, s := range services {
 		set[s] = true

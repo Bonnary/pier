@@ -170,19 +170,20 @@ func TestGenerateProdFilesWebserverDefaultPorts(t *testing.T) {
 	if !ok {
 		t.Fatal("webserver missing")
 	}
-	wantPorts := map[string]bool{
-		"443:443": false,
-		"80:80":   false,
-	}
+	found80, found443 := false, false
 	for _, p := range web.Ports {
-		if _, ok := wantPorts[p]; ok {
-			wantPorts[p] = true
+		if p == "80:80" {
+			found80 = true
+		}
+		if p == "443:443" {
+			found443 = true
 		}
 	}
-	for p, found := range wantPorts {
-		if !found {
-			t.Errorf("webserver ports missing %q; got %v (production defaults: laravel=443, webserver_http=80)", p, web.Ports)
-		}
+	if !found80 {
+		t.Errorf("webserver ports = %v, want it to include 80:80 (plain-HTTP default: laravel → container 80)", web.Ports)
+	}
+	if found443 {
+		t.Errorf("webserver ports = %v, must not include 443:443 when tls is off (nginx serves HTTP on 80 only)", web.Ports)
 	}
 }
 
@@ -219,7 +220,7 @@ func TestGenerateProdFilesPortPartialOverride(t *testing.T) {
 	web := doc.Services["webserver"]
 	found8383, found80 := false, false
 	for _, p := range web.Ports {
-		if p == "8383:443" {
+		if p == "8383:80" {
 			found8383 = true
 		}
 		if p == "80:80" {
@@ -227,10 +228,10 @@ func TestGenerateProdFilesPortPartialOverride(t *testing.T) {
 		}
 	}
 	if !found8383 {
-		t.Errorf("webserver ports = %v, want it to include 8383:443 (laravel override)", web.Ports)
+		t.Errorf("webserver ports = %v, want it to include 8383:80 (laravel override → container 80 when tls is off)", web.Ports)
 	}
-	if !found80 {
-		t.Errorf("webserver ports = %v, want it to include 80:80 (webserver_http default)", web.Ports)
+	if found80 {
+		t.Errorf("webserver ports = %v, must not publish the webserver_http default 80:80 when tls is off", web.Ports)
 	}
 	redis := doc.Services["redis"]
 	foundRedis := false
@@ -241,5 +242,128 @@ func TestGenerateProdFilesPortPartialOverride(t *testing.T) {
 	}
 	if !foundRedis {
 		t.Errorf("redis ports = %v, want it to include 6379:6379 (prod default, not overridden)", redis.Ports)
+	}
+}
+
+func TestGenerateProdFilesWebserverTLSPorts(t *testing.T) {
+	s := New()
+	files, err := s.GenerateProdFiles(config.Config{
+		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+		Deploy: map[string]config.DeployConfig{
+			"production": {Host: "h", User: "u", Path: "p", Branch: "b", TLS: true},
+		},
+	}, "production")
+	if err != nil {
+		t.Fatalf("GenerateProdFiles: %v", err)
+	}
+	got := findFile(files, "docker-compose.prod.yml")
+	if got == nil {
+		t.Fatal("docker-compose.prod.yml missing")
+	}
+	var doc struct {
+		Services map[string]struct {
+			Ports []string `yaml:"ports"`
+		} `yaml:"services"`
+	}
+	if err := yaml.Unmarshal(got.Contents, &doc); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	web, ok := doc.Services["webserver"]
+	if !ok {
+		t.Fatal("webserver missing")
+	}
+	wantPorts := map[string]bool{
+		"443:443": false,
+		"80:80":   false,
+	}
+	for _, p := range web.Ports {
+		if _, ok := wantPorts[p]; ok {
+			wantPorts[p] = true
+		}
+	}
+	for p, found := range wantPorts {
+		if !found {
+			t.Errorf("webserver ports missing %q; got %v (tls on: laravel=443, webserver_http=80)", p, web.Ports)
+		}
+	}
+}
+
+func TestGenerateProdFilesWebserverHTTPOverrideWhenNoTLS(t *testing.T) {
+	s := New()
+	files, err := s.GenerateProdFiles(config.Config{
+		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+		Deploy: map[string]config.DeployConfig{
+			"production": {Host: "h", User: "u", Path: "p", Branch: "b", Ports: map[string]int{"webserver_http": 8080}},
+		},
+	}, "production")
+	if err != nil {
+		t.Fatalf("GenerateProdFiles: %v", err)
+	}
+	got := findFile(files, "docker-compose.prod.yml")
+	if got == nil {
+		t.Fatal("docker-compose.prod.yml missing")
+	}
+	var doc struct {
+		Services map[string]struct {
+			Ports []string `yaml:"ports"`
+		} `yaml:"services"`
+	}
+	if err := yaml.Unmarshal(got.Contents, &doc); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	web, ok := doc.Services["webserver"]
+	if !ok {
+		t.Fatal("webserver missing")
+	}
+	wantPorts := map[string]bool{
+		"80:80":   false,
+		"8080:80": false,
+	}
+	for _, p := range web.Ports {
+		if _, ok := wantPorts[p]; ok {
+			wantPorts[p] = true
+		}
+	}
+	for p, found := range wantPorts {
+		if !found {
+			t.Errorf("webserver ports missing %q; got %v (tls off: laravel default 80:80 + explicit webserver_http 8080:80)", p, web.Ports)
+		}
+	}
+}
+
+func TestGenerateProdEnvExampleAPPURL(t *testing.T) {
+	s := New()
+	httpFiles, err := s.GenerateProdFiles(config.Config{
+		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+		Deploy:  map[string]config.DeployConfig{"production": {Host: "h", User: "u", Path: "p", Branch: "b"}},
+	}, "production")
+	if err != nil {
+		t.Fatalf("GenerateProdFiles (http): %v", err)
+	}
+	httpEnv := findFile(httpFiles, ".env.production.example")
+	if httpEnv == nil {
+		t.Fatal(".env.production.example missing (http)")
+	}
+	if !contains(string(httpEnv.Contents), "APP_URL=http://myapp.example.com") {
+		t.Errorf("env example missing plain-HTTP APP_URL:\n%s", httpEnv.Contents)
+	}
+
+	httpsFiles, err := s.GenerateProdFiles(config.Config{
+		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+		Deploy:  map[string]config.DeployConfig{"production": {Host: "h", User: "u", Path: "p", Branch: "b", TLS: true}},
+	}, "production")
+	if err != nil {
+		t.Fatalf("GenerateProdFiles (https): %v", err)
+	}
+	httpsEnv := findFile(httpsFiles, ".env.production.example")
+	if httpsEnv == nil {
+		t.Fatal(".env.production.example missing (https)")
+	}
+	if !contains(string(httpsEnv.Contents), "APP_URL=https://myapp.example.com") {
+		t.Errorf("env example missing HTTPS APP_URL:\n%s", httpsEnv.Contents)
 	}
 }
