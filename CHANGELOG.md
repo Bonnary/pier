@@ -1,9 +1,15 @@
 # Changelog
 
-## Unreleased
+## v0.0.4-beta
 
 ### Added
 
+- `pier shell <env>` and `pier exec <env> <cmd...>` now target a
+  deploy host when the first argument names a `[deploy.<env>]` entry:
+  `pier shell production` opens an interactive bash in the production
+  `app` container over SSH (PTY with resize forwarding), and
+  `pier exec production php artisan migrate` runs a one-off command
+  there, propagating its exit code to pier's own exit code.
 - `[deploy.<env>].tls` flag (default `false`): production serves plain
   HTTP end-to-end. `tls = true` renders HTTPS URLs and the 443 port
   mapping; SSL certificate provisioning ships in a later release.
@@ -44,6 +50,27 @@
 - `docker compose up` is followed by a webserver `nginx -s reload`
   so bind-mounted conf changes (the sync rewrites files in place,
   preserving the inode) take effect without a container recreate.
+- Every remote compose invocation now passes
+  `--env-file .env.production`, and the prod renderer emits
+  `${DB_PASSWORD}` / `${APP_KEY}` interpolations for the DB sidecar
+  and the app, so the placeholders resolve to the real values instead
+  of warning and falling back to blank.
+- Bumped version constant to `0.0.4-beta` (reflected in
+  `pier --version`, `cmd/pier/main_test.go`, and the README status
+  line).
+
+### Fixed
+
+- The app no longer 500s on a fresh deploy with blank secrets: before,
+  the compose interpolation warnings fell back to empty values, so
+  Postgres answered `fe_sendauth: no password supplied` (DB_PASSWORD)
+  and session encryption threw with no APP_KEY. The deploy host's
+  `.env.production` (the only `.env.*` file that survives the sync
+  filter) now feeds every remote compose invocation.
+- In-flight remote sessions (`pier shell <env>`, `pier exec <env>`,
+  the deploy pipeline) are cancelled via the SSH context when the
+  command is interrupted, and `before_deploy` / `after_deploy` hooks
+  stop running once the context is cancelled.
 
 ## v0.0.3-beta
 
