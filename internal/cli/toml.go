@@ -3,7 +3,6 @@ package cli
 import (
 	"bytes"
 	"fmt"
-	"strconv"
 
 	"github.com/Bonnary/pier/internal/config"
 )
@@ -27,7 +26,30 @@ func tomlEncode(c config.Config) ([]byte, error) {
 		fmt.Fprintf(&b, "user = %q\n", dc.User)
 		fmt.Fprintf(&b, "path = %q\n", dc.Path)
 		fmt.Fprintf(&b, "branch = %q\n", dc.Branch)
+		if len(dc.BeforeDeploy) == 0 {
+			fmt.Fprintf(&b, "# before_deploy = [%q]  # uncomment: runs in the app container before the new release starts\n", "php artisan down")
+		} else {
+			fmt.Fprintf(&b, "before_deploy = %s\n", tomlStringArray(dc.BeforeDeploy))
+		}
+		if len(dc.AfterDeploy) == 0 {
+			fmt.Fprintf(&b, "# after_deploy = [%q]  # uncomment: runs in the app container after the new release is up\n", "php artisan migrate --force")
+		} else {
+			fmt.Fprintf(&b, "after_deploy = %s\n", tomlStringArray(dc.AfterDeploy))
+		}
 	}
-	_ = strconv.Quote
 	return b.Bytes(), nil
+}
+
+// tomlStringArray renders items as a TOML array of quoted strings.
+func tomlStringArray(items []string) string {
+	var b bytes.Buffer
+	b.WriteByte('[')
+	for i, s := range items {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		fmt.Fprintf(&b, "%q", s)
+	}
+	b.WriteByte(']')
+	return b.String()
 }
