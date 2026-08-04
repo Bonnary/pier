@@ -1,8 +1,9 @@
 // Package deploy runs the production deploy pipeline over SSH:
-// preflight, render, sync, build, up, health probe, and commit (the
-// .pier/state.json write that records the active image tag for
-// `pier rollback`). The package owns the typed error contract
-// (ExitError, Kind) and the SSH client used for every remote command.
+// preflight, render, sync, build, before_deploy hooks, up,
+// after_deploy hooks, health probe, and commit (the .pier/state.json
+// write that records the active image tag for `pier rollback`). The
+// package owns the typed error contract (ExitError, Kind) and the SSH
+// client used for every remote command.
 package deploy
 
 import (
@@ -46,7 +47,8 @@ type Pipeline struct {
 }
 
 // Run executes the full deploy pipeline: preflight, render, sync,
-// build, up, health probe, commit. On any up- or health-stage failure
+// build, before_deploy hooks, up, after_deploy hooks, health probe,
+// commit. On any up- or health-stage failure
 // the previous image is retagged and re-deployed (Rollback) before the
 // error is returned. Now is set to time.Now if nil so tests can pin
 // the timestamp written to state.json.
@@ -98,7 +100,12 @@ func (p *Pipeline) Run(ctx context.Context) error {
 	}
 	p.Logger.PhaseEnd("build", nil)
 
-	// Phase 5: up.
+	// Phase 5: before_deploy — run user hooks in the app container
+	// while the old release is still serving (after the build, before
+	// up). Failures warn and continue; they never abort the deploy.
+	p.runHooks(ctx, client, "before_deploy", p.DeployEnv.BeforeDeploy)
+
+	// Phase 6: up.
 	p.Logger.PhaseStart("up")
 	if err := Up(ctx, client, p.DeployEnv.Path); err != nil {
 		p.Logger.PhaseEnd("up", err)
@@ -106,7 +113,13 @@ func (p *Pipeline) Run(ctx context.Context) error {
 	}
 	p.Logger.PhaseEnd("up", nil)
 
-	// Phase 6: health.
+	// Phase 7: after_deploy — run user hooks in the app container
+	// against the new release (after up and the nginx reload, before
+	// the health probe). Failures warn and continue; they never abort
+	// the deploy.
+	p.runHooks(ctx, client, "after_deploy", p.DeployEnv.AfterDeploy)
+
+	// Phase 8: health.
 	p.Logger.PhaseStart("health")
 	if err := Probe(ctx, p.Health); err != nil {
 		p.Logger.PhaseEnd("health", err)
@@ -114,7 +127,7 @@ func (p *Pipeline) Run(ctx context.Context) error {
 	}
 	p.Logger.PhaseEnd("health", nil)
 
-	// Phase 7: commit.
+	// Phase 9: commit.
 	p.Logger.PhaseStart("commit")
 	if err := p.commit(ctx, client); err != nil {
 		p.Logger.PhaseEnd("commit", err)
