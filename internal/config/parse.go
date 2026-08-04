@@ -82,6 +82,12 @@ func (c *Config) Validate() error {
 		if dc.Host == "" || dc.User == "" || dc.Path == "" || dc.Branch == "" {
 			return fmt.Errorf("%w: deploy.%s requires host, user, path, branch", ErrConfigInvalid, env)
 		}
+		if err := validateHookList(env, "before_deploy", dc.BeforeDeploy); err != nil {
+			return err
+		}
+		if err := validateHookList(env, "after_deploy", dc.AfterDeploy); err != nil {
+			return err
+		}
 	}
 	for key, port := range c.Dev.Ports {
 		if !devPortKeys[key] {
@@ -99,6 +105,19 @@ func (c *Config) Validate() error {
 			if port < 0 || port > 65535 {
 				return fmt.Errorf("%w: [deploy.%s.ports.%s] = %d, must be in 0..65535 (0 = don't expose)", ErrConfigInvalid, env, key, port)
 			}
+		}
+	}
+	return nil
+}
+
+// validateHookList checks that every entry in a before_deploy /
+// after_deploy list tokenizes to at least one argument, so a typo
+// surfaces at config load instead of mid-deploy.
+func validateHookList(env, key string, list []string) error {
+	for i, entry := range list {
+		args, err := SplitCommand(entry)
+		if err != nil || len(args) == 0 {
+			return fmt.Errorf("%w: deploy.%s.%s[%d] %q is not a valid non-empty command", ErrConfigInvalid, env, key, i, entry)
 		}
 	}
 	return nil

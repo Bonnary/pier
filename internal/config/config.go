@@ -75,9 +75,11 @@ type DevService struct {
 }
 
 // DeployConfig is one [deploy.<env>] table: SSH target, remote path,
-// branch to build from, per-env host-port overrides, and the TLS
-// toggle. TLS is false by default (plain HTTP; SSL certificate
-// provisioning is not shipped yet).
+// branch to build from, per-env host-port overrides, the TLS toggle,
+// and the pre/post deploy hook commands. TLS is false by default
+// (plain HTTP; SSL certificate provisioning is not shipped yet).
+// BeforeDeploy and AfterDeploy are run in the app container on the
+// deploy host, before and after the release is brought up.
 type DeployConfig struct {
 	Host   string         `toml:"host"`
 	User   string         `toml:"user"`
@@ -85,4 +87,13 @@ type DeployConfig struct {
 	Branch string         `toml:"branch"`
 	Ports  map[string]int `toml:"ports"`
 	TLS    bool           `toml:"tls"`
+	// BeforeDeploy runs inside the app container on the deploy host
+	// after the image build, while the old release is still serving.
+	// A failing command logs a warning and the deploy continues.
+	BeforeDeploy []string `toml:"before_deploy"`
+	// AfterDeploy runs inside the app container on the deploy host
+	// after `docker compose up` (and the nginx reload), before the
+	// health probe. A failing command logs a warning and the deploy
+	// continues.
+	AfterDeploy []string `toml:"after_deploy"`
 }

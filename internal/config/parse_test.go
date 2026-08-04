@@ -250,6 +250,84 @@ func TestDevBindAllInterfacesAccepted(t *testing.T) {
 	}
 }
 
+func TestLoadHookLists(t *testing.T) {
+	cfg, err := Load(filepath.Join("testdata", "hooks.toml"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	prod := cfg.Deploy["production"]
+	if len(prod.BeforeDeploy) != 1 || prod.BeforeDeploy[0] != "php artisan down" {
+		t.Errorf("BeforeDeploy = %q, want [php artisan down]", prod.BeforeDeploy)
+	}
+	if len(prod.AfterDeploy) != 2 || prod.AfterDeploy[0] != "php artisan migrate --force" || prod.AfterDeploy[1] != "php artisan cache:clear" {
+		t.Errorf("AfterDeploy = %q, want [php artisan migrate --force php artisan cache:clear]", prod.AfterDeploy)
+	}
+}
+
+func TestValidateHookListAcceptsValid(t *testing.T) {
+	c := &Config{
+		Project: ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Stack:   StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+		Deploy: map[string]DeployConfig{
+			"production": {
+				Host: "h", User: "u", Path: "p", Branch: "b",
+				BeforeDeploy: []string{"php artisan down"},
+				AfterDeploy:  []string{"php artisan migrate --force"},
+			},
+		},
+	}
+	if err := c.Validate(); err != nil {
+		t.Errorf("Validate = %v, want nil", err)
+	}
+}
+
+func TestValidateHookListRejectsEmptyEntry(t *testing.T) {
+	c := &Config{
+		Project: ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Stack:   StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+		Deploy: map[string]DeployConfig{
+			"production": {Host: "h", User: "u", Path: "p", Branch: "b", BeforeDeploy: []string{""}},
+		},
+	}
+	err := c.Validate()
+	if !errors.Is(err, ErrConfigInvalid) {
+		t.Fatalf("Validate = %v, want ErrConfigInvalid", err)
+	}
+	if !strings.Contains(err.Error(), "before_deploy") {
+		t.Errorf("err = %v, want it to mention before_deploy", err)
+	}
+}
+
+func TestValidateHookListRejectsWhitespaceOnlyEntry(t *testing.T) {
+	c := &Config{
+		Project: ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Stack:   StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+		Deploy: map[string]DeployConfig{
+			"production": {Host: "h", User: "u", Path: "p", Branch: "b", AfterDeploy: []string{"   "}},
+		},
+	}
+	err := c.Validate()
+	if !errors.Is(err, ErrConfigInvalid) {
+		t.Fatalf("Validate = %v, want ErrConfigInvalid", err)
+	}
+	if !strings.Contains(err.Error(), "after_deploy") {
+		t.Errorf("err = %v, want it to mention after_deploy", err)
+	}
+}
+
+func TestValidateHookListRejectsUnterminatedQuote(t *testing.T) {
+	c := &Config{
+		Project: ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Stack:   StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+		Deploy: map[string]DeployConfig{
+			"production": {Host: "h", User: "u", Path: "p", Branch: "b", BeforeDeploy: []string{`php "unterminated`}},
+		},
+	}
+	if err := c.Validate(); !errors.Is(err, ErrConfigInvalid) {
+		t.Errorf("Validate = %v, want ErrConfigInvalid", err)
+	}
+}
+
 func TestDevBindRejectsUnknown(t *testing.T) {
 	cases := []string{"::", "localhost", "192.168.1.1", "0", "10.0.0.1", "::1", "1.2.3.4"}
 	for _, v := range cases {
