@@ -13,14 +13,18 @@ import (
 // remote deploy host, streaming output through the logger. Commands
 // run in order; a failing command logs a warning and the remaining
 // commands still run. runHooks never fails the deploy — a pre/post
-// deploy hook cannot abort a release. An empty list skips the phase
-// entirely.
+// deploy hook cannot abort a release. A cancelled context stops the
+// loop immediately, so no further hooks run after an abort. An empty
+// list skips the phase entirely.
 func (p *Pipeline) runHooks(ctx context.Context, c *Client, name string, cmds []string) {
 	if len(cmds) == 0 {
 		return
 	}
 	p.Logger.PhaseStart(name)
 	for _, line := range cmds {
+		if ctx.Err() != nil {
+			return
+		}
 		args, err := config.SplitCommand(line)
 		if err != nil {
 			p.Logger.Log(name, "warning: skip %q: %v", line, err)

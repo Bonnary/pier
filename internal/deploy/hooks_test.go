@@ -129,6 +129,55 @@ func TestRunHooksQuotedEntryBecomesOneArg(t *testing.T) {
 	}
 }
 
+func TestRunHooksStopsOnCancelledContext(t *testing.T) {
+	keyPath, pub := writeTestKey(t)
+	fs := &fakeSession{output: []byte("boom\n"), status: 1}
+	host, port := testAddr(t, startFakeSession(t, keyOnlyServer(pub), fs))
+	client := dialTestClient(t, SSHConfig{User: "deploy", Host: host, Port: port, KeyPath: keyPath})
+	defer client.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	// Cancel while the first command is still in flight, mirroring a
+	// Ctrl+C mid-deploy: the remaining hooks must not run.
+	recorded := make(chan struct{})
+	go func() {
+		for {
+			fs.mu.Lock()
+			n := len(fs.cmds)
+			fs.mu.Unlock()
+			if n >= 1 {
+				cancel()
+				close(recorded)
+				return
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}()
+
+	logger := &recordingLogger{}
+	p := &Pipeline{DeployEnv: config.DeployConfig{Path: "/srv/x"}, Logger: logger}
+	p.runHooks(ctx, client, "before_deploy",
+		[]string{"php artisan down", "php artisan cache:clear"})
+	<-recorded
+
+	// The first command ran (it was already in flight when the context
+	// was cancelled) but the second one never does.
+	if len(fs.cmds) != 1 {
+		t.Fatalf("recorded commands = %q, want exactly 1 (the second must not run after cancel)", fs.cmds)
+	}
+	// Only the in-flight first command's failure warning appears.
+	var warnings int
+	for _, l := range logger.logs {
+		if strings.Contains(l, "warning:") {
+			warnings++
+		}
+	}
+	if warnings != 1 {
+		t.Errorf("warning lines = %d, want 1; logs = %q", warnings, logger.logs)
+	}
+}
+
 // startPipelineServer starts an SSH server that serves both the sftp
 // subsystem (used by the sync phase) and session exec requests
 // (recorded on fs, used by the build/hooks/up phases) — the full
