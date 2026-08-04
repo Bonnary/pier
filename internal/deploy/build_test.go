@@ -46,7 +46,7 @@ func TestBuildStreamsOutput(t *testing.T) {
 	if len(lines) < 3 {
 		t.Errorf("lines = %v, want >= 3", lines)
 	}
-	if !contains(f.cmds[0], "docker compose -f docker-compose.prod.yml build --pull") {
-		t.Errorf("build command = %q", f.cmds[0])
+	if !contains(f.cmds[0], "docker compose --env-file .env.production -f docker-compose.prod.yml build --pull") {
+		t.Errorf("build command = %q, want it to pass --env-file .env.production so ${...} interpolation does not warn", f.cmds[0])
 	}
 }

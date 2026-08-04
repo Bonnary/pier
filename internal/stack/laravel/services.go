@@ -64,7 +64,7 @@ func services() map[string]Service {
 			Ports:    []string{"3306:3306"},
 			PortKeys: []string{"mysql"},
 			Env: map[string]string{
-				"MYSQL_ROOT_PASSWORD": "root",
+				"MYSQL_ROOT_PASSWORD": "${DB_PASSWORD}",
 				"MYSQL_DATABASE":      "laravel",
 			},
 			Volumes: []string{"mysql_data:/var/lib/mysql"},
@@ -79,7 +79,12 @@ func services() map[string]Service {
 			Ports:    []string{"5432:5432"},
 			PortKeys: []string{"postgres"},
 			Env: map[string]string{
-				"POSTGRES_USER": "laravel", "POSTGRES_PASSWORD": "secret", "POSTGRES_DB": "laravel",
+				// The DB server password is the same ${DB_PASSWORD}
+				// interpolation the app service uses: compose resolves
+				// both from .env.production (dev: .env), so one value
+				// rules the server and the app. A hardcoded password
+				// silently mismatches once the user changes DB_PASSWORD.
+				"POSTGRES_USER": "laravel", "POSTGRES_PASSWORD": "${DB_PASSWORD}", "POSTGRES_DB": "laravel",
 			},
 			Volumes: []string{"postgres_data:/var/lib/postgresql/data"},
 			Healthcheck: &Healthcheck{

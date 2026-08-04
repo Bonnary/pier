@@ -151,17 +151,17 @@ func TestRemoteExecCommand(t *testing.T) {
 	// is wrapped by quoteShell, and the remote shell strips the quotes
 	// at runtime (functionally identical to the unquoted form).
 	got := remoteExecCommand("/srv/x", []string{"php", "artisan", "migrate"})
-	want := "cd '/srv/x' && docker compose -f docker-compose.prod.yml exec -T app 'php' 'artisan' 'migrate'"
+	want := "cd '/srv/x' && docker compose --env-file .env.production -f docker-compose.prod.yml exec -T app 'php' 'artisan' 'migrate'"
 	if got != want {
 		t.Errorf("remoteExecCommand = %q, want %q", got, want)
 	}
 	got = remoteExecCommand("", []string{"php", "-v"})
-	want = "docker compose -f docker-compose.prod.yml exec -T app 'php' '-v'"
+	want = "docker compose --env-file .env.production -f docker-compose.prod.yml exec -T app 'php' '-v'"
 	if got != want {
 		t.Errorf("remoteExecCommand (empty dir) = %q, want %q", got, want)
 	}
 	got = remoteExecCommand("/srv/x", []string{"php", "artisan", "migrate --force"})
-	want = "cd '/srv/x' && docker compose -f docker-compose.prod.yml exec -T app 'php' 'artisan' 'migrate --force'"
+	want = "cd '/srv/x' && docker compose --env-file .env.production -f docker-compose.prod.yml exec -T app 'php' 'artisan' 'migrate --force'"
 	if got != want {
 		t.Errorf("remoteExecCommand (quoting) = %q, want %q", got, want)
 	}
@@ -214,7 +214,7 @@ func TestRemoteExecStreamsAndPropagatesExit(t *testing.T) {
 	if len(fs.cmds) != 1 {
 		t.Fatalf("recorded commands = %v, want 1", fs.cmds)
 	}
-	want := "cd '/srv/x' && docker compose -f docker-compose.prod.yml exec -T app 'php' 'artisan' 'migrate'"
+	want := "cd '/srv/x' && docker compose --env-file .env.production -f docker-compose.prod.yml exec -T app 'php' 'artisan' 'migrate'"
 	if fs.cmds[0] != want {
 		t.Errorf("command = %q, want %q", fs.cmds[0], want)
 	}
@@ -316,7 +316,7 @@ func TestInteractiveShellPTYAndStreams(t *testing.T) {
 	// by quoteShell, and the remote shell strips the quotes at runtime
 	// (functionally identical to the unquoted form, matching Task 1's
 	// TestRemoteExecCommand).
-	want := "cd '/srv/x' && docker compose -f docker-compose.prod.yml exec app bash"
+	want := "cd '/srv/x' && docker compose --env-file .env.production -f docker-compose.prod.yml exec app bash"
 	if fs.cmds[0] != want {
 		t.Errorf("command = %q, want %q", fs.cmds[0], want)
 	}

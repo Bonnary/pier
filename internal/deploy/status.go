@@ -43,7 +43,7 @@ type StatusReport struct {
 func RemoteStatus(ctx context.Context, de config.DeployConfig, health HealthConfig, r StatusRunner) (*StatusReport, error) {
 	rep := &StatusReport{}
 
-	out, _, err := r.Run(ctx, fmt.Sprintf("cd %s && docker compose -f docker-compose.prod.yml ps", de.Path))
+	out, _, err := r.Run(ctx, fmt.Sprintf("cd %s && docker compose --env-file %s -f %s ps", de.Path, remoteEnvFile, remoteComposeFile))
 	if err != nil {
 		return nil, fmt.Errorf("remote `docker compose ps` failed: %w", err)
 	}

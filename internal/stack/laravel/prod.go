@@ -206,7 +206,12 @@ func webserverPorts(bind string, override map[string]int, tls bool) []string {
 }
 
 func prodEnvForServices(services []string) map[string]string {
-	env := map[string]string{"APP_ENV": "production", "APP_DEBUG": "false"}
+	// Secrets are ${...} interpolations resolved by compose from the
+	// deploy host's .env.production (every remote compose invocation
+	// passes --env-file .env.production). APP_KEY must be present or
+	// session encryption throws; DB_PASSWORD must be present or
+	// Postgres answers `fe_sendauth: no password supplied` (500).
+	env := map[string]string{"APP_ENV": "production", "APP_DEBUG": "false", "APP_KEY": "${APP_KEY}"}
 	set := map[string]bool{}
 	for _, s := range services {
 		set[s] = true

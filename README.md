@@ -42,6 +42,7 @@ Docker CLI.
 - [Configuration (`pier.toml`)](#configuration-piertoml)
 - [Project structure](#project-structure)
 - [Development](#development)
+- [Manual verification checklist](#manual-verification-checklist)
 - [Troubleshooting](#troubleshooting)
 - [Contributing](#contributing)
 - [Roadmap](#roadmap)
@@ -286,9 +287,11 @@ laravel = 443   # only the keys the user writes are applied
 serves plain HTTP end-to-end: the deploy health check probes
 `http://<host-ip>:<laravel-port>/up` directly on the deploy host IP,
 so it passes before DNS or `/etc/hosts` entries point the domain at
-the server. `tls = true` renders HTTPS URLs and the 443 mapping, but
-SSL certificate provisioning is not shipped yet — keep it `false`
-for now.
+the server. The deploy "done" URL prints the project domain, but
+falls back to the deploy host IP when the domain does not resolve
+yet, so the printed URL is always usable. `tls = true` renders HTTPS
+URLs and the 443 mapping, but SSL certificate provisioning is not
+shipped yet — keep it `false` for now.
 
 ### `[dev.services.<name>]` — opt-in dev sidecars
 
@@ -308,9 +311,6 @@ restart     = "unless-stopped"
 image = "grahamcampbell/php-fpm-log-viewer:latest"
 ports = ["8081:80"]
 ```
-
-The full shape of `pier.toml` is documented in
-[`docs/superpowers/specs/2026-07-26-pier-design.md`](docs/superpowers/specs/2026-07-26-pier-design.md).
 
 ---
 
@@ -397,6 +397,48 @@ go doc ./...
 
 ---
 
+## Manual verification checklist
+
+Run through this list locally before pushing changes (see
+[Contributing](#contributing)) and again before tagging a release.
+
+- [ ] `pier init` on a fresh Laravel project (no existing compose)
+- [ ] `pier init` on a project that already has a `docker-compose.yml`
+  (smart-merge path; verify user services are preserved)
+- [ ] `pier init` on a project with an unknown top-level key in
+  `docker-compose.yml` (warn-and-confirm path)
+- [ ] `pier service add redis` and `pier service remove redis` on a
+  project that already has them (idempotency)
+- [ ] `pier init --devcontainer` in VS Code; reopen in container
+- [ ] `pier shell` and `php artisan migrate` from inside
+- [ ] `pier exec php artisan --version` from the host
+- [ ] `pier dev` with `[dev] bind = "0.0.0.0"` in `pier.toml` —
+  LAN-exposure warning printed, ready block shows `0.0.0.0`, port
+  reachable from another device on the LAN; remove the line and
+  re-run — warning gone, ready block shows `127.0.0.1`, port not
+  reachable
+- [ ] `pier bootstrap <env>` on a fresh VPS with key auth + password
+  sudo — hidden prompt, get.docker.com progress streams live, Docker
+  installed (`docker info` works for the deploy user afterwards),
+  `production: done` printed; re-run prints `already bootstrapped —
+  skipping`; `--force` re-provisions; the deploy path exists and is
+  owned by the deploy user
+- [ ] `pier deploy <env>` on an un-bootstrapped server fails fast with
+  the bootstrap hint; after bootstrap it completes without any
+  password prompt
+- [ ] `pier bootstrap <env>` against a server with a deliberately
+  wrong clock prints the skew-correction line, then completes
+- [ ] `pier deploy production` to a real VPS — preflight creates a
+  missing deploy path, then sync/build/up/health complete
+- [ ] `pier deploy production` against a compose file with an
+  undeclared volume — the `build failed` line shows the compose
+  validation error
+- [ ] `pier rollback production` after a deliberate bad deploy
+- [ ] Rebuild the binary (`go build -o pier ./cmd/pier`) and re-run a
+  real deploy end to end
+
+---
+
 ## Troubleshooting
 
 - **"pier.toml is invalid"** — run `cat pier.toml` and check the
@@ -459,9 +501,6 @@ shape of the change before code lands.
    `deploy` does not know about Laravel.
 4. Make sure `go test -race ./...` and `golangci-lint run` pass.
 
-The design spec at
-[`docs/superpowers/specs/2026-07-26-pier-design.md`](docs/superpowers/specs/2026-07-26-pier-design.md)
-is the source of truth for the architecture.
 
 ---
 

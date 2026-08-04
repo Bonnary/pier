@@ -17,6 +17,15 @@ import (
 // render and run stages.
 const remoteComposeFile = "docker-compose.prod.yml"
 
+// remoteEnvFile is the env file compose reads for interpolation on
+// the deploy host. The deploy pipeline syncs it (the only .env.* file
+// that survives the sync filter); passing it explicitly makes the
+// ${...} placeholders in docker-compose.prod.yml (DB_PASSWORD,
+// APP_KEY, the DB sidecar passwords) resolve to the real values
+// instead of warning and falling back to blank — which made the app
+// 500 with `fe_sendauth: no password supplied`.
+const remoteEnvFile = ".env.production"
+
 // remotePrefix returns the `cd <dir> && ` prefix for a remote
 // command, or "" when dir is empty (the compose file then resolves
 // in the login directory).
@@ -35,14 +44,14 @@ func remoteExecCommand(dir string, args []string) string {
 	for i, a := range args {
 		quoted[i] = quoteShell(a)
 	}
-	return remotePrefix(dir) + "docker compose -f " + remoteComposeFile + " exec -T app " + strings.Join(quoted, " ")
+	return remotePrefix(dir) + "docker compose --env-file " + remoteEnvFile + " -f " + remoteComposeFile + " exec -T app " + strings.Join(quoted, " ")
 }
 
 // remoteShellCommand builds the remote shell command for an
 // interactive bash session in the app service. The remote PTY makes
 // docker compose exec allocate a TTY, so no -T is passed.
 func remoteShellCommand(dir string) string {
-	return remotePrefix(dir) + "docker compose -f " + remoteComposeFile + " exec app bash"
+	return remotePrefix(dir) + "docker compose --env-file " + remoteEnvFile + " -f " + remoteComposeFile + " exec app bash"
 }
 
 // RemoteCommandError wraps a failed remote command. When err carries

@@ -324,6 +324,57 @@ func TestGenerateProdFilesQueueSchedulerSetSupervisorCommand(t *testing.T) {
 	}
 }
 
+func TestGenerateProdFilesInterpolatesSecretsFromEnvFile(t *testing.T) {
+	s := New()
+	files, err := s.GenerateProdFiles(config.Config{
+		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Stack: config.StackConfig{
+			Type: "laravel", PHP: "8.3", Node: "22",
+			Services: []string{"postgres", "mysql", "redis"},
+		},
+	}, "production")
+	if err != nil {
+		t.Fatalf("GenerateProdFiles: %v", err)
+	}
+	got := findFile(files, "docker-compose.prod.yml")
+	if got == nil {
+		t.Fatal("docker-compose.prod.yml missing")
+	}
+	var doc struct {
+		Services map[string]struct {
+			Env map[string]string `yaml:"environment"`
+		} `yaml:"services"`
+	}
+	if err := yaml.Unmarshal(got.Contents, &doc); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	// Secrets must interpolate from the deploy host's .env.production
+	// (compose is run with --env-file), never be hardcoded into the
+	// committed compose file, and never be absent: a blank DB_PASSWORD
+	// makes the app 500 with fe_sendauth, and a missing APP_KEY breaks
+	// session encryption.
+	for _, key := range []string{"DB_PASSWORD", "APP_KEY"} {
+		v, ok := doc.Services["app"].Env[key]
+		if !ok {
+			t.Errorf("prod app env missing %q; got %v", key, doc.Services["app"].Env)
+			continue
+		}
+		if !strings.Contains(v, "${") {
+			t.Errorf("prod app env %s = %q, want a ${...} interpolation so the value comes from .env.production at runtime", key, v)
+		}
+	}
+	for svc, key := range map[string]string{"postgres": "POSTGRES_PASSWORD", "mysql": "MYSQL_ROOT_PASSWORD"} {
+		v, ok := doc.Services[svc].Env[key]
+		if !ok {
+			t.Errorf("prod %s env missing %q", svc, key)
+			continue
+		}
+		if !strings.Contains(v, "${DB_PASSWORD}") {
+			t.Errorf("prod %s env %s = %q, want ${DB_PASSWORD} so the DB server and the app share one password from .env.production (a hardcoded value silently mismatches when the user changes DB_PASSWORD)", svc, key, v)
+		}
+	}
+}
+
 func TestGenerateProdFilesWebserverDefaultPorts(t *testing.T) {
 	s := New()
 	files, err := s.GenerateProdFiles(config.Config{

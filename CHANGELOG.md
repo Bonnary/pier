@@ -7,6 +7,17 @@
 - `[deploy.<env>].tls` flag (default `false`): production serves plain
   HTTP end-to-end. `tls = true` renders HTTPS URLs and the 443 port
   mapping; SSL certificate provisioning ships in a later release.
+- The prod renderer now emits `docker/<php>/Dockerfile.prod`, a
+  two-stage Dockerfile that bakes the application into the image
+  (COPY from the project-root build context, `composer install
+  --no-dev`, `npm ci` + `npm run build`, storage chown to the sail
+  user) — previously the prod image only contained the runtime, so
+  every container crashed with `Could not open input file:
+  /var/www/html/artisan` and the deploy health probe always failed.
+- Deploy state (`.pier/state.json`) is now written to the remote host
+  over SFTP instead of the local disk, so `pier rollback` and
+  `pier status <env>` see the deploy record. `Rollback` reads the
+  remote state too.
 
 ### Changed
 
@@ -15,6 +26,17 @@
   instead of the public domain, so health checks pass without DNS or
   `/etc/hosts` entries. `APP_URL` and the displayed deploy URL now
   follow the env's scheme.
+- The displayed deploy URL falls back to the deploy host IP when the
+  project domain does not resolve, so the printed URL is usable
+  before DNS entries exist.
+- The prod nginx conf proxies every request verbatim to the app
+  container's `artisan serve` listener (`proxy_pass http://app:80`)
+  instead of fastcgi on 9000 (the runtime has no php-fpm) and no
+  longer rewrites to `/index.php` via `try_files` (the built-in
+  server 500s when executing an existing public file directly).
+- `docker compose up` is followed by a webserver `nginx -s reload`
+  so bind-mounted conf changes (the sync rewrites files in place,
+  preserving the inode) take effect without a container recreate.
 
 ## v0.0.3-beta
 

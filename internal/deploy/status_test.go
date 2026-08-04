@@ -61,6 +61,9 @@ func TestRemoteStatusHappyPath(t *testing.T) {
 	if !strings.Contains(rep.Containers, "app") {
 		t.Errorf("Containers = %q, want to contain app", rep.Containers)
 	}
+	if !strings.Contains(f.cmds[0], "--env-file .env.production") {
+		t.Errorf("ps command = %q, want it to pass --env-file .env.production so ${...} interpolation does not warn", f.cmds[0])
+	}
 	if !strings.Contains(rep.Disk, "20G") {
 		t.Errorf("Disk = %q, want to contain 20G", rep.Disk)
 	}
