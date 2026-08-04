@@ -303,8 +303,10 @@ build while the old release is still serving; `after_deploy` runs
 after `docker compose up` (and the nginx reload) and before the
 health probe. Commands run in order; a failing command logs a warning
 and the remaining commands still run — a hook failure never aborts a
-deploy (migrations are best placed in `after_deploy`). `pier init`
-writes both keys commented out.
+deploy (migrations are best placed in `after_deploy`). On a first
+deploy the app container does not exist yet when `before_deploy` runs,
+so its commands warn and are skipped — put first-run setup in
+`after_deploy`. `pier init` writes both keys commented out.
 
 ### `[dev.services.<name>]` — opt-in dev sidecars
 
