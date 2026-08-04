@@ -18,6 +18,13 @@
   over SFTP instead of the local disk, so `pier rollback` and
   `pier status <env>` see the deploy record. `Rollback` reads the
   remote state too.
+- `[deploy.<env>].before_deploy` / `after_deploy` command lists: each
+  entry runs inside the app container on the deploy host, before the
+  new release starts (`before_deploy`, after the image build, while
+  the old release still serves) or after it is up (`after_deploy`,
+  after `docker compose up` and the nginx reload, before the health
+  probe). Failures log a warning and the deploy continues; `pier
+  init` writes both keys commented out.
 
 ### Changed
 

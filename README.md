@@ -277,6 +277,8 @@ user   = "deploy"
 path   = "/srv/myapp"
 branch = "main"
 tls    = false   # false (default): plain HTTP. true: HTTPS URLs + 443 — requires the upcoming cert feature
+# before_deploy = ["php artisan down"]              # uncomment: runs in the app container before the new release starts
+# after_deploy = ["php artisan migrate --force"]    # uncomment: runs in the app container after the new release is up
 
 [deploy.production.ports]
 laravel = 443   # only the keys the user writes are applied
@@ -292,6 +294,17 @@ falls back to the deploy host IP when the domain does not resolve
 yet, so the printed URL is always usable. `tls = true` renders HTTPS
 URLs and the 443 mapping, but SSL certificate provisioning is not
 shipped yet — keep it `false` for now.
+
+`[deploy.<env>]` also accepts optional `before_deploy` and
+`after_deploy` command lists. Each entry runs inside the app
+container on the deploy host (`docker compose exec -T app`, the same
+mechanism as `pier exec <env>`). `before_deploy` runs after the image
+build while the old release is still serving; `after_deploy` runs
+after `docker compose up` (and the nginx reload) and before the
+health probe. Commands run in order; a failing command logs a warning
+and the remaining commands still run — a hook failure never aborts a
+deploy (migrations are best placed in `after_deploy`). `pier init`
+writes both keys commented out.
 
 ### `[dev.services.<name>]` — opt-in dev sidecars
 
