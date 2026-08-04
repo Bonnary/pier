@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -54,8 +56,10 @@ func TestRunHooksRunsCommandsInOrder(t *testing.T) {
 
 	logger := &recordingLogger{}
 	p := &Pipeline{DeployEnv: config.DeployConfig{Path: "/srv/x"}, Logger: logger}
-	p.runHooks(context.Background(), client, "before_deploy",
-		[]string{"php artisan down", "php artisan cache:clear"})
+	if err := p.runHooks(context.Background(), client, "before_deploy",
+		[]string{"php artisan down", "php artisan cache:clear"}); err != nil {
+		t.Fatalf("runHooks() = %v, want nil", err)
+	}
 
 	want := []string{
 		"cd '/srv/x' && docker compose --env-file .env.production -f docker-compose.prod.yml exec -T app 'php' 'artisan' 'down'",
@@ -77,7 +81,7 @@ func TestRunHooksRunsCommandsInOrder(t *testing.T) {
 	}
 }
 
-func TestRunHooksWarnsAndContinuesOnFailure(t *testing.T) {
+func TestRunHooksAbortsOnFirstFailure(t *testing.T) {
 	keyPath, pub := writeTestKey(t)
 	fs := &fakeSession{output: []byte("boom\n"), status: 1}
 	host, port := testAddr(t, startFakeSession(t, keyOnlyServer(pub), fs))
@@ -86,28 +90,37 @@ func TestRunHooksWarnsAndContinuesOnFailure(t *testing.T) {
 
 	logger := &recordingLogger{}
 	p := &Pipeline{DeployEnv: config.DeployConfig{Path: "/srv/x"}, Logger: logger}
-	p.runHooks(context.Background(), client, "after_deploy",
+	err := p.runHooks(context.Background(), client, "after_deploy",
 		[]string{"php artisan migrate --force", "php artisan cache:clear"})
 
-	// Both commands still ran despite both failing (exit status 1).
-	if len(fs.cmds) != 2 {
-		t.Fatalf("recorded commands = %q, want 2 (continue after failure)", fs.cmds)
+	// The first command failed (exit status 1), so the returned error
+	// must fail the deploy and the second command must never run.
+	if err == nil {
+		t.Fatal("runHooks() = nil, want an error (a failing hook must abort the deploy)")
 	}
-	var warnings int
+	if len(fs.cmds) != 1 {
+		t.Fatalf("recorded commands = %q, want exactly 1 (stop at first failure)", fs.cmds)
+	}
+	var errLines int
 	for _, l := range logger.logs {
-		if strings.Contains(l, "warning:") {
-			warnings++
+		if strings.Contains(l, "error:") {
+			errLines++
 		}
 	}
-	if warnings != 2 {
-		t.Errorf("warning lines = %d, want 2; logs = %q", warnings, logger.logs)
+	if errLines != 1 {
+		t.Errorf("error lines = %d, want 1; logs = %q", errLines, logger.logs)
+	}
+	if len(logger.phases) != 2 || logger.phases[1] != "end:after_deploy" {
+		t.Errorf("phases = %q, want [start:after_deploy end:after_deploy]", logger.phases)
 	}
 }
 
 func TestRunHooksEmptyListSkipsPhase(t *testing.T) {
 	logger := &recordingLogger{}
 	p := &Pipeline{Logger: logger}
-	p.runHooks(context.Background(), nil, "before_deploy", nil)
+	if err := p.runHooks(context.Background(), nil, "before_deploy", nil); err != nil {
+		t.Fatalf("runHooks() = %v, want nil (empty list)", err)
+	}
 	if len(logger.phases) != 0 {
 		t.Errorf("phases = %q, want none (empty list skips the phase)", logger.phases)
 	}
@@ -121,7 +134,9 @@ func TestRunHooksQuotedEntryBecomesOneArg(t *testing.T) {
 	defer client.Close()
 
 	p := &Pipeline{DeployEnv: config.DeployConfig{Path: "/srv/x"}, Logger: &recordingLogger{}}
-	p.runHooks(context.Background(), client, "before_deploy", []string{`php artisan "migrate --force"`})
+	if err := p.runHooks(context.Background(), client, "before_deploy", []string{`php artisan "migrate --force"`}); err != nil {
+		t.Fatalf("runHooks() = %v, want nil", err)
+	}
 
 	want := "cd '/srv/x' && docker compose --env-file .env.production -f docker-compose.prod.yml exec -T app 'php' 'artisan' 'migrate --force'"
 	if len(fs.cmds) != 1 || fs.cmds[0] != want {
@@ -157,24 +172,28 @@ func TestRunHooksStopsOnCancelledContext(t *testing.T) {
 
 	logger := &recordingLogger{}
 	p := &Pipeline{DeployEnv: config.DeployConfig{Path: "/srv/x"}, Logger: logger}
-	p.runHooks(ctx, client, "before_deploy",
+	err := p.runHooks(ctx, client, "before_deploy",
 		[]string{"php artisan down", "php artisan cache:clear"})
 	<-recorded
 
 	// The first command ran (it was already in flight when the context
-	// was cancelled) but the second one never does.
+	// was cancelled) but the second one never does, and the returned
+	// error fails the deploy.
+	if err == nil {
+		t.Fatal("runHooks() = nil, want an error after cancellation aborted the in-flight command")
+	}
 	if len(fs.cmds) != 1 {
 		t.Fatalf("recorded commands = %q, want exactly 1 (the second must not run after cancel)", fs.cmds)
 	}
-	// Only the in-flight first command's failure warning appears.
-	var warnings int
+	// Only the in-flight first command's failure line appears.
+	var errLines int
 	for _, l := range logger.logs {
-		if strings.Contains(l, "warning:") {
-			warnings++
+		if strings.Contains(l, "error:") {
+			errLines++
 		}
 	}
-	if warnings != 1 {
-		t.Errorf("warning lines = %d, want 1; logs = %q", warnings, logger.logs)
+	if errLines != 1 {
+		t.Errorf("error lines = %d, want 1; logs = %q", errLines, logger.logs)
 	}
 }
 
@@ -250,12 +269,32 @@ func servePipelineChannel(ch ssh.NewChannel, fs *fakeSession) {
 				_ = req.Reply(false, nil)
 				return
 			}
-			fs.addCmd(string(req.Payload[4:]))
+			cmd := string(req.Payload[4:])
+			fs.addCmd(cmd)
 			_ = req.Reply(true, nil)
 			_, _ = channel.Write(fs.output)
-			finishFakeSession(channel, fs.status)
+			st := fs.status
+			if fs.statusFn != nil {
+				st = fs.statusFn(cmd)
+			}
+			finishFakeSession(channel, st)
 			return
 		}
+	}
+}
+
+// writeRemoteState records a deploy state on a (temp-dir) deploy
+// host, so the pipeline treats it as an existing deployment rather
+// than a first deploy. Current only — no Previous — so a rollback
+// reports "no previous deploy" (and an after_deploy or health
+// failure surfaces the cause directly instead of the rollback error).
+func writeRemoteState(t *testing.T, remote string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(remote, ".pier"), 0755); err != nil {
+		t.Fatalf("mkdir .pier: %v", err)
+	}
+	if err := SaveState(remote, &State{Current: "sha1"}); err != nil {
+		t.Fatalf("SaveState: %v", err)
 	}
 }
 
@@ -270,6 +309,7 @@ func TestPipelineRunsHooksAtCorrectStages(t *testing.T) {
 	fs := &fakeSession{output: []byte("ok\n"), status: 0}
 	host, port := testAddr(t, startPipelineServer(t, keyOnlyServer(pub), fs))
 	remote := t.TempDir()
+	writeRemoteState(t, remote)
 
 	cfg := &config.Config{
 		Project: config.ProjectConfig{Name: "x", Domain: "x.example.com"},
@@ -363,5 +403,238 @@ func TestPipelineSkipsHooksWhenListsEmpty(t *testing.T) {
 	}
 	if len(fs.cmds) != 3 {
 		t.Fatalf("recorded commands = %q, want exactly 3 (build, up, reload) with no hooks", fs.cmds)
+	}
+}
+
+// TestPipelineBeforeDeployFailureAborts asserts a failing
+// before_deploy hook fails the deploy (ErrHooks) before the new
+// release is brought up: only the build and the failing hook command
+// are recorded.
+func TestPipelineBeforeDeployFailureAborts(t *testing.T) {
+	keyPath, pub := writeTestKey(t)
+	fs := &fakeSession{output: []byte("ok\n"), status: 0, statusFn: func(cmd string) int {
+		if strings.Contains(cmd, "'artisan' 'down'") {
+			return 1
+		}
+		return 0
+	}}
+	host, port := testAddr(t, startPipelineServer(t, keyOnlyServer(pub), fs))
+	remote := t.TempDir()
+	writeRemoteState(t, remote)
+
+	cfg := &config.Config{
+		Project: config.ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+		Deploy: map[string]config.DeployConfig{
+			"production": {
+				Host: host, User: "deploy", Path: remote, Branch: "main",
+				BeforeDeploy: []string{"php artisan down"},
+			},
+		},
+	}
+
+	origProbe, origEnsure := pipelineProbe, pipelineEnsurePath
+	pipelineProbe = func(ctx context.Context, r stdinRunner) (bool, error) { return true, nil }
+	pipelineEnsurePath = func(ctx context.Context, c *Client, path string) error { return nil }
+	defer func() { pipelineProbe, pipelineEnsurePath = origProbe, origEnsure }()
+
+	p := &Pipeline{
+		Config:    cfg,
+		Env:       "production",
+		DeployEnv: cfg.Deploy["production"],
+		Logger:    discardLogger{},
+		SSH:       SSHConfig{Host: host, User: "deploy", Port: port, KeyPath: keyPath},
+		Health:    HealthConfig{URL: "http://127.0.0.1:1/up", Timeout: time.Second, Interval: 50 * time.Millisecond, MaxAttempts: 1},
+		Now:       time.Now,
+	}
+	err := p.Run(context.Background())
+
+	if !errors.Is(err, ErrHooks) {
+		t.Fatalf("Run() = %v, want ErrHooks (before_deploy hook failed)", err)
+	}
+	if len(fs.cmds) != 2 {
+		t.Fatalf("recorded commands = %q, want exactly 2 (build, failing before_deploy hook; up must not run)", fs.cmds)
+	}
+	if !strings.Contains(fs.cmds[1], "'artisan' 'down'") {
+		t.Errorf("command 1 = %q, want the before_deploy hook command", fs.cmds[1])
+	}
+}
+
+// TestPipelineAfterDeployFailureFirstDeployReportsHook asserts a
+// failing after_deploy hook on a first deploy (no previous image on
+// record) fails the deploy with the hook's own error: rollback is
+// skipped because there is nothing to roll back to, so the user sees
+// the actual hook failure (exit code 7) instead of a dead-end "no
+// previous deploy to roll back to" message.
+func TestPipelineAfterDeployFailureFirstDeployReportsHook(t *testing.T) {
+	keyPath, pub := writeTestKey(t)
+	fs := &fakeSession{output: []byte("ok\n"), status: 0, statusFn: func(cmd string) int {
+		if strings.Contains(cmd, "'migrate'") {
+			return 1
+		}
+		return 0
+	}}
+	host, port := testAddr(t, startPipelineServer(t, keyOnlyServer(pub), fs))
+	remote := t.TempDir()
+	writeRemoteState(t, remote)
+
+	cfg := &config.Config{
+		Project: config.ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+		Deploy: map[string]config.DeployConfig{
+			"production": {
+				Host: host, User: "deploy", Path: remote, Branch: "main",
+				AfterDeploy: []string{"php artisan migrate --force"},
+			},
+		},
+	}
+
+	origProbe, origEnsure := pipelineProbe, pipelineEnsurePath
+	pipelineProbe = func(ctx context.Context, r stdinRunner) (bool, error) { return true, nil }
+	pipelineEnsurePath = func(ctx context.Context, c *Client, path string) error { return nil }
+	defer func() { pipelineProbe, pipelineEnsurePath = origProbe, origEnsure }()
+
+	p := &Pipeline{
+		Config:    cfg,
+		Env:       "production",
+		DeployEnv: cfg.Deploy["production"],
+		Logger:    discardLogger{},
+		SSH:       SSHConfig{Host: host, User: "deploy", Port: port, KeyPath: keyPath},
+		Health:    HealthConfig{URL: "http://127.0.0.1:1/up", Timeout: time.Second, Interval: 50 * time.Millisecond, MaxAttempts: 1},
+		Now:       time.Now,
+	}
+	err := p.Run(context.Background())
+
+	if !errors.Is(err, ErrHooks) {
+		t.Fatalf("Run() = %v, want ErrHooks (after_deploy hook failed; no previous deploy to roll back to, so the hook error must surface)", err)
+	}
+	var ee *ExitError
+	if !errors.As(err, &ee) || ee.Code != ExitHooks {
+		t.Fatalf("Run() error = %T, want *ExitError with code %d", err, ExitHooks)
+	}
+	if len(fs.cmds) != 4 {
+		t.Fatalf("recorded commands = %q, want exactly 4 (build, up, reload, failing after_deploy hook; rollback must be skipped on a first deploy)", fs.cmds)
+	}
+	if !strings.Contains(fs.cmds[3], "'migrate'") {
+		t.Errorf("command 3 = %q, want the failing after_deploy hook command", fs.cmds[3])
+	}
+}
+
+// TestPipelineAfterDeployFailureRollsBackToPrevious asserts a failing
+// after_deploy hook with a previous image on record takes the
+// rollback path: the previous image is retagged and re-upped before
+// the hook error (ErrHooks) is reported.
+func TestPipelineAfterDeployFailureRollsBackToPrevious(t *testing.T) {
+	keyPath, pub := writeTestKey(t)
+	fs := &fakeSession{output: []byte("ok\n"), status: 0, statusFn: func(cmd string) int {
+		if strings.Contains(cmd, "'migrate'") {
+			return 1
+		}
+		return 0
+	}}
+	host, port := testAddr(t, startPipelineServer(t, keyOnlyServer(pub), fs))
+	remote := t.TempDir()
+	if err := SaveState(remote, &State{Current: "new", Previous: "old"}); err != nil {
+		t.Fatalf("SaveState: %v", err)
+	}
+
+	cfg := &config.Config{
+		Project: config.ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+		Deploy: map[string]config.DeployConfig{
+			"production": {
+				Host: host, User: "deploy", Path: remote, Branch: "main",
+				AfterDeploy: []string{"php artisan migrate --force"},
+			},
+		},
+	}
+
+	origProbe, origEnsure := pipelineProbe, pipelineEnsurePath
+	pipelineProbe = func(ctx context.Context, r stdinRunner) (bool, error) { return true, nil }
+	pipelineEnsurePath = func(ctx context.Context, c *Client, path string) error { return nil }
+	defer func() { pipelineProbe, pipelineEnsurePath = origProbe, origEnsure }()
+
+	p := &Pipeline{
+		Config:    cfg,
+		Env:       "production",
+		DeployEnv: cfg.Deploy["production"],
+		Logger:    discardLogger{},
+		SSH:       SSHConfig{Host: host, User: "deploy", Port: port, KeyPath: keyPath},
+		Health:    HealthConfig{URL: "http://127.0.0.1:1/up", Timeout: time.Second, Interval: 50 * time.Millisecond, MaxAttempts: 1},
+		Now:       time.Now,
+	}
+	err := p.Run(context.Background())
+
+	if !errors.Is(err, ErrHooks) {
+		t.Fatalf("Run() = %v, want ErrHooks (after_deploy hook failed)", err)
+	}
+	// build, up, nginx reload, failing after_deploy hook, then the
+	// rollback: retag previous image, up again, nginx reload.
+	if len(fs.cmds) != 7 {
+		t.Fatalf("recorded commands = %q, want exactly 7 (build, up, reload, failing hook, rollback tag, up, reload)", fs.cmds)
+	}
+	if !strings.Contains(fs.cmds[4], "docker tag x:old x:current") {
+		t.Errorf("command 4 = %q, want the rollback retag of the previous image", fs.cmds[4])
+	}
+	if !strings.Contains(fs.cmds[5], "up -d --wait") {
+		t.Errorf("command 5 = %q, want the rollback up", fs.cmds[5])
+	}
+	if !strings.Contains(fs.cmds[6], "nginx -s reload") {
+		t.Errorf("command 6 = %q, want the rollback nginx reload", fs.cmds[6])
+	}
+}
+
+// TestPipelineBeforeDeploySkippedOnFirstDeploy asserts before_deploy
+// never runs when the remote host has no deploy state yet (no app
+// container exists): only build, up, and the nginx reload run, and
+// after_deploy still executes against the fresh release.
+func TestPipelineBeforeDeploySkippedOnFirstDeploy(t *testing.T) {
+	keyPath, pub := writeTestKey(t)
+	fs := &fakeSession{output: []byte("ok\n"), status: 0}
+	host, port := testAddr(t, startPipelineServer(t, keyOnlyServer(pub), fs))
+	remote := t.TempDir()
+
+	cfg := &config.Config{
+		Project: config.ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+		Deploy: map[string]config.DeployConfig{
+			"production": {
+				Host: host, User: "deploy", Path: remote, Branch: "main",
+				BeforeDeploy: []string{"php artisan down"},
+				AfterDeploy:  []string{"php artisan migrate --force"},
+			},
+		},
+	}
+
+	origProbe, origEnsure := pipelineProbe, pipelineEnsurePath
+	pipelineProbe = func(ctx context.Context, r stdinRunner) (bool, error) { return true, nil }
+	pipelineEnsurePath = func(ctx context.Context, c *Client, path string) error { return nil }
+	defer func() { pipelineProbe, pipelineEnsurePath = origProbe, origEnsure }()
+
+	p := &Pipeline{
+		Config:    cfg,
+		Env:       "production",
+		DeployEnv: cfg.Deploy["production"],
+		Logger:    discardLogger{},
+		SSH:       SSHConfig{Host: host, User: "deploy", Port: port, KeyPath: keyPath},
+		Health:    HealthConfig{URL: "http://127.0.0.1:1/up", Timeout: time.Second, Interval: 50 * time.Millisecond, MaxAttempts: 1},
+		Now:       time.Now,
+	}
+	err := p.Run(context.Background())
+	if !errors.Is(err, ErrUp) {
+		t.Fatalf("Run() = %v, want ErrUp (health failed, rollback path)", err)
+	}
+
+	// build, up, nginx reload, after_deploy — no before_deploy command.
+	if len(fs.cmds) != 4 {
+		t.Fatalf("recorded commands = %q, want exactly 4 (build, up, reload, after_deploy)", fs.cmds)
+	}
+	for _, cmd := range fs.cmds {
+		if strings.Contains(cmd, "'artisan' 'down'") {
+			t.Errorf("before_deploy hook ran on first deploy: %q", cmd)
+		}
+	}
+	if !strings.Contains(fs.cmds[3], "'migrate'") {
+		t.Errorf("command 3 = %q, want the after_deploy hook command", fs.cmds[3])
 	}
 }

@@ -48,10 +48,11 @@ type Pipeline struct {
 
 // Run executes the full deploy pipeline: preflight, render, sync,
 // build, before_deploy hooks, up, after_deploy hooks, health probe,
-// commit. On any up- or health-stage failure
-// the previous image is retagged and re-deployed (Rollback) before the
-// error is returned. Now is set to time.Now if nil so tests can pin
-// the timestamp written to state.json.
+// commit. A failing before_deploy hook aborts the deploy (before the
+// new release starts); a failing after_deploy hook, up, or health
+// probe retags the previous image and re-deploys it (Rollback) before
+// the error is returned. Now is set to time.Now if nil so tests can
+// pin the timestamp written to state.json.
 func (p *Pipeline) Run(ctx context.Context) error {
 	if p.Now == nil {
 		p.Now = time.Now
@@ -102,28 +103,44 @@ func (p *Pipeline) Run(ctx context.Context) error {
 
 	// Phase 5: before_deploy — run user hooks in the app container
 	// while the old release is still serving (after the build, before
-	// up). Failures warn and continue; they never abort the deploy.
-	p.runHooks(ctx, client, "before_deploy", p.DeployEnv.BeforeDeploy)
+	// up). On a first deploy there is no app container yet (and no
+	// old release to prepare), so the phase is skipped entirely. A
+	// failing hook aborts the deploy; the old release is still
+	// serving, so no rollback runs.
+	if len(p.DeployEnv.BeforeDeploy) > 0 {
+		st := SFTPStateStore{Client: client}
+		prev, err := st.ReadState(ctx, p.DeployEnv.Path)
+		if err != nil {
+			return RemoteHookError(p.SSH.Host, fmt.Errorf("before_deploy: read deploy state: %w", err))
+		}
+		if prev == nil {
+			p.Logger.Log("before_deploy", "skipped %d command(s): first deploy, no app container yet", len(p.DeployEnv.BeforeDeploy))
+		} else if err := p.runHooks(ctx, client, "before_deploy", p.DeployEnv.BeforeDeploy); err != nil {
+			return RemoteHookError(p.SSH.Host, err)
+		}
+	}
 
 	// Phase 6: up.
 	p.Logger.PhaseStart("up")
 	if err := Up(ctx, client, p.DeployEnv.Path); err != nil {
 		p.Logger.PhaseEnd("up", err)
-		return p.rollback(ctx, client)
+		return p.rollback(ctx, client, err, p.upError)
 	}
 	p.Logger.PhaseEnd("up", nil)
 
 	// Phase 7: after_deploy — run user hooks in the app container
 	// against the new release (after up and the nginx reload, before
-	// the health probe). Failures warn and continue; they never abort
-	// the deploy.
-	p.runHooks(ctx, client, "after_deploy", p.DeployEnv.AfterDeploy)
+	// the health probe). A failing hook aborts the deploy and rolls
+	// back to the previous image, like a failed health probe.
+	if err := p.runHooks(ctx, client, "after_deploy", p.DeployEnv.AfterDeploy); err != nil {
+		return p.rollback(ctx, client, err, p.hookError)
+	}
 
 	// Phase 8: health.
 	p.Logger.PhaseStart("health")
 	if err := Probe(ctx, p.Health); err != nil {
 		p.Logger.PhaseEnd("health", err)
-		return p.rollback(ctx, client)
+		return p.rollback(ctx, client, err, p.upError)
 	}
 	p.Logger.PhaseEnd("health", nil)
 
@@ -194,12 +211,36 @@ func (p *Pipeline) render() (any, error) {
 	return nil, nil
 }
 
-func (p *Pipeline) rollback(ctx context.Context, c *Client) error {
-	if err := Rollback(ctx, SFTPStateStore{Client: c}, c, p.DeployEnv.Path, p.Config.Project.Name); err != nil {
-		return RemoteUpError(p.SSH.Host, err)
+// rollback retags the previous image as :current and re-runs Up after
+// an up-, after_deploy-, or health-stage failure. cause names the
+// failure that triggered the rollback; classify wraps the final error
+// so it carries the right sentinel and exit code (up/health failures
+// stay ErrUp, hook failures stay ErrHooks). When there is no previous
+// deploy on record (first deploy) there is nothing to roll back to,
+// so the cause is reported directly instead of a dead-end "no previous
+// deploy" rollback error that hides what actually failed. When the
+// rollback itself fails, that failure is reported instead.
+func (p *Pipeline) rollback(ctx context.Context, c *Client, cause error, classify func(error) error) error {
+	st := SFTPStateStore{Client: c}
+	state, err := st.ReadState(ctx, p.DeployEnv.Path)
+	if err != nil {
+		return classify(fmt.Errorf("rollback: read deploy state: %w", err))
 	}
-	return RemoteUpError(p.SSH.Host, fmt.Errorf("health check failed; rolled back"))
+	if state == nil || !state.HasPrevious() {
+		p.Logger.Log("rollback", "skipped: no previous image to roll back to (first deploy); reporting the failure directly")
+		return classify(cause)
+	}
+	if err := Rollback(ctx, st, c, p.DeployEnv.Path, p.Config.Project.Name); err != nil {
+		return classify(err)
+	}
+	return classify(fmt.Errorf("%w; rolled back", cause))
 }
+
+// upError wraps a failed up/health cause as an up-category remote
+// error; hookError wraps a failed hook cause as a hooks-category
+// remote error. Both are classify funcs for Pipeline.rollback.
+func (p *Pipeline) upError(e error) error   { return RemoteUpError(p.SSH.Host, e) }
+func (p *Pipeline) hookError(e error) error { return RemoteHookError(p.SSH.Host, e) }
 
 func (p *Pipeline) commit(ctx context.Context, c *Client) error {
 	st := SFTPStateStore{Client: c}

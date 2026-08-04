@@ -89,11 +89,15 @@ type DeployConfig struct {
 	TLS    bool           `toml:"tls"`
 	// BeforeDeploy runs inside the app container on the deploy host
 	// after the image build, while the old release is still serving.
-	// A failing command logs a warning and the deploy continues.
+	// Commands run in order and stop at the first failure; a failing
+	// command aborts the deploy (the old release keeps serving). The
+	// phase is skipped on a first deploy, when no app container
+	// exists yet.
 	BeforeDeploy []string `toml:"before_deploy"`
 	// AfterDeploy runs inside the app container on the deploy host
 	// after `docker compose up` (and the nginx reload), before the
-	// health probe. A failing command logs a warning and the deploy
-	// continues.
+	// health probe. Commands run in order and stop at the first
+	// failure; a failing command aborts the deploy and rolls back to
+	// the previous image.
 	AfterDeploy []string `toml:"after_deploy"`
 }

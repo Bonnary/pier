@@ -29,8 +29,8 @@ func TestUpReloadsWebserverNginx(t *testing.T) {
 	if len(cmds) != 2 {
 		t.Fatalf("Up ran %d commands, want 2 (compose up + nginx reload); got: %v", len(cmds), cmds)
 	}
-	if !strings.Contains(cmds[0], "docker compose --env-file .env.production -f docker-compose.prod.yml up -d") {
-		t.Errorf("up command = %q, want `docker compose --env-file .env.production -f docker-compose.prod.yml up -d` (without the env file, ${DB_PASSWORD}/${APP_KEY} interpolation warns and falls back to blank, and the app 500s)", cmds[0])
+	if !strings.Contains(cmds[0], "docker compose --env-file .env.production -f docker-compose.prod.yml up -d --wait --wait-timeout 120") {
+		t.Errorf("up command = %q, want `docker compose --env-file .env.production -f docker-compose.prod.yml up -d --wait --wait-timeout 120` (--wait returns only when postgres and the sidecars are healthy, so after_deploy hooks like migrations never race a still-initializing database; --wait-timeout bounds the wait so a never-healthy service fails instead of hanging)", cmds[0])
 	}
 	if !strings.Contains(cmds[1], "--env-file .env.production") {
 		t.Errorf("reload command = %q, want it to pass --env-file .env.production so compose interpolation does not warn", cmds[1])

@@ -29,8 +29,12 @@
   new release starts (`before_deploy`, after the image build, while
   the old release still serves) or after it is up (`after_deploy`,
   after `docker compose up` and the nginx reload, before the health
-  probe). Failures log a warning and the deploy continues; `pier
-  init` writes both keys commented out.
+  probe). Commands run in order and stop at the first failure: a
+  failing command aborts the deploy with exit code 7 — `before_deploy`
+  failures keep the old release serving, `after_deploy` failures roll
+  back to the previous image. `before_deploy` is skipped on a first
+  deploy (no app container exists yet); `pier init` writes both keys
+  commented out.
 
 ### Changed
 
@@ -47,9 +51,17 @@
   instead of fastcgi on 9000 (the runtime has no php-fpm) and no
   longer rewrites to `/index.php` via `try_files` (the built-in
   server 500s when executing an existing public file directly).
-- `docker compose up` is followed by a webserver `nginx -s reload`
-  so bind-mounted conf changes (the sync rewrites files in place,
-  preserving the inode) take effect without a container recreate.
+- `docker compose up` now runs with `--wait --wait-timeout 120` and
+  is followed by a webserver `nginx -s reload`. The `--wait` makes
+  compose return only once every healthchecked service (postgres,
+  redis, the sidecars) is healthy, so a fresh database volume still
+  initializing no longer races the first `after_deploy` command
+  (`SQLSTATE[08006] Connection refused` on `php artisan migrate
+  --force`, which worked minutes later in an interactive shell); the
+  timeout bounds the wait so a never-healthy service fails the
+  deploy instead of hanging it. The reload makes bind-mounted conf
+  changes (the sync rewrites files in place, preserving the inode)
+  take effect without a container recreate.
 - Every remote compose invocation now passes
   `--env-file .env.production`, and the prod renderer emits
   `${DB_PASSWORD}` / `${APP_KEY}` interpolations for the DB sidecar
@@ -71,6 +83,13 @@
   the deploy pipeline) are cancelled via the SSH context when the
   command is interrupted, and `before_deploy` / `after_deploy` hooks
   stop running once the context is cancelled.
+- On a first deploy (no `.pier/state.json` on the host), an
+  `after_deploy` or health failure no longer dies with a confusing
+  dead-end "deploy: rollback: no previous deploy to roll back to"
+  error: rollback is skipped, the phase is logged as such, and the
+  real failure is reported (exit code 7 for a failed hook). With a
+  previous image on record, rollback still re-tags and re-ups it
+  before the error is reported.
 
 ## v0.0.3-beta
 

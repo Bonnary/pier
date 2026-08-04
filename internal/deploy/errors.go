@@ -29,6 +29,10 @@ const (
 	// in use on 127.0.0.1. The user must edit [dev.ports] in pier.toml
 	// to remap before retrying.
 	ExitPortInUse = 6
+	// ExitHooks is returned when a before_deploy or after_deploy
+	// command fails on the remote host (a failed hook aborts the
+	// deploy).
+	ExitHooks = 7
 	// ExitAborted is returned when the user aborts an interactive TUI
 	// (q / Ctrl+C). 130 = 128 + SIGINT, the POSIX shell convention.
 	ExitAborted = 130
@@ -41,6 +45,7 @@ var (
 	ErrUp        = errors.New("up")
 	ErrExecDown  = errors.New("container not running")
 	ErrPortInUse = errors.New("port in use")
+	ErrHooks     = errors.New("deploy hook")
 	ErrAborted   = errors.New("aborted")
 )
 
@@ -74,6 +79,8 @@ func (e *ExitError) Is(target error) bool {
 		return target == ErrExecDown
 	case ExitPortInUse:
 		return target == ErrPortInUse
+	case ExitHooks:
+		return target == ErrHooks
 	case ExitAborted:
 		return target == ErrAborted
 	}
@@ -104,6 +111,12 @@ func RemoteUpError(host string, err error) error {
 // host, used by `pier status <env>` when a remote probe command fails.
 func RemoteDockerError(host string, err error) error {
 	return &ExitError{Code: ExitGeneral, Kind: KindDocker, RemoteHost: host, Err: err}
+}
+
+// RemoteHookError is a failed before_deploy / after_deploy command
+// stamped with the SSH host it ran on.
+func RemoteHookError(host string, err error) error {
+	return &ExitError{Code: ExitHooks, Kind: KindDocker, RemoteHost: host, Err: err}
 }
 func ExecDownError() error { return &ExitError{Code: ExitExecDown, Kind: KindDocker, Err: ErrExecDown} }
 

@@ -17,14 +17,19 @@ express this; users must `ssh` in and run them manually.
   on the deploy host, exactly like `pier exec <env> ...`.
 - `before_deploy` commands run while the old container is still
   serving; `after_deploy` commands run against the new release.
-- A failing command logs a warning and the deploy continues.
+- Commands run in order and stop at the first failure: a failing
+  command aborts the deploy (exit code 7). `before_deploy` failures
+  leave the old release serving; `after_deploy` failures roll back to
+  the previous image.
+- `before_deploy` is skipped on a first deploy, when the app
+  container does not exist yet.
 - `pier init` writes the new keys into pier.toml commented out, in the
   same style as the existing `# bind = "0.0.0.0"` line.
 
 ## Non-Goals
 
 - No per-command `continue_on_error` flag — every command is
-  warn-and-continue on failure.
+  fail-the-deploy on failure.
 - No plain-host (non-container) command target.
 - Hooks do not run during `pier rollback`; rollback stays a pure image
   switch.
@@ -83,7 +88,7 @@ ones:
 ```
 preflight → render → sync → build
   → before_deploy   (new; old container still serving)
-  → up              (docker compose up -d + nginx reload)
+  → up              (docker compose up -d --wait + nginx reload)
   → after_deploy    (new; new release is up)
   → health probe
   → commit
@@ -93,13 +98,30 @@ preflight → render → sync → build
   `"after_deploy"` and streams command output via
   `Logger.Log("before_deploy", ...)` (consistent with the build
   phase's streaming).
-- Commands run in listed order. On failure, log a warning with the
-  remote exit status and continue with the next command; the deploy
-  itself never aborts on hook failure.
+- Commands run in listed order. The first failing command (non-zero
+  remote exit status or transport error) aborts the phase and fails
+  the deploy with exit code 7 (`ErrHooks`); no further commands run.
+  `before_deploy` failures return before `up`, leaving the old
+  release serving; `after_deploy` failures take the rollback path
+  (retag previous image + re-`up`), like a failed health probe.
 - Hooks only run when every preceding phase succeeded: a build or up
   failure aborts the pipeline (and up failure triggers rollback)
   before `after_deploy` runs; `before_deploy` never runs after a
   failed build.
+- On a first deploy (no `.pier/state.json` on the remote) the app
+  container does not exist when `before_deploy` would run, so the
+  phase is skipped entirely (logged) instead of failing. Likewise, a
+  first-deploy `after_deploy` or health failure has no previous image
+  to roll back to: rollback is skipped (logged) and the failure
+  itself is reported (exit code 7 for a failed hook) instead of a
+  dead-end "no previous deploy to roll back to" error.
+- `up` runs `docker compose up -d --wait --wait-timeout 120` so
+  `after_deploy` hooks run against a ready stack: plain `up -d`
+  returns as soon as containers start, and a fresh database volume
+  still initializing refused connections from the first
+  `after_deploy` command (`SQLSTATE[08006]`), which only worked when
+  re-run manually minutes later. `--wait` blocks until every
+  healthchecked service is healthy; the timeout bounds that wait.
 - `before_deploy` is skipped entirely when the list is empty;
   likewise `after_deploy`.
 
@@ -108,7 +130,7 @@ preflight → render → sync → build
 - Hooks run through the same SSH client as the rest of the pipeline
   (`client.RunStream`), so output streams to the TUI/JSON logger.
 - Exit status of a failed command is captured from the remote session
-  and included in the warning (reuse `ssh.ExitError` handling; the
+  and included in the error (reuse `ssh.ExitError` handling; the
   "last output" tail already available via `Run`'s error wrapping).
 - ctx cancellation aborts the in-flight hook, same as other phases.
 
@@ -135,8 +157,10 @@ branch = "main"
 - `config` tests: valid lists decode; blank/empty entries fail
   validation with the env/key named.
 - `deploy` pipeline tests: hooks run in order at the right pipeline
-  position; a failing hook logs a warning and the pipeline continues;
-  empty lists skip the phases; rollback path does not invoke hooks.
+  position; a failing hook fails the deploy (before_deploy: abort
+  before up, after_deploy: rollback path) and stops the remaining
+  commands; empty lists skip the phases; before_deploy is skipped on
+  a first deploy; rollback path does not invoke hooks.
 - `cli` tests: generated pier.toml contains the commented
   `before_deploy`/`after_deploy` lines.
 - `shell` tests: `remoteExecCommand` with multi-arg tokens builds the
@@ -147,4 +171,4 @@ branch = "main"
 README "deploy" section gains a short subsection describing
 `before_deploy` / `after_deploy`: where they run (app container on the
 deploy host), when (before up / after up before health probe), and
-failure semantics (warn + continue).
+failure semantics (fail the deploy; after_deploy rolls back).

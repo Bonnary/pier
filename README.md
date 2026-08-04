@@ -81,9 +81,10 @@ Docker CLI.
   `--all` / `--force`). Also creates each env's deploy directory
   (`[deploy.<env>].path`) and hands it to the deploy user, so
   `pier deploy` never hits a missing-path "not writable" error.
-- **Automatic rollback** — Any failure in the `up` or `health`
-  phase re-tags the previous image and re-deploys it before the
-  command exits non-zero.
+- **Automatic rollback** — Any failure in the `up`, `after_deploy`,
+  or `health` phase re-tags the previous image and re-deploys it
+  before the command exits non-zero. On a first deploy there is no
+  previous image, so the failure itself is reported instead.
 - **`pier rollback <env>`** — Re-deploy the previous image tag on
   demand.
 - **`pier status [env]`** — One-glance project + container status, locally or on a remote deploy host (containers, disk, health, last deploy).
@@ -300,13 +301,23 @@ shipped yet — keep it `false` for now.
 container on the deploy host (`docker compose exec -T app`, the same
 mechanism as `pier exec <env>`). `before_deploy` runs after the image
 build while the old release is still serving; `after_deploy` runs
-after `docker compose up` (and the nginx reload) and before the
-health probe. Commands run in order; a failing command logs a warning
-and the remaining commands still run — a hook failure never aborts a
-deploy (migrations are best placed in `after_deploy`). On a first
-deploy the app container does not exist yet when `before_deploy` runs,
-so its commands warn and are skipped — put first-run setup in
-`after_deploy`. `pier init` writes both keys commented out.
+after `docker compose up --wait` (compose returns only once every
+service with a healthcheck — postgres, redis, the sidecars — is
+healthy, so a still-initializing database on a fresh volume can't
+race the first `after_deploy` command; a `--wait-timeout 120` bounds
+the wait) and the nginx reload, before the health probe. Commands run
+in order and stop at the first failure: a
+failing command aborts the deploy (exit code 7), so a broken hook is
+never silently swallowed. `before_deploy` failures leave the old
+release serving; `after_deploy` failures roll back to the previous
+image when one exists — on a first deploy there is nothing to roll
+back to, so the hook error is reported directly (exit code 7) instead
+of a dead-end "no previous deploy" message. Migrations are best
+placed in `after_deploy`, where a failed migration fails the deploy
+loudly. On a first deploy the app
+container does not exist yet, so `before_deploy` is skipped entirely —
+put first-run setup in `after_deploy`. `pier init` writes both keys
+commented out.
 
 ### `[dev.services.<name>]` — opt-in dev sidecars
 

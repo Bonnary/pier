@@ -31,6 +31,10 @@ type fakeSession struct {
 	reject  bool
 	output  []byte
 	status  int
+	// statusFn, when non-nil, returns the exit status for a session
+	// command instead of the shared status field (per-command control
+	// for pipeline tests).
+	statusFn func(cmd string) int
 }
 
 func (f *fakeSession) addCmd(cmd string) {
@@ -111,10 +115,15 @@ func serveFakeSessionChannel(ch ssh.NewChannel, f *fakeSession) {
 				_ = req.Reply(false, nil)
 				return
 			}
-			f.addCmd(string(req.Payload[4:]))
+			cmd := string(req.Payload[4:])
+			f.addCmd(cmd)
 			_ = req.Reply(true, nil)
 			_, _ = channel.Write(f.output)
-			finishFakeSession(channel, f.status)
+			st := f.status
+			if f.statusFn != nil {
+				st = f.statusFn(cmd)
+			}
+			finishFakeSession(channel, st)
 			return
 		case "shell":
 			f.mu.Lock()

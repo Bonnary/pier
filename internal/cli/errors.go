@@ -10,6 +10,7 @@ const (
 	ExitUp        = deploy.ExitUp
 	ExitExecDown  = deploy.ExitExecDown
 	ExitPortInUse = deploy.ExitPortInUse
+	ExitHooks     = deploy.ExitHooks
 	ExitAborted   = deploy.ExitAborted
 )
 
@@ -19,6 +20,7 @@ var (
 	ErrUp        = deploy.ErrUp
 	ErrExecDown  = deploy.ErrExecDown
 	ErrPortInUse = deploy.ErrPortInUse
+	ErrHooks     = deploy.ErrHooks
 	ErrAborted   = deploy.ErrAborted
 )
 
@@ -42,6 +44,9 @@ func UpError(err error) error          { return deploy.UpError(err) }
 func ExecDownError() error             { return deploy.ExecDownError() }
 func PortInUseError(ports []int) error { return deploy.PortInUseError(ports) }
 func AbortedError() error              { return deploy.AbortedError() }
+func RemoteHookError(host string, err error) error {
+	return deploy.RemoteHookError(host, err)
+}
 
 func ConfigError(err error) error  { return deploy.ConfigError(err) }
 func DockerError(err error) error  { return deploy.DockerError(err) }
