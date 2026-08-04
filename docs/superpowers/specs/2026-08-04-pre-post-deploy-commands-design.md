@@ -54,8 +54,12 @@ after_deploy = ["php artisan migrate --force"]          # optional
 
 ## Command Splitting
 
-New small shellwords-style tokenizer in `internal/deploy`
-(`split.go`):
+New small shellwords-style tokenizer in `internal/config`
+(`split.go`). It lives in config (not deploy) because config
+validation tokenizes entries and `internal/deploy` already imports
+`internal/config` — putting the tokenizer in deploy would create an
+import cycle. The deploy pipeline calls the same function at
+execution time.
 
 - Splits a command line on whitespace, honoring single quotes,
   double quotes, and backslash escapes (no env expansion).
@@ -92,6 +96,10 @@ preflight → render → sync → build
 - Commands run in listed order. On failure, log a warning with the
   remote exit status and continue with the next command; the deploy
   itself never aborts on hook failure.
+- Hooks only run when every preceding phase succeeded: a build or up
+  failure aborts the pipeline (and up failure triggers rollback)
+  before `after_deploy` runs; `before_deploy` never runs after a
+  failed build.
 - `before_deploy` is skipped entirely when the list is empty;
   likewise `after_deploy`.
 
@@ -121,9 +129,9 @@ branch = "main"
 
 ## Tests
 
-- `split_test.go`: tokenizer unit tests — plain args, single/double
-  quotes, escaped spaces, unterminated quote error, empty string
-  error.
+- `config` `split_test.go`: tokenizer unit tests — plain args,
+  single/double quotes, escaped spaces, unterminated quote error,
+  empty string error.
 - `config` tests: valid lists decode; blank/empty entries fail
   validation with the env/key named.
 - `deploy` pipeline tests: hooks run in order at the right pipeline
