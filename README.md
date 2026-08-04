@@ -277,8 +277,8 @@ user   = "deploy"
 path   = "/srv/myapp"
 branch = "main"
 tls    = false   # false (default): plain HTTP. true: HTTPS URLs + 443 — requires the upcoming cert feature
-# before_deploy = ["php artisan down"]              # uncomment: runs in the app container before the new release starts
-# after_deploy = ["php artisan migrate --force"]    # uncomment: runs in the app container after the new release is up
+before_deploy = ["php artisan down"]              # runs in the app container before the new release starts
+after_deploy = ["php artisan migrate --force"]    # runs in the app container after the new release is up
 
 [deploy.production.ports]
 laravel = 443   # only the keys the user writes are applied
