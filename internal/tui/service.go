@@ -1,38 +1,27 @@
 package tui
 
-import "slices"
-
-// newAddPicker returns a multi-select Picker of services the user can add.
-// Already-installed services are filtered out (idempotency contract: add
-// is a no-op for installed services).
-func newAddPicker(available, installed []string) *Picker {
-	installedSet := make(map[string]bool, len(installed))
-	for _, n := range installed {
-		installedSet[n] = true
-	}
-	filtered := make([]string, 0, len(available))
-	for _, n := range available {
-		if !installedSet[n] {
-			filtered = append(filtered, n)
+// presetIndices maps every item of available that appears in current
+// to true — the pre-ticked set for the services picker.
+func presetIndices(available, current []string) map[int]bool {
+	presets := make(map[int]bool, len(current))
+	for _, c := range current {
+		for i, a := range available {
+			if a == c {
+				presets[i] = true
+				break
+			}
 		}
 	}
-	return NewMultiPicker("Services to add (space to toggle)", filtered, nil)
+	return presets
 }
 
-// newRemovePicker returns a multi-select Picker of currently installed
-// services; the user picks which ones to remove.
-func newRemovePicker(installed []string) *Picker {
-	items := slices.Clone(installed)
-	sortStrings(items)
-	return NewMultiPicker("Services to remove (space to toggle)", items, nil)
-}
-
-// PickServicesToAdd opens a multi-select Picker of every service
-// in available minus every service in installed. Returns ErrAborted
+// PickServices opens a multi-select Picker of every service in
+// available with the services in current pre-ticked. Toggling adds
+// and removes; enter returns the final selection. Returns ErrAborted
 // (wrapped in the error) if the user hits q / Ctrl+C. Returns
-// (nil, nil) when the available list is empty (nothing to add).
-func PickServicesToAdd(available, installed []string) ([]string, error) {
-	p := newAddPicker(available, installed)
+// (nil, nil) when available is empty.
+func PickServices(available, current []string) ([]string, error) {
+	p := NewMultiPicker("Services (space to toggle)", available, presetIndices(available, current))
 	if len(p.items) == 0 {
 		return nil, nil
 	}
@@ -46,37 +35,11 @@ func PickServicesToAdd(available, installed []string) ([]string, error) {
 	return res.Values, nil
 }
 
-// PickServicesToRemove opens a multi-select Picker of the
-// currently installed services (sorted for stable display). Same
-// abort / empty-list contract as PickServicesToAdd.
-func PickServicesToRemove(installed []string) ([]string, error) {
-	p := newRemovePicker(installed)
-	if len(p.items) == 0 {
-		return nil, nil
-	}
-	res, err := p.Run()
-	if err != nil {
-		return nil, err
-	}
-	if res.Aborted {
-		return nil, ErrAborted
-	}
-	return res.Values, nil
-}
-
-// ErrAborted is returned by PickServicesToAdd and
-// PickServicesToRemove when the user aborts the TUI. Use
-// errors.Is to detect it; the CLI maps it to AbortedError().
+// ErrAborted is returned by PickServices when the user aborts the
+// TUI. Use errors.Is to detect it; the CLI maps it to
+// AbortedError().
 var ErrAborted = errAborted{}
 
 type errAborted struct{}
 
 func (errAborted) Error() string { return "aborted" }
-
-func sortStrings(xs []string) {
-	for i := 1; i < len(xs); i++ {
-		for j := i; j > 0 && xs[j-1] > xs[j]; j-- {
-			xs[j-1], xs[j] = xs[j], xs[j-1]
-		}
-	}
-}

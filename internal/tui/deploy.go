@@ -1,9 +1,8 @@
 // Package tui contains the Bubble Tea TUIs pier uses: the init
-// picker, the service add/remove multi-select, and the deploy
-// pipeline viewer (phase list + last-N log lines). RunInit,
-// PickServicesToAdd, and PickServicesToRemove are the only
-// functions mainline code calls; ShouldRun is the "is stdout a
-// terminal" guard every TUI gates on.
+// picker, the service multi-select, and the deploy pipeline
+// viewer (phase list + last-N log lines). RunInit and PickServices
+// are the only functions mainline code calls; ShouldRun is the
+// "is stdout a terminal" guard every TUI gates on.
 package tui
 
 import (
