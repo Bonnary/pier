@@ -603,3 +603,51 @@ func TestGenerateProdEnvExampleAPPURL(t *testing.T) {
 		t.Errorf("env missing HTTPS APP_URL:\n%s", httpsEnv.Contents)
 	}
 }
+
+func TestGenerateProdFilesUsesEnvServicesOverride(t *testing.T) {
+	files, err := New().GenerateProdFiles(config.Config{
+		Stack:  config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22", Services: []string{"mysql", "s3"}},
+		Deploy: map[string]config.DeployConfig{"production": {Services: []string{"postgres"}}},
+	}, "production")
+	if err != nil {
+		t.Fatalf("GenerateProdFiles: %v", err)
+	}
+	compose := string(findFile(files, "docker-compose.prod.yml").Contents)
+	if !contains(compose, "postgres:") {
+		t.Errorf("prod compose missing postgres service (from deploy.production.services):\n%s", compose)
+	}
+	if contains(compose, "mysql:") || contains(compose, "s3:") {
+		t.Errorf("prod compose must not contain services excluded by deploy.production.services:\n%s", compose)
+	}
+	env := string(findFile(files, ".env.production").Contents)
+	if !contains(env, "DB_CONNECTION=pgsql") {
+		t.Errorf("prod env missing pgsql connection:\n%s", env)
+	}
+}
+
+func TestGenerateProdFilesEnvInheritsStackServices(t *testing.T) {
+	files, err := New().GenerateProdFiles(config.Config{
+		Stack:  config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22", Services: []string{"redis", "mailpit"}},
+		Deploy: map[string]config.DeployConfig{"production": {}}, // no services key
+	}, "production")
+	if err != nil {
+		t.Fatalf("GenerateProdFiles: %v", err)
+	}
+	compose := string(findFile(files, "docker-compose.prod.yml").Contents)
+	if !contains(compose, "redis:") {
+		t.Errorf("prod compose missing inherited redis service:\n%s", compose)
+	}
+	if contains(compose, "mailpit:") {
+		t.Errorf("prod compose must exclude DevOnly mailpit even when inherited:\n%s", compose)
+	}
+}
+
+func TestGenerateProdFilesUnknownEnvServiceFails(t *testing.T) {
+	_, err := New().GenerateProdFiles(config.Config{
+		Stack:  config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+		Deploy: map[string]config.DeployConfig{"production": {Services: []string{"se3"}}},
+	}, "production")
+	if err == nil || !contains(err.Error(), "unknown service") {
+		t.Errorf("GenerateProdFiles = %v, want unknown-service error", err)
+	}
+}

@@ -13,7 +13,7 @@ import (
 
 func (s *Stack) GenerateProdFiles(cfg config.Config, env string) (stack.Files, error) {
 	prodServices := []string{}
-	for _, name := range cfg.Stack.Services {
+	for _, name := range cfg.ServicesForEnv(env) {
 		svc, ok := lookup(name)
 		if !ok {
 			return nil, fmt.Errorf("laravel: unknown service %q in [stack].services", name)
