@@ -14,6 +14,7 @@ import (
 )
 
 func TestPipelineEndToEnd(t *testing.T) {
+	t.Chdir(t.TempDir())
 	if testing.Short() {
 		t.Skip("integration")
 	}

@@ -305,6 +305,7 @@ func writeRemoteState(t *testing.T, remote string) {
 // so the run ends in the rollback path (up-phase error) after the
 // hook commands were recorded.
 func TestPipelineRunsHooksAtCorrectStages(t *testing.T) {
+	t.Chdir(t.TempDir())
 	keyPath, pub := writeTestKey(t)
 	fs := &fakeSession{output: []byte("ok\n"), status: 0}
 	host, port := testAddr(t, startPipelineServer(t, keyOnlyServer(pub), fs))
@@ -370,6 +371,7 @@ func TestPipelineRunsHooksAtCorrectStages(t *testing.T) {
 // TestPipelineSkipsHooksWhenListsEmpty asserts that an env without
 // hook lists records no hook commands: exactly build, up, reload.
 func TestPipelineSkipsHooksWhenListsEmpty(t *testing.T) {
+	t.Chdir(t.TempDir())
 	keyPath, pub := writeTestKey(t)
 	fs := &fakeSession{output: []byte("ok\n"), status: 0}
 	host, port := testAddr(t, startPipelineServer(t, keyOnlyServer(pub), fs))
@@ -411,6 +413,7 @@ func TestPipelineSkipsHooksWhenListsEmpty(t *testing.T) {
 // release is brought up: only the build and the failing hook command
 // are recorded.
 func TestPipelineBeforeDeployFailureAborts(t *testing.T) {
+	t.Chdir(t.TempDir())
 	keyPath, pub := writeTestKey(t)
 	fs := &fakeSession{output: []byte("ok\n"), status: 0, statusFn: func(cmd string) int {
 		if strings.Contains(cmd, "'artisan' 'down'") {
@@ -467,6 +470,7 @@ func TestPipelineBeforeDeployFailureAborts(t *testing.T) {
 // the actual hook failure (exit code 7) instead of a dead-end "no
 // previous deploy to roll back to" message.
 func TestPipelineAfterDeployFailureFirstDeployReportsHook(t *testing.T) {
+	t.Chdir(t.TempDir())
 	keyPath, pub := writeTestKey(t)
 	fs := &fakeSession{output: []byte("ok\n"), status: 0, statusFn: func(cmd string) int {
 		if strings.Contains(cmd, "'migrate'") {
@@ -525,6 +529,7 @@ func TestPipelineAfterDeployFailureFirstDeployReportsHook(t *testing.T) {
 // rollback path: the previous image is retagged and re-upped before
 // the hook error (ErrHooks) is reported.
 func TestPipelineAfterDeployFailureRollsBackToPrevious(t *testing.T) {
+	t.Chdir(t.TempDir())
 	keyPath, pub := writeTestKey(t)
 	fs := &fakeSession{output: []byte("ok\n"), status: 0, statusFn: func(cmd string) int {
 		if strings.Contains(cmd, "'migrate'") {
@@ -589,6 +594,7 @@ func TestPipelineAfterDeployFailureRollsBackToPrevious(t *testing.T) {
 // container exists): only build, up, and the nginx reload run, and
 // after_deploy still executes against the fresh release.
 func TestPipelineBeforeDeploySkippedOnFirstDeploy(t *testing.T) {
+	t.Chdir(t.TempDir())
 	keyPath, pub := writeTestKey(t)
 	fs := &fakeSession{output: []byte("ok\n"), status: 0}
 	host, port := testAddr(t, startPipelineServer(t, keyOnlyServer(pub), fs))

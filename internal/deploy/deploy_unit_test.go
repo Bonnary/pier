@@ -233,6 +233,14 @@ func (f *failingSyncClient) SyncDir(ctx context.Context, local, remote string, e
 // is asserted as: remote files present AND the returned error is a
 // build-phase ExitError — proving preflight and sync both passed.
 func TestPipelineSyncsFilesToRemote(t *testing.T) {
+	t.Chdir(t.TempDir())
+	// The render phase writes docker-compose.prod.yml and
+	// .env.production into the cwd; an isolated temp cwd keeps that
+	// output out of the repo tree. Seed a marker file so the sync
+	// assertion targets content that only this test created.
+	if err := os.WriteFile("marker.txt", []byte("sync me"), 0644); err != nil {
+		t.Fatalf("write marker: %v", err)
+	}
 	keyPath, pub := writeTestKey(t)
 	addr := startSSHServer(t, keyOnlyServer(pub))
 	host, port := testAddr(t, addr)
@@ -265,10 +273,10 @@ func TestPipelineSyncsFilesToRemote(t *testing.T) {
 	}
 	err := p.Run(context.Background())
 
-	// Run syncs the package directory (cwd is the package dir under
-	// `go test`), so sftp.go must have landed on the remote.
-	if _, statErr := os.Stat(filepath.Join(remote, "sftp.go")); statErr != nil {
-		t.Fatalf("sync phase did not run: remote sftp.go missing: %v", statErr)
+	// Run syncs the temp cwd (chdir'd above), so the marker file
+	// must have landed on the remote.
+	if _, statErr := os.Stat(filepath.Join(remote, "marker.txt")); statErr != nil {
+		t.Fatalf("sync phase did not run: remote marker.txt missing: %v", statErr)
 	}
 	var ee *ExitError
 	if !errors.As(err, &ee) || ee.Code != ExitBuild {
@@ -279,6 +287,7 @@ func TestPipelineSyncsFilesToRemote(t *testing.T) {
 // TestPipelineSyncFailureWrapsPreflight asserts a sync-phase failure
 // surfaces as a preflight-class ExitError with exit code 2.
 func TestPipelineSyncFailureWrapsPreflight(t *testing.T) {
+	t.Chdir(t.TempDir())
 	cfg := &config.Config{
 		Project: config.ProjectConfig{Name: "x", Domain: "x.example.com"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
