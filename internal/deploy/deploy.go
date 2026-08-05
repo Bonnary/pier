@@ -73,15 +73,15 @@ func (p *Pipeline) Run(ctx context.Context) error {
 	p.Logger.PhaseEnd("preflight", nil)
 	defer client.Close()
 
-	// Phase 2: render (local) — re-render docker-compose.prod.yml.
+	// Phase 2: render (local) — re-render docker-compose.prod.yml and
+	// .env.production from pier.toml so the sync ships per-env
+	// services and port overrides.
 	p.Logger.PhaseStart("render")
-	stackMod, err := p.render()
-	if err != nil {
+	if err := p.render(); err != nil {
 		p.Logger.PhaseEnd("render", err)
 		return err
 	}
 	p.Logger.PhaseEnd("render", nil)
-	_ = stackMod
 
 	// Phase 3: sync.
 	p.Logger.PhaseStart("sync")
@@ -201,14 +201,8 @@ func (p *Pipeline) preflight(ctx context.Context) (*Client, error) {
 	return client, nil
 }
 
-func (p *Pipeline) render() (any, error) {
-	// Re-render docker-compose.prod.yml from pier.toml. Full implementation:
-	// 1. Read pier.toml (already in p.Config).
-	// 2. Call stack.ForName(...).GenerateProdFiles.
-	// 3. Write docker-compose.prod.yml and the runtime to a temp dir.
-	// 4. Sync to remote as part of the sync phase.
-	// Skeleton: returns a placeholder.
-	return nil, nil
+func (p *Pipeline) render() error {
+	return renderProdFiles(".", p.Config, p.Env)
 }
 
 // rollback retags the previous image as :current and re-runs Up after
