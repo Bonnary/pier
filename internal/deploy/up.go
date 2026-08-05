@@ -6,8 +6,9 @@ import (
 )
 
 // Up runs `docker compose --env-file .env.production -f
-// docker-compose.prod.yml up -d --wait --wait-timeout 120` on the
-// remote host and then reloads the webserver's nginx. Used as stage 5
+// docker-compose.prod.yml up -d --wait --wait-timeout 120
+// --remove-orphans` on the remote host and then reloads the
+// webserver's nginx. Used as stage 5
 // of the deploy pipeline and by Rollback. The --env-file is required:
 // the compose file interpolates ${DB_PASSWORD}/${APP_KEY} from it
 // (without it compose warns and the app container gets blank secrets
@@ -25,9 +26,12 @@ import (
 // and compose does not recreate a service whose spec is unchanged.
 // Reloading unconditionally is harmless when nothing changed; the
 // error is ignored because a freshly created container already loaded
-// the current config.
+// the current config. --remove-orphans stops and removes containers
+// whose service is no longer in the compose file — exactly the
+// sidecars the per-env render dropped — while named volumes
+// (mysql_data, s3_data, ...) are preserved.
 func Up(ctx context.Context, r runner, dir string) error {
-	cmd := fmt.Sprintf("cd %s && docker compose --env-file %s -f %s up -d --wait --wait-timeout 120", dir, remoteEnvFile, remoteComposeFile)
+	cmd := fmt.Sprintf("cd %s && docker compose --env-file %s -f %s up -d --wait --wait-timeout 120 --remove-orphans", dir, remoteEnvFile, remoteComposeFile)
 	if _, _, err := r.Run(ctx, cmd); err != nil {
 		return err
 	}
