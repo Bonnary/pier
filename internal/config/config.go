@@ -81,12 +81,17 @@ type DevService struct {
 // BeforeDeploy and AfterDeploy are run in the app container on the
 // deploy host, before and after the release is brought up.
 type DeployConfig struct {
-	Host   string         `toml:"host"`
-	User   string         `toml:"user"`
-	Path   string         `toml:"path"`
-	Branch string         `toml:"branch"`
-	Ports  map[string]int `toml:"ports"`
-	TLS    bool           `toml:"tls"`
+	Host   string `toml:"host"`
+	User   string `toml:"user"`
+	Path   string `toml:"path"`
+	Branch string `toml:"branch"`
+	// Services, when present, is the full list of sidecar services
+	// for this env, overriding [stack].services. When absent the env
+	// inherits [stack].services. An explicitly empty list means the
+	// env runs no sidecars.
+	Services []string       `toml:"services"`
+	Ports    map[string]int `toml:"ports"`
+	TLS      bool           `toml:"tls"`
 	// BeforeDeploy runs inside the app container on the deploy host
 	// after the image build, while the old release is still serving.
 	// Commands run in order and stop at the first failure; a failing
@@ -100,4 +105,14 @@ type DeployConfig struct {
 	// failure; a failing command aborts the deploy and rolls back to
 	// the previous image.
 	AfterDeploy []string `toml:"after_deploy"`
+}
+
+// ServicesForEnv returns the effective sidecar service list for env:
+// [deploy.<env>].services when present (nil distinguishes "absent"
+// from an explicit empty list), else [stack].services.
+func (c *Config) ServicesForEnv(env string) []string {
+	if dc, ok := c.Deploy[env]; ok && dc.Services != nil {
+		return dc.Services
+	}
+	return c.Stack.Services
 }

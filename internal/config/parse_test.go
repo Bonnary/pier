@@ -328,6 +328,61 @@ func TestValidateHookListRejectsUnterminatedQuote(t *testing.T) {
 	}
 }
 
+func TestValidateDeployScaffoldAllowsEmptyHostUserPathBranch(t *testing.T) {
+	cfg := Config{
+		Project: ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Stack:   StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+		Deploy:  map[string]DeployConfig{"production": {Services: []string{"redis"}}},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate = %v, want nil (unconfigured scaffold)", err)
+	}
+}
+
+func TestValidateDeployPartialConfigStillRejected(t *testing.T) {
+	cfg := Config{
+		Project: ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Stack:   StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+		Deploy:  map[string]DeployConfig{"production": {Host: "h"}},
+	}
+	err := cfg.Validate()
+	if !errors.Is(err, ErrConfigInvalid) {
+		t.Fatalf("Validate = %v, want ErrConfigInvalid", err)
+	}
+	if !strings.Contains(err.Error(), "requires host, user, path, branch") {
+		t.Errorf("err = %v, want substring %q", err, "requires host, user, path, branch")
+	}
+}
+
+func TestServicesForEnv(t *testing.T) {
+	cfg := Config{
+		Stack: StackConfig{Services: []string{"redis", "mailpit"}},
+		Deploy: map[string]DeployConfig{
+			"prod":  {Services: []string{"postgres"}},
+			"stage": {}, // no services key → inherit
+		},
+	}
+	if got := cfg.ServicesForEnv("prod"); len(got) != 1 || got[0] != "postgres" {
+		t.Errorf(`ServicesForEnv("prod") = %v, want ["postgres"]`, got)
+	}
+	if got := cfg.ServicesForEnv("stage"); len(got) != 2 || got[0] != "redis" {
+		t.Errorf(`ServicesForEnv("stage") = %v, want ["redis" "mailpit"]`, got)
+	}
+	if got := cfg.ServicesForEnv("nonexistent"); len(got) != 2 {
+		t.Errorf(`ServicesForEnv("nonexistent") = %v, want stack services`, got)
+	}
+}
+
+func TestServicesForEnvExplicitEmpty(t *testing.T) {
+	cfg := Config{
+		Stack:  StackConfig{Services: []string{"redis"}},
+		Deploy: map[string]DeployConfig{"prod": {Services: []string{}}},
+	}
+	if got := cfg.ServicesForEnv("prod"); len(got) != 0 {
+		t.Errorf(`ServicesForEnv("prod") = %v, want [] (explicit empty overrides inherit)`, got)
+	}
+}
+
 func TestDevBindRejectsUnknown(t *testing.T) {
 	cases := []string{"::", "localhost", "192.168.1.1", "0", "10.0.0.1", "::1", "1.2.3.4"}
 	for _, v := range cases {

@@ -79,8 +79,9 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("%w: [dev] bind = %q must be %q or %q", ErrConfigInvalid, c.Dev.Bind, "127.0.0.1", "0.0.0.0")
 	}
 	for env, dc := range c.Deploy {
-		if dc.Host == "" || dc.User == "" || dc.Path == "" || dc.Branch == "" {
-			return fmt.Errorf("%w: deploy.%s requires host, user, path, branch", ErrConfigInvalid, env)
+		configured := dc.Host != "" || dc.User != "" || dc.Path != "" || dc.Branch != ""
+		if configured && (dc.Host == "" || dc.User == "" || dc.Path == "" || dc.Branch == "") {
+			return fmt.Errorf("%w: deploy.%s requires host, user, path, branch (leave all empty to scaffold)", ErrConfigInvalid, env)
 		}
 		if err := validateHookList(env, "before_deploy", dc.BeforeDeploy); err != nil {
 			return err
