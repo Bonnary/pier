@@ -1,6 +1,6 @@
 // Package cli implements pier's command-line interface: a Cobra-based
 // command tree for `pier init`, `pier dev`, `pier shell`, `pier exec`,
-// `pier service add|remove`, `pier deploy <env>`, `pier rollback <env>`,
+// `pier service [env]`, `pier deploy <env>`, `pier rollback <env>`,
 // and `pier status`. The package owns the root command, the global
 // flags (--config, --json, --verbose), the typed error/exit-code
 // contract that other internal packages hang errors off of, and the

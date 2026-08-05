@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -19,74 +20,68 @@ import (
 )
 
 type serviceFlags struct {
-	noUp   bool
-	noStop bool
+	noUp bool
 }
 
-// test seams — overridable from *_test.go. tuiForTest lives in init.go.
-var (
-	pickAddTUI    = tui.PickServicesToAdd
-	pickRemoveTUI = tui.PickServicesToRemove
-)
+// test seam — overridable from *_test.go. tuiForTest lives in init.go.
+var pickServicesTUI = tui.PickServices
 
 func newServiceCmd(stdout, stderr io.Writer) *cobra.Command {
 	f := &serviceFlags{}
 	cmd := &cobra.Command{
-		Use:   "service",
-		Short: "Add or remove services from pier.toml",
-	}
-	cmd.PersistentFlags().BoolVar(&f.noUp, "no-up", false, "skip bringing the service up after add")
-	cmd.PersistentFlags().BoolVar(&f.noStop, "no-stop", false, "skip stopping the service after remove")
-
-	add := &cobra.Command{
-		Use:   "add [name...]",
-		Short: "Add one or more services to pier.toml",
-		Args:  cobra.ArbitraryArgs,
+		Use:   "service [env]",
+		Short: "Manage sidecar services with an interactive picker",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runServiceAdd(cmd, args, f)
+			env := ""
+			if len(args) > 0 {
+				env = args[0]
+			}
+			return runService(cmd, env, f)
 		},
 	}
-	rm := &cobra.Command{
-		Use:   "remove [name...]",
-		Short: "Remove one or more services from pier.toml",
-		Args:  cobra.ArbitraryArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runServiceRemove(cmd, args, f)
-		},
-	}
-	cmd.AddCommand(add, rm)
+	cmd.Flags().BoolVar(&f.noUp, "no-up", false, "skip bringing newly added dev services up after saving")
 	return cmd
 }
 
-func runServiceAdd(cmd *cobra.Command, names []string, f *serviceFlags) error {
+func runService(cmd *cobra.Command, env string, f *serviceFlags) error {
+	if !tuiForTest() {
+		return cliError("pier service is interactive; run it in a terminal or edit pier.toml directly")
+	}
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
 		return err
 	}
-	if tuiForTest() && len(names) == 0 {
-		picked, err := pickAddTUI(laravelpkg.SupportedServices(), cfg.Stack.Services)
-		if err != nil {
-			if errors.Is(err, tui.ErrAborted) {
-				return AbortedError()
-			}
-			return err
-		}
-		if len(picked) == 0 {
-			return fmt.Errorf("no services selected")
-		}
-		names = picked
+	if env != "" {
+		return runServiceEnv(cmd, cfg, env)
 	}
-	for _, n := range names {
-		if n == "" {
-			return fmt.Errorf("empty service name")
+	return runServiceDev(cmd, cfg, f)
+}
+
+// runServiceDev manages [stack].services: the picker shows every
+// supported service with the current dev list pre-ticked; the final
+// selection is written back, docker-compose.yml is re-rendered, and
+// newly added services are brought up unless --no-up.
+func runServiceDev(cmd *cobra.Command, cfg *config.Config, f *serviceFlags) error {
+	picked, err := pickServicesTUI(laravelpkg.SupportedServices(), cfg.Stack.Services)
+	if err != nil {
+		if errors.Is(err, tui.ErrAborted) {
+			return AbortedError()
 		}
-		_ = laravelpkg.New().DefaultConfig()
-	}
-	updated, added := upsertServices(cfg, names)
-	if err := writeConfig(cfgPath, updated); err != nil {
 		return err
 	}
-	if err := rerenderDevCompose(cfgPath, updated); err != nil {
+	before := cfg.Stack.Services
+	added := listDiff(picked, before)
+	removed := listDiff(before, picked)
+	if len(added) == 0 && len(removed) == 0 {
+		fmt.Fprintln(cmd.OutOrStdout(), "no changes")
+		return nil
+	}
+	cfg.Stack.Services = picked
+	if err := writeConfig(cfgPath, *cfg); err != nil {
+		return err
+	}
+	if err := rerenderDevCompose(cfgPath, *cfg); err != nil {
 		return err
 	}
 	if !f.noUp && len(added) > 0 {
@@ -96,77 +91,57 @@ func runServiceAdd(cmd *cobra.Command, names []string, f *serviceFlags) error {
 			return err
 		}
 	}
-	fmt.Fprintf(cmd.OutOrStdout(), "added: %v\n", added)
+	fmt.Fprintf(cmd.OutOrStdout(), "added: %v\nremoved: %v\n", added, removed)
 	return nil
 }
 
-func runServiceRemove(cmd *cobra.Command, names []string, f *serviceFlags) error {
-	cfg, err := config.Load(cfgPath)
+// runServiceEnv manages [deploy.<env>].services: the picker shows
+// every supported service with the env's effective list pre-ticked
+// (inherited from [stack] when the env has no explicit list yet).
+// The final selection is written to [deploy.<env>].services; the
+// next deploy re-renders the remote compose from it.
+func runServiceEnv(cmd *cobra.Command, cfg *config.Config, env string) error {
+	dc, ok := cfg.Deploy[env]
+	if !ok {
+		return cliError("no [deploy.%s] section in pier.toml", env)
+	}
+	effective := cfg.ServicesForEnv(env)
+	picked, err := pickServicesTUI(laravelpkg.SupportedServices(), effective)
 	if err != nil {
-		return err
-	}
-	if tuiForTest() && len(names) == 0 {
-		picked, err := pickRemoveTUI(cfg.Stack.Services)
-		if err != nil {
-			if errors.Is(err, tui.ErrAborted) {
-				return AbortedError()
-			}
-			return err
+		if errors.Is(err, tui.ErrAborted) {
+			return AbortedError()
 		}
-		if len(picked) == 0 {
-			return fmt.Errorf("no services selected")
-		}
-		names = picked
-	}
-	updated, removed := removeServices(cfg, names)
-	if err := writeConfig(cfgPath, updated); err != nil {
 		return err
 	}
-	if err := rerenderDevCompose(cfgPath, updated); err != nil {
+	want := slices.Clone(effective)
+	sort.Strings(want)
+	if slices.Equal(picked, want) {
+		fmt.Fprintln(cmd.OutOrStdout(), "no changes")
+		return nil
+	}
+	dc.Services = picked
+	cfg.Deploy[env] = dc
+	if err := writeConfig(cfgPath, *cfg); err != nil {
 		return err
 	}
-	if !f.noStop && len(removed) > 0 {
-		dir := filepath.Dir(cfgPath)
-		c := &docker.Compose{Workdir: dir, File: filepath.Join(dir, "docker-compose.yml"), Runner: dockerRunner}
-		_ = c
-	}
-	fmt.Fprintf(cmd.OutOrStdout(), "removed: %v\n", removed)
+	fmt.Fprintf(cmd.OutOrStdout(), "services: %v\n", picked)
 	return nil
 }
 
-func upsertServices(cfg *config.Config, names []string) (config.Config, []string) {
-	have := map[string]bool{}
-	for _, n := range cfg.Stack.Services {
-		have[n] = true
+// listDiff returns the elements of xs that are not in ys.
+func listDiff(xs, ys []string) []string {
+	set := map[string]bool{}
+	for _, y := range ys {
+		set[y] = true
 	}
-	var added []string
-	for _, n := range names {
-		if !have[n] {
-			cfg.Stack.Services = append(cfg.Stack.Services, n)
-			added = append(added, n)
-			have[n] = true
+	var out []string
+	for _, x := range xs {
+		if !set[x] {
+			out = append(out, x)
 		}
 	}
-	sort.Strings(cfg.Stack.Services)
-	return *cfg, added
-}
-
-func removeServices(cfg *config.Config, names []string) (config.Config, []string) {
-	rm := map[string]bool{}
-	for _, n := range names {
-		rm[n] = true
-	}
-	var removed []string
-	var kept []string
-	for _, n := range cfg.Stack.Services {
-		if rm[n] {
-			removed = append(removed, n)
-			continue
-		}
-		kept = append(kept, n)
-	}
-	cfg.Stack.Services = kept
-	return *cfg, removed
+	sort.Strings(out)
+	return out
 }
 
 func writeConfig(path string, cfg config.Config) error {

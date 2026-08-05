@@ -26,6 +26,9 @@ func tomlEncode(c config.Config) ([]byte, error) {
 		fmt.Fprintf(&b, "user = %q\n", dc.User)
 		fmt.Fprintf(&b, "path = %q\n", dc.Path)
 		fmt.Fprintf(&b, "branch = %q\n", dc.Branch)
+		if dc.Services != nil {
+			fmt.Fprintf(&b, "services = %s\n", tomlStringArray(dc.Services))
+		}
 		if len(dc.BeforeDeploy) == 0 {
 			fmt.Fprintf(&b, "# before_deploy = [%q]  # uncomment: runs in the app container before the new release starts\n", "php artisan down")
 		} else {
