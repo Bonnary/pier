@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Bonnary/pier/internal/config"
 	tui "github.com/Bonnary/pier/internal/tui"
 )
 
@@ -234,5 +235,59 @@ func TestInit_NoPatchWhenNoViteConfig(t *testing.T) {
 	}
 	if strings.Contains(buf.String(), "patched vite.config.ts") {
 		t.Errorf("stdout should not mention patch when no vite config exists; got:\n%s", buf.String())
+	}
+}
+
+func TestInitScaffoldsDeployProductionServices(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "artisan"), []byte("#!/usr/bin/env php\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "composer.json"), []byte(`{"require":{"laravel/framework":"^11.0"}}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	root := NewRootCmd(&buf, &buf)
+	root.SetArgs([]string{"--config", filepath.Join(dir, "pier.toml"), "init", dir, "--php", "8.3", "--node", "22", "--services", "redis,mailpit"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute: %v\n%s", err, buf.String())
+	}
+	got, err := os.ReadFile(filepath.Join(dir, "pier.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	contents := string(got)
+	if !strings.Contains(contents, "[deploy.production]") {
+		t.Errorf("init pier.toml missing [deploy.production]:\n%s", contents)
+	}
+	for _, want := range []string{"\"redis\"", "\"mailpit\""} {
+		if !strings.Contains(contents, want) {
+			t.Errorf("init pier.toml missing %s in services lists:\n%s", want, contents)
+		}
+	}
+	if _, err := config.Load(filepath.Join(dir, "pier.toml")); err != nil {
+		t.Errorf("init pier.toml must pass validation: %v", err)
+	}
+}
+
+func TestInitWithoutServicesNoDeployScaffold(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "artisan"), []byte("#!/usr/bin/env php\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "composer.json"), []byte(`{"require":{"laravel/framework":"^11.0"}}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	root := NewRootCmd(&buf, &buf)
+	root.SetArgs([]string{"--config", filepath.Join(dir, "pier.toml"), "init", dir, "--php", "8.3", "--node", "22"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute: %v\n%s", err, buf.String())
+	}
+	got, _ := os.ReadFile(filepath.Join(dir, "pier.toml"))
+	if strings.Contains(string(got), "[deploy.") {
+		t.Errorf("init without services must not scaffold a deploy table:\n%s", got)
 	}
 }

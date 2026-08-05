@@ -105,6 +105,11 @@ func runInit(cmd *cobra.Command, path string, f *initFlags) error {
 		Project: config.ProjectConfig{Name: filepath.Base(abs), Domain: filepath.Base(abs) + ".example.com"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: php, Node: node, Services: services},
 	}
+	if len(services) > 0 {
+		cfg.Deploy = map[string]config.DeployConfig{
+			"production": {Services: services},
+		}
+	}
 	b, _ := tomlMarshal(cfg)
 	if err := os.WriteFile(tomlPath, b, 0644); err != nil {
 		return fmt.Errorf("write pier.toml: %w", err)
