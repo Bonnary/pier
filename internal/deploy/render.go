@@ -21,11 +21,11 @@ import (
 func renderProdFiles(dir string, cfg *config.Config, env string) error {
 	stackMod, err := stack.ForName(cfg.Stack.Type)
 	if err != nil {
-		return err
+		return fmt.Errorf("render: resolve stack: %w", err)
 	}
 	files, err := stackMod.GenerateProdFiles(*cfg, env)
 	if err != nil {
-		return err
+		return fmt.Errorf("render: generate prod files: %w", err)
 	}
 
 	composePath := filepath.Join(dir, "docker-compose.prod.yml")

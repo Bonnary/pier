@@ -298,6 +298,16 @@ func writeRemoteState(t *testing.T, remote string) {
 	}
 }
 
+// seedEnvFile writes a minimal local .env.production into the cwd so
+// the pipeline's render phase treats the env file as user-owned and
+// does not abort the deploy with the fresh-template guard.
+func seedEnvFile(t *testing.T) {
+	t.Helper()
+	if err := os.WriteFile(".env.production", []byte("APP_KEY=test\n"), 0644); err != nil {
+		t.Fatalf("write .env.production: %v", err)
+	}
+}
+
 // TestPipelineRunsHooksAtCorrectStages drives the full pipeline
 // against an in-process SSH server (sftp + exec) and asserts the
 // recorded remote commands are ordered build → before_deploy → up →
@@ -306,6 +316,7 @@ func writeRemoteState(t *testing.T, remote string) {
 // hook commands were recorded.
 func TestPipelineRunsHooksAtCorrectStages(t *testing.T) {
 	t.Chdir(t.TempDir())
+	seedEnvFile(t)
 	keyPath, pub := writeTestKey(t)
 	fs := &fakeSession{output: []byte("ok\n"), status: 0}
 	host, port := testAddr(t, startPipelineServer(t, keyOnlyServer(pub), fs))
@@ -372,6 +383,7 @@ func TestPipelineRunsHooksAtCorrectStages(t *testing.T) {
 // hook lists records no hook commands: exactly build, up, reload.
 func TestPipelineSkipsHooksWhenListsEmpty(t *testing.T) {
 	t.Chdir(t.TempDir())
+	seedEnvFile(t)
 	keyPath, pub := writeTestKey(t)
 	fs := &fakeSession{output: []byte("ok\n"), status: 0}
 	host, port := testAddr(t, startPipelineServer(t, keyOnlyServer(pub), fs))
@@ -414,6 +426,7 @@ func TestPipelineSkipsHooksWhenListsEmpty(t *testing.T) {
 // are recorded.
 func TestPipelineBeforeDeployFailureAborts(t *testing.T) {
 	t.Chdir(t.TempDir())
+	seedEnvFile(t)
 	keyPath, pub := writeTestKey(t)
 	fs := &fakeSession{output: []byte("ok\n"), status: 0, statusFn: func(cmd string) int {
 		if strings.Contains(cmd, "'artisan' 'down'") {
@@ -471,6 +484,7 @@ func TestPipelineBeforeDeployFailureAborts(t *testing.T) {
 // previous deploy to roll back to" message.
 func TestPipelineAfterDeployFailureFirstDeployReportsHook(t *testing.T) {
 	t.Chdir(t.TempDir())
+	seedEnvFile(t)
 	keyPath, pub := writeTestKey(t)
 	fs := &fakeSession{output: []byte("ok\n"), status: 0, statusFn: func(cmd string) int {
 		if strings.Contains(cmd, "'migrate'") {
@@ -530,6 +544,7 @@ func TestPipelineAfterDeployFailureFirstDeployReportsHook(t *testing.T) {
 // the hook error (ErrHooks) is reported.
 func TestPipelineAfterDeployFailureRollsBackToPrevious(t *testing.T) {
 	t.Chdir(t.TempDir())
+	seedEnvFile(t)
 	keyPath, pub := writeTestKey(t)
 	fs := &fakeSession{output: []byte("ok\n"), status: 0, statusFn: func(cmd string) int {
 		if strings.Contains(cmd, "'migrate'") {
@@ -595,6 +610,7 @@ func TestPipelineAfterDeployFailureRollsBackToPrevious(t *testing.T) {
 // after_deploy still executes against the fresh release.
 func TestPipelineBeforeDeploySkippedOnFirstDeploy(t *testing.T) {
 	t.Chdir(t.TempDir())
+	seedEnvFile(t)
 	keyPath, pub := writeTestKey(t)
 	fs := &fakeSession{output: []byte("ok\n"), status: 0}
 	host, port := testAddr(t, startPipelineServer(t, keyOnlyServer(pub), fs))

@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
 	"time"
 
 	"github.com/Bonnary/pier/internal/config"
@@ -168,7 +169,7 @@ func (p *Pipeline) Run(ctx context.Context) error {
 // actionable error naming the exact commands to fix it.
 func (p *Pipeline) preflight(ctx context.Context) (*Client, error) {
 	if p.SSH.Host == "" {
-		return nil, fmt.Errorf("deploy.%s.host is empty", p.Env)
+		return nil, fmt.Errorf("deploy.%s is unconfigured: set host, user, path, and branch in pier.toml (pier init scaffolds the section)", p.Env)
 	}
 	if p.SSH.KeyPath == "" {
 		return nil, fmt.Errorf("ssh key path is empty (set --ssh-key or DEPLOY_SSH_KEY)")
@@ -201,8 +202,23 @@ func (p *Pipeline) preflight(ctx context.Context) (*Client, error) {
 	return client, nil
 }
 
+// render re-renders the local compose and env files. When no local
+// .env.production exists, renderProdFiles creates one from fresh
+// placeholders; shipping that to the server would silently overwrite
+// a real .env.production holding secrets on the deploy host, so the
+// deploy aborts (after the file is created locally for review).
 func (p *Pipeline) render() error {
-	return renderProdFiles(".", p.Config, p.Env)
+	_, err := os.Stat(".env.production")
+	switch {
+	case err == nil:
+		return renderProdFiles(".", p.Config, p.Env)
+	case !os.IsNotExist(err):
+		return fmt.Errorf("render: stat .env.production: %w", err)
+	}
+	if err := renderProdFiles(".", p.Config, p.Env); err != nil {
+		return err
+	}
+	return fmt.Errorf("render: no local .env.production existed — generated a fresh template at .env.production with placeholder values (APP_KEY, DB_PASSWORD, ...). Deploy aborted before sync: review and fill in the real values, then re-run pier deploy; the sync would otherwise overwrite any .env.production already on the server")
 }
 
 // rollback retags the previous image as :current and re-runs Up after

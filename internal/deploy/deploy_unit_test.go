@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -234,6 +235,7 @@ func (f *failingSyncClient) SyncDir(ctx context.Context, local, remote string, e
 // build-phase ExitError — proving preflight and sync both passed.
 func TestPipelineSyncsFilesToRemote(t *testing.T) {
 	t.Chdir(t.TempDir())
+	seedEnvFile(t)
 	// The render phase writes docker-compose.prod.yml and
 	// .env.production into the cwd; an isolated temp cwd keeps that
 	// output out of the repo tree. Seed a marker file so the sync
@@ -284,10 +286,58 @@ func TestPipelineSyncsFilesToRemote(t *testing.T) {
 	}
 }
 
+// TestPipelineRenderAbortsWithoutLocalEnvFile asserts that a deploy
+// whose cwd has no local .env.production still renders the fresh
+// template file locally but aborts before sync: shipping placeholders
+// to the deploy host would overwrite a real .env.production holding
+// secrets there, so the pipeline stops with an actionable error.
+func TestPipelineRenderAbortsWithoutLocalEnvFile(t *testing.T) {
+	t.Chdir(t.TempDir())
+	keyPath, pub := writeTestKey(t)
+	fs := &fakeSession{output: []byte("ok\n"), status: 0}
+	host, port := testAddr(t, startPipelineServer(t, keyOnlyServer(pub), fs))
+	remote := t.TempDir()
+
+	cfg := &config.Config{
+		Project: config.ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+		Deploy: map[string]config.DeployConfig{
+			"production": {Host: host, User: "deploy", Path: remote, Branch: "main"},
+		},
+	}
+
+	origProbe, origEnsure := pipelineProbe, pipelineEnsurePath
+	pipelineProbe = func(ctx context.Context, r stdinRunner) (bool, error) { return true, nil }
+	pipelineEnsurePath = func(ctx context.Context, c *Client, path string) error { return nil }
+	defer func() { pipelineProbe, pipelineEnsurePath = origProbe, origEnsure }()
+
+	p := &Pipeline{
+		Config:    cfg,
+		Env:       "production",
+		DeployEnv: cfg.Deploy["production"],
+		Logger:    discardLogger{},
+		SSH:       SSHConfig{Host: host, User: "deploy", Port: port, KeyPath: keyPath},
+		Now:       time.Now,
+	}
+	err := p.Run(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "no local .env.production") {
+		t.Fatalf("Run() = %v, want render abort (no local .env.production)", err)
+	}
+	// renderProdFiles must have run: the fresh template exists locally.
+	if _, statErr := os.Stat(".env.production"); statErr != nil {
+		t.Fatalf("renderProdFiles did not create .env.production: %v", statErr)
+	}
+	// The deploy must stop before sync: no remote commands recorded.
+	if len(fs.cmds) != 0 {
+		t.Errorf("recorded commands = %q, want none (abort before sync)", fs.cmds)
+	}
+}
+
 // TestPipelineSyncFailureWrapsPreflight asserts a sync-phase failure
 // surfaces as a preflight-class ExitError with exit code 2.
 func TestPipelineSyncFailureWrapsPreflight(t *testing.T) {
 	t.Chdir(t.TempDir())
+	seedEnvFile(t)
 	cfg := &config.Config{
 		Project: config.ProjectConfig{Name: "x", Domain: "x.example.com"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},

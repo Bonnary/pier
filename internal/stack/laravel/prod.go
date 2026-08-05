@@ -16,7 +16,7 @@ func (s *Stack) GenerateProdFiles(cfg config.Config, env string) (stack.Files, e
 	for _, name := range cfg.ServicesForEnv(env) {
 		svc, ok := lookup(name)
 		if !ok {
-			return nil, fmt.Errorf("laravel: unknown service %q in [stack].services", name)
+			return nil, fmt.Errorf("laravel: unknown service %q in [stack].services or [deploy.%s].services", name, env)
 		}
 		if svc.DevOnly == "true" {
 			continue

@@ -141,8 +141,8 @@ func (c *Compose) runCaptured(ctx context.Context, args ...string) ([]byte, erro
 
 // Up runs `docker compose -f <file> up -d [services...]` and streams
 // the output. When services is empty, every service in the file is
-// brought up. Used by `pier dev`, `pier service add --no-up=false`,
-// and the deploy pipeline.
+// brought up. Used by `pier dev`, `pier service`, and the deploy
+// pipeline.
 func (c *Compose) Up(ctx context.Context, services ...string) error {
 	args := append([]string{"up", "-d"}, services...)
 	return c.runStreaming(ctx, args...)
