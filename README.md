@@ -67,9 +67,12 @@ Docker CLI.
   forwarding); `pier exec production php artisan migrate` runs a
   one-off command there. Remote exit codes propagate to pier's exit
   code.
-- **`pier service add|remove`** — Manage auxiliary services
-  (`redis`, `mailpit`, `s3`, `meilisearch`, etc.) interactively or
-  from the CLI. Idempotent.
+- **`pier service [env]`** — Manage auxiliary services with an
+  interactive picker: `pier service` edits `[stack].services` (dev);
+  `pier service <env>` edits that env's services, overriding
+  `[stack].services` for the deploy target (e.g. SeaweedFS in dev,
+  AWS S3 in prod). Removed services are torn down on the server by
+  the next deploy.
 - **`pier deploy <env>`** — Build, sync, up, health-check, and
   commit a production image tag over SSH. A Bubble Tea TUI shows
   live phase progress. Key auth is tried first; password-only
@@ -193,10 +196,13 @@ pier exec php artisan migrate
 pier shell production             # interactive bash in the prod app container
 pier exec production php artisan migrate   # one-off command on prod
 
-# 4. Add an aux service (e.g. redis) — interactive TUI picker.
-pier service add redis
+# 4. Manage aux services (e.g. redis) — interactive picker;
+#    `pier service production` edits prod services.
+pier service
+pier service production
 
-# 5. Deploy to production after editing pier.toml to add [deploy.production].
+# 5. Deploy to production — `pier init` already scaffolded [deploy.production]
+#    with your chosen services; fill in host/user/path/branch, then:
 pier deploy production
 
 # 6. Roll back if a deploy misbehaves.
@@ -232,8 +238,7 @@ port forward.
 | `pier stop` | Stop the dev stack (volumes preserved). |
 | `pier shell [env]` | Interactive `bash` in the `laravel.test` container, or in the remote `app` container when `<env>` names a deploy host (PTY, resize forwarding). |
 | `pier exec [env] <cmd...>` | Run a one-off command in `laravel.test`, or in the remote `app` container when the first arg names a deploy env. |
-| `pier service add <name...>` | Add one or more services to `pier.toml` + `docker-compose.yml`. Interactive TUI picker when no names are given. |
-| `pier service remove <name...>` | Remove one or more services from `pier.toml` + `docker-compose.yml`. |
+| `pier service [env]` | Open the init-style services picker (current list pre-ticked); `pier service` edits dev services, `pier service <env>` edits `[deploy.<env>].services` (inherits `[stack]` until first edit). Removed remote services are torn down on the next deploy. |
 | `pier deploy <env>` | Build, sync, up, health-check; rollback on failure. Renders a Bubble Tea TUI with live phase progress. |
 | `pier bootstrap [env...]` | Provision one or more servers: install Docker + compose plugin, grant the deploy user docker access. Interactive picker when no env is given; `--all` for every env, `--force` to re-provision. |
 | `pier rollback <env>` | Re-deploy the previous image tag. |
@@ -277,6 +282,7 @@ host   = "prod.example.com"
 user   = "deploy"
 path   = "/srv/myapp"
 branch = "main"
+services = ["redis", "queue"]   # optional; absent = inherit [stack].services
 tls    = false   # false (default): plain HTTP. true: HTTPS URLs + 443 — requires the upcoming cert feature
 before_deploy = ["php artisan down"]              # runs in the app container before the new release starts
 after_deploy = ["php artisan migrate --force"]    # runs in the app container after the new release is up
@@ -295,6 +301,16 @@ falls back to the deploy host IP when the domain does not resolve
 yet, so the printed URL is always usable. `tls = true` renders HTTPS
 URLs and the 443 mapping, but SSL certificate provisioning is not
 shipped yet — keep it `false` for now.
+
+`[deploy.<env>].services` optionally overrides `[stack].services`
+for that env (same `services = [...]` style). When absent the env
+inherits the stack list; an explicit empty list means no sidecars.
+`pier service <env>` edits this list with an interactive picker; the
+next `pier deploy <env>` re-renders `docker-compose.prod.yml` from
+it (preserving hand-written edits), and containers of removed
+services are stopped and removed on the server (their volumes are
+kept). Use it to run SeaweedFS in dev but AWS S3 in production, or
+MySQL locally with Postgres on the server.
 
 `[deploy.<env>]` also accepts optional `before_deploy` and
 `after_deploy` command lists. Each entry runs inside the app
@@ -433,8 +449,10 @@ Run through this list locally before pushing changes (see
   (smart-merge path; verify user services are preserved)
 - [ ] `pier init` on a project with an unknown top-level key in
   `docker-compose.yml` (warn-and-confirm path)
-- [ ] `pier service add redis` and `pier service remove redis` on a
-  project that already has them (idempotency)
+- [ ] `pier service` — open the picker, add and remove a service,
+  verify `pier.toml` + `docker-compose.yml` update; `pier service
+  production` edits `[deploy.production].services` (idempotent —
+  re-running with the same selection prints `no changes`)
 - [ ] `pier init --devcontainer` in VS Code; reopen in container
 - [ ] `pier shell` and `php artisan migrate` from inside
 - [ ] `pier exec php artisan --version` from the host

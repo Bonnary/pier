@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Per-env sidecar services: `[deploy.<env>].services` overrides
+  `[stack].services` for that env (absent = inherit, `[]` = none).
+  `pier init` scaffolds `[deploy.production]` with the chosen
+  services; `pier service [env]` replaces `add`/`remove` with a
+  single init-style picker that edits dev or per-env lists.
+- `pier deploy <env>` now re-renders `docker-compose.prod.yml` and
+  `.env.production` from pier.toml before syncing (preserving
+  hand-written compose edits and existing env values), so per-env
+  services and `[deploy.<env>].ports` overrides take effect.
+- Remote teardown: `docker compose up` runs with `--remove-orphans`,
+  so sidecars removed from an env are stopped and removed on the
+  server (named volumes are kept).
+
 ## v0.0.4-beta
 
 ### Added
