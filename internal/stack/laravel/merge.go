@@ -41,6 +41,9 @@ func ownedServices(cfg config.Config) map[string]bool {
 	for n := range cfg.Dev.Services {
 		out[n] = true
 	}
+	for n := range services() {
+		out[n] = true
+	}
 	return out
 }
 
@@ -87,7 +90,7 @@ func MergeDev(existing string, cfg config.Config, decision func(MergeWarning) De
 	}
 
 	owned := ownedServices(cfg)
-	warnings, merged := mergeWithOwnership(&existingNode, &freshNode, owned, decision)
+	warnings, merged := mergeWithOwnership(&existingNode, &freshNode, owned, decision, "docker-compose.yml")
 
 	out, err := yaml.Marshal(merged)
 	if err != nil {
@@ -96,7 +99,7 @@ func MergeDev(existing string, cfg config.Config, decision func(MergeWarning) De
 	return string(out), warnings, nil
 }
 
-func mergeWithOwnership(existing, fresh *yaml.Node, owned map[string]bool, decision func(MergeWarning) Decision) ([]MergeWarning, *yaml.Node) {
+func mergeWithOwnership(existing, fresh *yaml.Node, owned map[string]bool, decision func(MergeWarning) Decision, sourceFile string) ([]MergeWarning, *yaml.Node) {
 	var warnings []MergeWarning
 	if existing.Kind == yaml.DocumentNode && len(existing.Content) > 0 {
 		existing = existing.Content[0]
@@ -140,7 +143,7 @@ func mergeWithOwnership(existing, fresh *yaml.Node, owned map[string]bool, decis
 			merged.Content = append(merged.Content, &yaml.Node{Kind: yaml.ScalarNode, Value: k}, v)
 			continue
 		}
-		w := MergeWarning{Key: k, SourceFile: "docker-compose.yml"}
+		w := MergeWarning{Key: k, SourceFile: sourceFile}
 		if decision(w) == DecisionKeep {
 			merged.Content = append(merged.Content, &yaml.Node{Kind: yaml.ScalarNode, Value: k}, v)
 		}
