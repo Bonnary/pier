@@ -651,3 +651,42 @@ func TestGenerateProdFilesUnknownEnvServiceFails(t *testing.T) {
 		t.Errorf("GenerateProdFiles = %v, want unknown-service error", err)
 	}
 }
+
+func TestGenerateProdFilesImageModeOmitsBuild(t *testing.T) {
+	s := New()
+	files, err := s.GenerateProdFiles(config.Config{
+		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+		Deploy: map[string]config.DeployConfig{
+			"production": {Host: "h", User: "u", Path: "/srv/x", Branch: "main", Builder: "local_machine"},
+		},
+	}, "production")
+	if err != nil {
+		t.Fatalf("GenerateProdFiles: %v", err)
+	}
+	body := string(findFile(files, "docker-compose.prod.yml").Contents)
+	if contains(body, "build:") {
+		t.Errorf("image-mode prod compose still has a build key:\n%s", body)
+	}
+	if !contains(body, "image: myapp:current") {
+		t.Errorf("image-mode prod compose must reference myapp:current:\n%s", body)
+	}
+}
+
+func TestGenerateProdFilesHostServerKeepsBuild(t *testing.T) {
+	s := New()
+	files, err := s.GenerateProdFiles(config.Config{
+		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+	}, "production")
+	if err != nil {
+		t.Fatalf("GenerateProdFiles: %v", err)
+	}
+	body := string(findFile(files, "docker-compose.prod.yml").Contents)
+	if !contains(body, "build:") {
+		t.Errorf("host_server prod compose must keep the build key:\n%s", body)
+	}
+	if !contains(body, "image: myapp:latest") {
+		t.Errorf("host_server prod compose must keep image myapp:latest:\n%s", body)
+	}
+}

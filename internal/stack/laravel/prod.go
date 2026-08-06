@@ -89,26 +89,7 @@ func renderProdCompose(cfg config.Config, env string, services []string) ([]byte
 	cf := composeFile{
 		Services: map[string]composeService{
 			"app": {
-				Build: &composeBuild{
-					// Context is the project root, not ./docker/<php>:
-					// the prod Dockerfile (Dockerfile.prod) bakes the
-					// application into the image, while the dev runtime
-					// Dockerfile gets the code from the ./:/var/www/html
-					// bind mount and so never COPYs it.
-					Context:    ".",
-					Dockerfile: fmt.Sprintf("docker/%s/Dockerfile.prod", cfg.Stack.PHP),
-					Args: map[string]string{
-						// The runtime Dockerfile's ARG WWWGROUP has no
-						// default, so the build fails with
-						// `groupadd: invalid group ID 'sail'` when the
-						// arg is absent. Prod has no host bind-mount,
-						// so a fixed UID/GID (matching the Dockerfile's
-						// ARG WWWUSER=1337 default) is fine.
-						"WWWUSER":  "1337",
-						"WWWGROUP": "1337",
-					},
-				},
-				Image:       cfg.Project.Name + ":latest",
+				Image:       cfg.Project.Name + ":current",
 				Restart:     "unless-stopped",
 				Environment: prodEnvForServices(services),
 				Networks:    []string{"pier"},
@@ -123,6 +104,36 @@ func renderProdCompose(cfg config.Config, env string, services []string) ([]byte
 			},
 		},
 		Networks: map[string]composeNetwork{"pier": {Driver: "bridge"}},
+	}
+
+	// host_server builds the image in place, so the compose file keeps
+	// the build context (the synced project root) and the :latest
+	// tag. The image modes ship a prebuilt image, so the app service
+	// references the mutable :current tag instead and has no build
+	// key — docker compose up must never try to build or pull.
+	if deployCfg.BuilderMode() == "host_server" {
+		app := cf.Services["app"]
+		app.Image = cfg.Project.Name + ":latest"
+		app.Build = &composeBuild{
+			// Context is the project root, not ./docker/<php>:
+			// the prod Dockerfile (Dockerfile.prod) bakes the
+			// application into the image, while the dev runtime
+			// Dockerfile gets the code from the ./:/var/www/html
+			// bind mount and so never COPYs it.
+			Context:    ".",
+			Dockerfile: fmt.Sprintf("docker/%s/Dockerfile.prod", cfg.Stack.PHP),
+			Args: map[string]string{
+				// The runtime Dockerfile's ARG WWWGROUP has no
+				// default, so the build fails with
+				// `groupadd: invalid group ID 'sail'` when the
+				// arg is absent. Prod has no host bind-mount,
+				// so a fixed UID/GID (matching the Dockerfile's
+				// ARG WWWUSER=1337 default) is fine.
+				"WWWUSER":  "1337",
+				"WWWGROUP": "1337",
+			},
+		}
+		cf.Services["app"] = app
 	}
 
 	for _, n := range services {
