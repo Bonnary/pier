@@ -78,7 +78,7 @@ var saveLocal = func(ctx context.Context, dir, image string, sink io.Writer, onL
 		// below would hang the deploy. Close the read end (EPIPE kills
 		// the subprocess) and kill it as a fallback so Wait can return.
 		stdout.Close()
-		cmd.Process.Kill()
+		_ = cmd.Process.Kill()
 	}
 	<-done
 	waitErr := cmd.Wait()
