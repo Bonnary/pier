@@ -37,6 +37,20 @@ func contains(s, sub string) bool {
 	return false
 }
 
+func TestTagRetagsLatestToSHAAndCurrent(t *testing.T) {
+	f := &fakeSSHClient{}
+	if err := Tag(context.Background(), f, "myapp", "abc1234"); err != nil {
+		t.Fatalf("Tag: %v", err)
+	}
+	if len(f.cmds) != 1 {
+		t.Fatalf("Tag ran %d commands, want 1", len(f.cmds))
+	}
+	want := "docker tag myapp:latest myapp:abc1234 && docker tag myapp:latest myapp:current"
+	if f.cmds[0] != want {
+		t.Errorf("Tag command = %q, want %q", f.cmds[0], want)
+	}
+}
+
 func TestBuildStreamsOutput(t *testing.T) {
 	f := &fakeSSHClient{}
 	var lines []string

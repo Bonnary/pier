@@ -353,29 +353,33 @@ func TestPipelineRunsHooksAtCorrectStages(t *testing.T) {
 
 	// Health probe fails against port 1 → rollback → no previous
 	// deploy on record → up-phase error. The commands recorded before
-	// that are what we assert.
+	// that are what we assert: build, tag, before_deploy, up, reload,
+	// after_deploy.
 	if !errors.Is(err, ErrUp) {
 		t.Fatalf("Run() = %v, want ErrUp (health failed, rollback path)", err)
 	}
-	if len(fs.cmds) < 5 {
-		t.Fatalf("recorded commands = %q, want at least 5", fs.cmds)
+	if len(fs.cmds) < 6 {
+		t.Fatalf("recorded commands = %q, want at least 6", fs.cmds)
 	}
 	if !strings.Contains(fs.cmds[0], "build --pull") {
 		t.Errorf("command 0 = %q, want the build command", fs.cmds[0])
 	}
+	if !strings.Contains(fs.cmds[1], "docker tag x:latest x:") {
+		t.Errorf("command 1 = %q, want the docker tag command", fs.cmds[1])
+	}
 	wantBefore := "cd '" + remote + "' && docker compose --env-file .env.production -f docker-compose.prod.yml exec -T app 'php' 'artisan' 'down'"
-	if fs.cmds[1] != wantBefore {
-		t.Errorf("command 1 = %q, want before_deploy hook %q", fs.cmds[1], wantBefore)
+	if fs.cmds[2] != wantBefore {
+		t.Errorf("command 2 = %q, want before_deploy hook %q", fs.cmds[2], wantBefore)
 	}
-	if !strings.Contains(fs.cmds[2], "up -d") {
-		t.Errorf("command 2 = %q, want the up command", fs.cmds[2])
+	if !strings.Contains(fs.cmds[3], "up -d") {
+		t.Errorf("command 3 = %q, want the up command", fs.cmds[3])
 	}
-	if !strings.Contains(fs.cmds[3], "nginx -s reload") {
-		t.Errorf("command 3 = %q, want the nginx reload", fs.cmds[3])
+	if !strings.Contains(fs.cmds[4], "nginx -s reload") {
+		t.Errorf("command 4 = %q, want the nginx reload", fs.cmds[4])
 	}
 	wantAfter := "cd '" + remote + "' && docker compose --env-file .env.production -f docker-compose.prod.yml exec -T app 'php' 'artisan' 'migrate' '--force'"
-	if fs.cmds[4] != wantAfter {
-		t.Errorf("command 4 = %q, want after_deploy hook %q", fs.cmds[4], wantAfter)
+	if fs.cmds[5] != wantAfter {
+		t.Errorf("command 5 = %q, want after_deploy hook %q", fs.cmds[5], wantAfter)
 	}
 }
 
@@ -415,8 +419,8 @@ func TestPipelineSkipsHooksWhenListsEmpty(t *testing.T) {
 	if !errors.Is(err, ErrUp) {
 		t.Fatalf("Run() = %v, want ErrUp (health failed, rollback path)", err)
 	}
-	if len(fs.cmds) != 3 {
-		t.Fatalf("recorded commands = %q, want exactly 3 (build, up, reload) with no hooks", fs.cmds)
+	if len(fs.cmds) != 4 {
+		t.Fatalf("recorded commands = %q, want exactly 4 (build, tag, up, reload) with no hooks", fs.cmds)
 	}
 }
 
@@ -468,11 +472,11 @@ func TestPipelineBeforeDeployFailureAborts(t *testing.T) {
 	if !errors.Is(err, ErrHooks) {
 		t.Fatalf("Run() = %v, want ErrHooks (before_deploy hook failed)", err)
 	}
-	if len(fs.cmds) != 2 {
-		t.Fatalf("recorded commands = %q, want exactly 2 (build, failing before_deploy hook; up must not run)", fs.cmds)
+	if len(fs.cmds) != 3 {
+		t.Fatalf("recorded commands = %q, want exactly 3 (build, tag, failing before_deploy hook; up must not run)", fs.cmds)
 	}
-	if !strings.Contains(fs.cmds[1], "'artisan' 'down'") {
-		t.Errorf("command 1 = %q, want the before_deploy hook command", fs.cmds[1])
+	if !strings.Contains(fs.cmds[2], "'artisan' 'down'") {
+		t.Errorf("command 2 = %q, want the before_deploy hook command", fs.cmds[2])
 	}
 }
 
@@ -530,11 +534,11 @@ func TestPipelineAfterDeployFailureFirstDeployReportsHook(t *testing.T) {
 	if !errors.As(err, &ee) || ee.Code != ExitHooks {
 		t.Fatalf("Run() error = %T, want *ExitError with code %d", err, ExitHooks)
 	}
-	if len(fs.cmds) != 4 {
-		t.Fatalf("recorded commands = %q, want exactly 4 (build, up, reload, failing after_deploy hook; rollback must be skipped on a first deploy)", fs.cmds)
+	if len(fs.cmds) != 5 {
+		t.Fatalf("recorded commands = %q, want exactly 5 (build, tag, up, reload, failing after_deploy hook; rollback must be skipped on a first deploy)", fs.cmds)
 	}
-	if !strings.Contains(fs.cmds[3], "'migrate'") {
-		t.Errorf("command 3 = %q, want the failing after_deploy hook command", fs.cmds[3])
+	if !strings.Contains(fs.cmds[4], "'migrate'") {
+		t.Errorf("command 4 = %q, want the failing after_deploy hook command", fs.cmds[4])
 	}
 }
 
@@ -588,19 +592,19 @@ func TestPipelineAfterDeployFailureRollsBackToPrevious(t *testing.T) {
 	if !errors.Is(err, ErrHooks) {
 		t.Fatalf("Run() = %v, want ErrHooks (after_deploy hook failed)", err)
 	}
-	// build, up, nginx reload, failing after_deploy hook, then the
-	// rollback: retag previous image, up again, nginx reload.
-	if len(fs.cmds) != 7 {
-		t.Fatalf("recorded commands = %q, want exactly 7 (build, up, reload, failing hook, rollback tag, up, reload)", fs.cmds)
+	// build, tag, up, nginx reload, failing after_deploy hook, then
+	// the rollback: retag previous image, up again, nginx reload.
+	if len(fs.cmds) != 8 {
+		t.Fatalf("recorded commands = %q, want exactly 8 (build, tag, up, reload, failing hook, rollback tag, up, reload)", fs.cmds)
 	}
-	if !strings.Contains(fs.cmds[4], "docker tag x:old x:current") {
-		t.Errorf("command 4 = %q, want the rollback retag of the previous image", fs.cmds[4])
+	if !strings.Contains(fs.cmds[5], "docker tag x:old x:current") {
+		t.Errorf("command 5 = %q, want the rollback retag of the previous image", fs.cmds[5])
 	}
-	if !strings.Contains(fs.cmds[5], "up -d --wait") {
-		t.Errorf("command 5 = %q, want the rollback up", fs.cmds[5])
+	if !strings.Contains(fs.cmds[6], "up -d --wait") {
+		t.Errorf("command 6 = %q, want the rollback up", fs.cmds[6])
 	}
-	if !strings.Contains(fs.cmds[6], "nginx -s reload") {
-		t.Errorf("command 6 = %q, want the rollback nginx reload", fs.cmds[6])
+	if !strings.Contains(fs.cmds[7], "nginx -s reload") {
+		t.Errorf("command 7 = %q, want the rollback nginx reload", fs.cmds[7])
 	}
 }
 
@@ -647,16 +651,17 @@ func TestPipelineBeforeDeploySkippedOnFirstDeploy(t *testing.T) {
 		t.Fatalf("Run() = %v, want ErrUp (health failed, rollback path)", err)
 	}
 
-	// build, up, nginx reload, after_deploy — no before_deploy command.
-	if len(fs.cmds) != 4 {
-		t.Fatalf("recorded commands = %q, want exactly 4 (build, up, reload, after_deploy)", fs.cmds)
+	// build, tag, up, nginx reload, after_deploy — no before_deploy
+	// command.
+	if len(fs.cmds) != 5 {
+		t.Fatalf("recorded commands = %q, want exactly 5 (build, tag, up, reload, after_deploy)", fs.cmds)
 	}
 	for _, cmd := range fs.cmds {
 		if strings.Contains(cmd, "'artisan' 'down'") {
 			t.Errorf("before_deploy hook ran on first deploy: %q", cmd)
 		}
 	}
-	if !strings.Contains(fs.cmds[3], "'migrate'") {
-		t.Errorf("command 3 = %q, want the after_deploy hook command", fs.cmds[3])
+	if !strings.Contains(fs.cmds[4], "'migrate'") {
+		t.Errorf("command 4 = %q, want the after_deploy hook command", fs.cmds[4])
 	}
 }

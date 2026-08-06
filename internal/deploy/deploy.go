@@ -43,8 +43,19 @@ type Pipeline struct {
 	DeployEnv config.DeployConfig
 	Logger    Logger
 	SSH       SSHConfig
-	Health    HealthConfig
-	Now       func() time.Time
+	// BuildSSH is the SSH config of the dedicated build server, used
+	// only when [deploy.<env>].builder is "build_server". Dialed in
+	// preflight like the host connection.
+	BuildSSH SSHConfig
+	// buildClient is the dialed build-server connection, set by
+	// preflight in build_server mode.
+	buildClient *Client
+	Health      HealthConfig
+	Now         func() time.Time
+	// tag is the immutable image tag for this deploy (git SHA or
+	// timestamp fallback), computed at the top of Run and used for
+	// the build output, the transferred image, and state.json.
+	tag string
 }
 
 // Run executes the full deploy pipeline: preflight, render, sync,
@@ -58,6 +69,7 @@ func (p *Pipeline) Run(ctx context.Context) error {
 	if p.Now == nil {
 		p.Now = time.Now
 	}
+	p.tag = deployTag()
 
 	// Phase 1: preflight (local + remote).
 	p.Logger.PhaseStart("preflight")
@@ -94,11 +106,35 @@ func (p *Pipeline) Run(ctx context.Context) error {
 
 	// Phase 4: build.
 	p.Logger.PhaseStart("build")
-	if err := Build(ctx, client, p.DeployEnv.Path, p.Config.Project.Name, "gitsha", func(l string) {
-		p.Logger.Log("build", "%s", l)
-	}); err != nil {
-		p.Logger.PhaseEnd("build", err)
-		return RemoteBuildError(p.SSH.Host, err)
+	switch p.DeployEnv.BuilderMode() {
+	case "host_server":
+		if err := Build(ctx, client, p.DeployEnv.Path, p.Config.Project.Name, p.tag, func(l string) {
+			p.Logger.Log("build", "%s", l)
+		}); err != nil {
+			p.Logger.PhaseEnd("build", err)
+			return RemoteBuildError(p.SSH.Host, err)
+		}
+		// Tag the fresh :latest as the immutable sha record and the
+		// :current alias that Rollback overwrites. This is what makes
+		// `pier rollback` able to retag the previous image.
+		if err := Tag(ctx, client, p.Config.Project.Name, p.tag); err != nil {
+			p.Logger.PhaseEnd("build", err)
+			return RemoteBuildError(p.SSH.Host, err)
+		}
+	case "local_machine":
+		if err := BuildLocalImage(ctx, ".", p.Config.Stack.PHP, p.Config.Project.Name, p.tag, func(l string) {
+			p.Logger.Log("build", "%s", l)
+		}); err != nil {
+			p.Logger.PhaseEnd("build", err)
+			return BuildError(err)
+		}
+	case "build_server":
+		if err := RemoteBuildImage(ctx, p.buildClient, p.DeployEnv.BuildPath, p.Config.Stack.PHP, p.Config.Project.Name, p.tag, func(l string) {
+			p.Logger.Log("build", "%s", l)
+		}); err != nil {
+			p.Logger.PhaseEnd("build", err)
+			return RemoteBuildError(p.buildClient.Config.Host, err)
+		}
 	}
 	p.Logger.PhaseEnd("build", nil)
 
@@ -259,7 +295,7 @@ func (p *Pipeline) commit(ctx context.Context, c *Client) error {
 		return fmt.Errorf("deploy: read state: %w", err)
 	}
 	s := &State{
-		Current:    "gitsha",
+		Current:    p.tag,
 		DeployedAt: p.Now().UTC().Format(time.RFC3339),
 		DeployedBy: p.SSH.User + "@" + p.SSH.Host,
 	}
