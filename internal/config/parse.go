@@ -79,21 +79,8 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("%w: [dev] bind = %q must be %q or %q", ErrConfigInvalid, c.Dev.Bind, "127.0.0.1", "0.0.0.0")
 	}
 	for env, dc := range c.Deploy {
-		configured := dc.Host != "" || dc.User != "" || dc.Path != "" || dc.Branch != ""
-		if configured && (dc.Host == "" || dc.User == "" || dc.Path == "" || dc.Branch == "") {
-			return fmt.Errorf("%w: deploy.%s requires host, user, path, branch (leave all empty to scaffold)", ErrConfigInvalid, env)
-		}
-		if err := validateHookList(env, "before_deploy", dc.BeforeDeploy); err != nil {
+		if err := validateDeployEnv(env, dc); err != nil {
 			return err
-		}
-		if err := validateHookList(env, "after_deploy", dc.AfterDeploy); err != nil {
-			return err
-		}
-		if dc.Builder != "" && !validBuilder[dc.Builder] {
-			return fmt.Errorf("%w: deploy.%s.builder %q must be host_server, local_machine, or build_server", ErrConfigInvalid, env, dc.Builder)
-		}
-		if dc.BuilderMode() == "build_server" && (dc.BuildHost == "" || dc.BuildUser == "" || dc.BuildPath == "") {
-			return fmt.Errorf("%w: deploy.%s.builder = \"build_server\" requires build_host, build_user, and build_path", ErrConfigInvalid, env)
 		}
 	}
 	for key, port := range c.Dev.Ports {
@@ -126,6 +113,30 @@ func validateHookList(env, key string, list []string) error {
 		if err != nil || len(args) == 0 {
 			return fmt.Errorf("%w: deploy.%s.%s[%d] %q is not a valid non-empty command", ErrConfigInvalid, env, key, i, entry)
 		}
+	}
+	return nil
+}
+
+// validateDeployEnv checks every required field and enum-style value
+// of one [deploy.<env>] section. Extracted from Validate so the
+// per-env rule set stays reviewable and Validate's complexity stays
+// in check.
+func validateDeployEnv(env string, dc DeployConfig) error {
+	configured := dc.Host != "" || dc.User != "" || dc.Path != "" || dc.Branch != ""
+	if configured && (dc.Host == "" || dc.User == "" || dc.Path == "" || dc.Branch == "") {
+		return fmt.Errorf("%w: deploy.%s requires host, user, path, branch (leave all empty to scaffold)", ErrConfigInvalid, env)
+	}
+	if err := validateHookList(env, "before_deploy", dc.BeforeDeploy); err != nil {
+		return err
+	}
+	if err := validateHookList(env, "after_deploy", dc.AfterDeploy); err != nil {
+		return err
+	}
+	if dc.Builder != "" && !validBuilder[dc.Builder] {
+		return fmt.Errorf("%w: deploy.%s.builder %q must be host_server, local_machine, or build_server", ErrConfigInvalid, env, dc.Builder)
+	}
+	if dc.BuilderMode() == "build_server" && (dc.BuildHost == "" || dc.BuildUser == "" || dc.BuildPath == "") {
+		return fmt.Errorf("%w: deploy.%s.builder = \"build_server\" requires build_host, build_user, and build_path", ErrConfigInvalid, env)
 	}
 	return nil
 }

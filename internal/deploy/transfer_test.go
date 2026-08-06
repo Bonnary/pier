@@ -72,9 +72,9 @@ func TestPipelineTransferRetagsCurrentOnHost(t *testing.T) {
 
 	logger := &recordingLogger{}
 	p := &Pipeline{
-		Config: &config.Config{Project: config.ProjectConfig{Name: "myapp"}},
+		Config:    &config.Config{Project: config.ProjectConfig{Name: "myapp"}},
 		DeployEnv: config.DeployConfig{Builder: "local_machine"},
-		Logger: logger, SSH: SSHConfig{Host: host, User: "deploy", Port: port, KeyPath: keyPath},
+		Logger:    logger, SSH: SSHConfig{Host: host, User: "deploy", Port: port, KeyPath: keyPath},
 		tag: "abc1234",
 	}
 	p.saveLocal = func(ctx context.Context, dir, image string, sink io.Writer, onLine func(string)) error {

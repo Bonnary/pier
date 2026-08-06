@@ -504,10 +504,10 @@ func TestPipelineBuildServerPreflightDialsBoth(t *testing.T) {
 	}
 	p := &Pipeline{
 		Config: cfg, Env: "production", DeployEnv: cfg.Deploy["production"],
-		Logger: discardLogger{},
-		SSH:    SSHConfig{Host: host, User: "deploy", Port: hostPort, KeyPath: keyPath},
+		Logger:   discardLogger{},
+		SSH:      SSHConfig{Host: host, User: "deploy", Port: hostPort, KeyPath: keyPath},
 		BuildSSH: SSHConfig{Host: build, User: "deploy", Port: buildPort, KeyPath: keyPath},
-		Now:    time.Now,
+		Now:      time.Now,
 	}
 	_ = p.Run(context.Background()) // ends at the build phase: no real docker
 

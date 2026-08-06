@@ -274,7 +274,12 @@ func servePipelineChannel(ch ssh.NewChannel, fs *fakeSession) {
 			_ = req.Reply(true, nil)
 			if fs.captureStdin {
 				b, err := io.ReadAll(channel)
-				if err == nil {
+				// Only record non-empty captures: commands that never
+				// set stdin (e.g. the docker tag Run after a docker
+				// load StreamIn) send an immediate CloseWrite, and
+				// their empty drain must not overwrite the streamed
+				// payload of the command under test.
+				if err == nil && len(b) > 0 {
 					fs.setStdin(b)
 				}
 			}
@@ -283,7 +288,9 @@ func servePipelineChannel(ch ssh.NewChannel, fs *fakeSession) {
 			// (StreamOut) separately; mirror the output on the stderr
 			// extended-data stream (code 1, the SSH spec's
 			// SSH_EXTENDED_DATA_STDERR) so both paths see it.
-			if ext, ok := channel.(interface{ WriteExtended([]byte, uint32) (int, error) }); ok {
+			if ext, ok := channel.(interface {
+				WriteExtended([]byte, uint32) (int, error)
+			}); ok {
 				_, _ = ext.WriteExtended(fs.output, 1)
 			}
 			st := fs.status
