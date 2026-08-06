@@ -373,3 +373,149 @@ func TestPipelineSyncFailureWrapsPreflight(t *testing.T) {
 		t.Fatalf("Run() error = %T, want *ExitError with code %d", err, ExitPreflight)
 	}
 }
+
+// TestPipelineSyncTargetsPerBuilder drives Run against two in-process
+// SSH/SFTP servers (host + build server) and asserts each builder
+// mode syncs the right set to the right machine: full source to the
+// host in host_server mode, deploy files only to the host in the
+// image modes, and full source to the build server in build_server
+// mode. Run cannot complete past the build phase (no real docker), so
+// success is asserted on the synced files.
+func TestPipelineSyncTargetsPerBuilder(t *testing.T) {
+	cases := []struct {
+		name    string
+		builder string
+		hostSet bool // marker.txt expected on the host
+		build   bool // build server configured
+	}{
+		{"host_server", "host_server", true, false},
+		{"local_machine", "local_machine", false, false},
+		{"build_server", "build_server", false, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Chdir(t.TempDir())
+			seedEnvFile(t)
+			// The render phase does not write docker/nginx/default.conf
+			// (it exists in a real project from `pier init`); seed it
+			// so the image-mode host sync has something to ship.
+			if err := os.MkdirAll(filepath.Join("docker", "nginx"), 0755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join("docker", "nginx", "default.conf"), []byte("server {}\n"), 0644); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile("marker.txt", []byte("sync me"), 0644); err != nil {
+				t.Fatal(err)
+			}
+			keyPath, pub := writeTestKey(t)
+			hostFs := &fakeSession{output: []byte("ok\n"), status: 0}
+			buildFs := &fakeSession{output: []byte("ok\n"), status: 0}
+			hostAddr := startPipelineServer(t, keyOnlyServer(pub), hostFs)
+			buildAddr := startPipelineServer(t, keyOnlyServer(pub), buildFs)
+			host, hostPort := testAddr(t, hostAddr)
+			build, buildPort := testAddr(t, buildAddr)
+			remoteHost := t.TempDir()
+			remoteBuild := t.TempDir()
+
+			origProbe, origEnsure := pipelineProbe, pipelineEnsurePath
+			pipelineProbe = func(ctx context.Context, r stdinRunner) (bool, error) { return true, nil }
+			pipelineEnsurePath = func(ctx context.Context, c *Client, path string) error { return nil }
+			defer func() { pipelineProbe, pipelineEnsurePath = origProbe, origEnsure }()
+
+			dc := config.DeployConfig{
+				Host: host, User: "deploy", Path: remoteHost, Branch: "main", Builder: tc.builder,
+			}
+			buildSSH := SSHConfig{}
+			if tc.build {
+				dc.BuildHost, dc.BuildUser, dc.BuildPath = build, "deploy", remoteBuild
+				buildSSH = SSHConfig{Host: build, User: "deploy", Port: buildPort, KeyPath: keyPath}
+			}
+			cfg := &config.Config{
+				Project: config.ProjectConfig{Name: "x", Domain: "x.example.com"},
+				Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+				Deploy:  map[string]config.DeployConfig{"production": dc},
+			}
+			p := &Pipeline{
+				Config: cfg, Env: "production", DeployEnv: dc,
+				Logger:   discardLogger{},
+				SSH:      SSHConfig{Host: host, User: "deploy", Port: hostPort, KeyPath: keyPath},
+				BuildSSH: buildSSH,
+				Now:      time.Now,
+			}
+			_ = p.Run(context.Background()) // ends at the build phase: no real docker
+
+			_, hostMarkerErr := os.Stat(filepath.Join(remoteHost, "marker.txt"))
+			if tc.hostSet && hostMarkerErr != nil {
+				t.Fatalf("marker.txt must be synced to the host, got %v", hostMarkerErr)
+			}
+			if !tc.hostSet && hostMarkerErr == nil {
+				t.Fatal("image mode: marker.txt must NOT be synced to the host")
+			}
+			if tc.build {
+				if _, err := os.Stat(filepath.Join(remoteBuild, "marker.txt")); err != nil {
+					t.Fatalf("build_server: marker.txt must be synced to the build server, got %v", err)
+				}
+			}
+			// The deploy files always land on the host.
+			for _, f := range []string{"docker-compose.prod.yml", ".env.production", filepath.Join("docker", "nginx", "default.conf")} {
+				if _, err := os.Stat(filepath.Join(remoteHost, f)); err != nil {
+					t.Errorf("host missing %s: %v", f, err)
+				}
+			}
+		})
+	}
+}
+
+// TestPipelineBuildServerPreflightDialsBoth asserts build_server mode
+// dials, probes, and ensures paths on both the host and the build
+// server, host first.
+func TestPipelineBuildServerPreflightDialsBoth(t *testing.T) {
+	t.Chdir(t.TempDir())
+	seedEnvFile(t)
+	keyPath, pub := writeTestKey(t)
+	hostFs := &fakeSession{output: []byte("ok\n"), status: 0}
+	buildFs := &fakeSession{output: []byte("ok\n"), status: 0}
+	hostAddr := startPipelineServer(t, keyOnlyServer(pub), hostFs)
+	buildAddr := startPipelineServer(t, keyOnlyServer(pub), buildFs)
+	host, hostPort := testAddr(t, hostAddr)
+	build, buildPort := testAddr(t, buildAddr)
+
+	origDial, origProbe, origEnsure := pipelineDial, pipelineProbe, pipelineEnsurePath
+	var dialed []string
+	pipelineDial = func(ctx context.Context, cfg SSHConfig) (bootstrapConn, error) {
+		dialed = append(dialed, cfg.Host)
+		return origDial(ctx, cfg)
+	}
+	probes := 0
+	pipelineProbe = func(ctx context.Context, r stdinRunner) (bool, error) { probes++; return true, nil }
+	pipelineEnsurePath = func(ctx context.Context, c *Client, path string) error { return nil }
+	defer func() { pipelineDial, pipelineProbe, pipelineEnsurePath = origDial, origProbe, origEnsure }()
+
+	cfg := &config.Config{
+		Project: config.ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+		Deploy: map[string]config.DeployConfig{
+			"production": {
+				Host: host, User: "deploy", Path: t.TempDir(), Branch: "main",
+				Builder: "build_server", BuildHost: build, BuildUser: "deploy", BuildPath: t.TempDir(),
+			},
+		},
+	}
+	p := &Pipeline{
+		Config: cfg, Env: "production", DeployEnv: cfg.Deploy["production"],
+		Logger: discardLogger{},
+		SSH:    SSHConfig{Host: host, User: "deploy", Port: hostPort, KeyPath: keyPath},
+		BuildSSH: SSHConfig{Host: build, User: "deploy", Port: buildPort, KeyPath: keyPath},
+		Now:    time.Now,
+	}
+	_ = p.Run(context.Background()) // ends at the build phase: no real docker
+
+	want := []string{host, build}
+	if len(dialed) != 2 || dialed[0] != want[0] || dialed[1] != want[1] {
+		t.Errorf("dialed = %v, want %v (host first, then build server)", dialed, want)
+	}
+	if probes != 2 {
+		t.Errorf("probe calls = %d, want 2 (host + build server)", probes)
+	}
+}

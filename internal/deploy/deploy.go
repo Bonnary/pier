@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"time"
@@ -50,8 +51,11 @@ type Pipeline struct {
 	// buildClient is the dialed build-server connection, set by
 	// preflight in build_server mode.
 	buildClient *Client
-	Health      HealthConfig
-	Now         func() time.Time
+	// saveLocal, when set, replaces the local `docker save` invocation
+	// in the transfer phase (tests script the docker side).
+	saveLocal func(ctx context.Context, dir, image string, sink io.Writer, onLine func(string)) error
+	Health    HealthConfig
+	Now       func() time.Time
 	// tag is the immutable image tag for this deploy (git SHA or
 	// timestamp fallback), computed at the top of Run and used for
 	// the build output, the transferred image, and state.json.
@@ -85,6 +89,9 @@ func (p *Pipeline) Run(ctx context.Context) error {
 	}
 	p.Logger.PhaseEnd("preflight", nil)
 	defer client.Close()
+	if p.buildClient != nil {
+		defer p.buildClient.Close()
+	}
 
 	// Phase 2: render (local) — re-render docker-compose.prod.yml and
 	// .env.production from pier.toml so the sync ships per-env
@@ -98,9 +105,22 @@ func (p *Pipeline) Run(ctx context.Context) error {
 
 	// Phase 3: sync.
 	p.Logger.PhaseStart("sync")
-	if err := client.SyncDir(ctx, ".", p.DeployEnv.Path, rsyncExcludes); err != nil {
-		p.Logger.PhaseEnd("sync", err)
-		return PreflightError(err)
+	var syncErr error
+	switch p.DeployEnv.BuilderMode() {
+	case "host_server":
+		syncErr = client.SyncDir(ctx, ".", p.DeployEnv.Path, rsyncExcludes)
+	case "local_machine":
+		// The host only needs the deploy files; the build runs from
+		// the local working tree.
+		syncErr = client.SyncDir(ctx, ".", p.DeployEnv.Path, deployFilesOnly)
+	case "build_server":
+		if syncErr = p.buildClient.SyncDir(ctx, ".", p.DeployEnv.BuildPath, rsyncExcludes); syncErr == nil {
+			syncErr = client.SyncDir(ctx, ".", p.DeployEnv.Path, deployFilesOnly)
+		}
+	}
+	if syncErr != nil {
+		p.Logger.PhaseEnd("sync", syncErr)
+		return PreflightError(syncErr)
 	}
 	p.Logger.PhaseEnd("sync", nil)
 
@@ -137,6 +157,14 @@ func (p *Pipeline) Run(ctx context.Context) error {
 		}
 	}
 	p.Logger.PhaseEnd("build", nil)
+
+	// Phase 4b: transfer — image modes stream the just-built image
+	// into the host's docker daemon and retag it as :current.
+	if p.DeployEnv.BuilderMode() != "host_server" {
+		if err := p.transfer(ctx, client); err != nil {
+			return err
+		}
+	}
 
 	// Phase 5: before_deploy — run user hooks in the app container
 	// while the old release is still serving (after the build, before
@@ -235,6 +263,43 @@ func (p *Pipeline) preflight(ctx context.Context) (*Client, error) {
 			p.DeployEnv.Path, p.SSH.Host, p.SSH.User,
 			p.DeployEnv.Path, p.SSH.User, p.SSH.User, p.DeployEnv.Path, p.Env)
 	}
+	if p.DeployEnv.BuilderMode() == "build_server" {
+		if p.BuildSSH.Host == "" {
+			client.Close()
+			return nil, fmt.Errorf("deploy.%s.builder = \"build_server\" requires build_host, build_user, and build_path in pier.toml", p.Env)
+		}
+		conn, err := pipelineDial(ctx, p.BuildSSH)
+		if err != nil {
+			client.Close()
+			return nil, err
+		}
+		ok, err := pipelineProbe(ctx, conn)
+		if err != nil {
+			conn.Close()
+			client.Close()
+			return nil, err
+		}
+		if !ok {
+			conn.Close()
+			client.Close()
+			return nil, NotBootstrappedError(p.Env + " build server")
+		}
+		buildClient, ok := conn.(*Client)
+		if !ok {
+			conn.Close()
+			client.Close()
+			return nil, fmt.Errorf("internal: dial returned %T, want *Client", conn)
+		}
+		if err := pipelineEnsurePath(ctx, buildClient, p.DeployEnv.BuildPath); err != nil {
+			buildClient.Close()
+			client.Close()
+			return nil, fmt.Errorf(
+				"build path %s on %s is not writable for %s.\nCreate it once with:\n  sudo mkdir -p %s\n  sudo chown %s:%s %s\n(or re-run `pier bootstrap %s` to create it automatically.)",
+				p.DeployEnv.BuildPath, p.BuildSSH.Host, p.BuildSSH.User,
+				p.DeployEnv.BuildPath, p.BuildSSH.User, p.BuildSSH.User, p.DeployEnv.BuildPath, p.Env)
+		}
+		p.buildClient = buildClient
+	}
 	return client, nil
 }
 
@@ -287,6 +352,37 @@ func (p *Pipeline) rollback(ctx context.Context, c *Client, cause error, classif
 // remote error. Both are classify funcs for Pipeline.rollback.
 func (p *Pipeline) upError(e error) error   { return RemoteUpError(p.SSH.Host, e) }
 func (p *Pipeline) hookError(e error) error { return RemoteHookError(p.SSH.Host, e) }
+
+// transfer streams the just-built image from the build side (local
+// docker or the build server) into the host's docker daemon and
+// retags it as <project>:current, so the image-variant compose file's
+// `image: <project>:current` reference resolves. A failed save or
+// load leaves the old :current image untouched — the deploy aborts
+// with the old release still serving, so no rollback is needed.
+func (p *Pipeline) transfer(ctx context.Context, hostClient *Client) error {
+	p.Logger.PhaseStart("transfer")
+	image := p.Config.Project.Name + ":" + p.tag
+	var saver imageSaver
+	if p.DeployEnv.BuilderMode() == "local_machine" {
+		saver = localSaver{dir: ".", save: p.saveLocal}
+	} else {
+		saver = remoteSaver{c: p.buildClient}
+	}
+	n, err := TransferImage(ctx, saver, hostClient, image, func(l string) {
+		p.Logger.Log("transfer", "%s", l)
+	})
+	if err != nil {
+		p.Logger.PhaseEnd("transfer", err)
+		return err
+	}
+	p.Logger.Log("transfer", "image %s (%d bytes) loaded on %s", image, n, p.SSH.Host)
+	if _, _, err := hostClient.Run(ctx, "docker tag "+image+" "+p.Config.Project.Name+":current"); err != nil {
+		p.Logger.PhaseEnd("transfer", err)
+		return fmt.Errorf("transfer: retag current: %w", err)
+	}
+	p.Logger.PhaseEnd("transfer", nil)
+	return nil
+}
 
 func (p *Pipeline) commit(ctx context.Context, c *Client) error {
 	st := SFTPStateStore{Client: c}
