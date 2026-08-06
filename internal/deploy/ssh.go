@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"net"
 	"os"
@@ -372,6 +373,104 @@ func (c *Client) Close() error {
 		return nil
 	}
 	return c.conn.Close()
+}
+
+// StreamIn executes cmd on the remote host with stdin fed from in and
+// invokes onLine for each stderr line as it arrives. The stdin path is
+// binary-safe (no line scanning on the input side): it pipes `docker
+// save` output into a remote `docker load`. stderr is line-streamed
+// because docker load writes its progress and errors as lines. On a
+// non-zero exit the returned error carries the last
+// runStreamTailSize stderr lines.
+func (c *Client) StreamIn(ctx context.Context, cmd string, in io.Reader, onLine func(string)) error {
+	sess, err := c.conn.NewSession()
+	if err != nil {
+		return fmt.Errorf("ssh: new session: %w", err)
+	}
+	defer sess.Close()
+	sess.Stdin = in
+	stderr, err := sess.StderrPipe()
+	if err != nil {
+		return err
+	}
+	if err := sess.Start(cmd); err != nil {
+		return err
+	}
+	tail := &outputTail{max: runStreamTailSize}
+	var stderrErr error
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		sc := bufio.NewScanner(stderr)
+		for sc.Scan() {
+			line := sc.Text()
+			tail.add(line)
+			if onLine != nil {
+				onLine(line)
+			}
+		}
+		stderrErr = sc.Err()
+	}()
+	err = sess.Wait()
+	<-done
+	if err != nil {
+		return fmt.Errorf("remote command failed: %w (last output: %s)", err, tail.String())
+	}
+	if stderrErr != nil {
+		return stderrErr
+	}
+	return nil
+}
+
+// StreamOut executes cmd on the remote host piping its stdout into
+// out and invoking onLine for each stderr line as it arrives. The
+// stdout path is binary-safe (io.Copy, no line scanning): it streams
+// `docker save` output from a build server into a sink. On a non-zero
+// exit the returned error carries the last runStreamTailSize stderr
+// lines.
+func (c *Client) StreamOut(ctx context.Context, cmd string, out io.Writer, onLine func(string)) error {
+	sess, err := c.conn.NewSession()
+	if err != nil {
+		return fmt.Errorf("ssh: new session: %w", err)
+	}
+	defer sess.Close()
+	stdout, err := sess.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	stderr, err := sess.StderrPipe()
+	if err != nil {
+		return err
+	}
+	if err := sess.Start(cmd); err != nil {
+		return err
+	}
+	tail := &outputTail{max: runStreamTailSize}
+	var stderrErr error
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		sc := bufio.NewScanner(stderr)
+		for sc.Scan() {
+			line := sc.Text()
+			tail.add(line)
+			if onLine != nil {
+				onLine(line)
+			}
+		}
+		stderrErr = sc.Err()
+	}()
+	if _, err := io.Copy(out, stdout); err != nil {
+		return err
+	}
+	<-done
+	if err := sess.Wait(); err != nil {
+		return fmt.Errorf("remote command failed: %w (last output: %s)", err, tail.String())
+	}
+	if stderrErr != nil {
+		return stderrErr
+	}
+	return nil
 }
 
 type runner interface {

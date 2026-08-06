@@ -35,6 +35,24 @@ type fakeSession struct {
 	// command instead of the shared status field (per-command control
 	// for pipeline tests).
 	statusFn func(cmd string) int
+	// captureStdin, when set, makes the exec handler drain the
+	// session's stdin before writing output, so tests can assert what
+	// a client streamed (e.g. a docker save tar).
+	captureStdin bool
+	// stdinData holds the last captured stdin stream.
+	stdinData []byte
+}
+
+func (f *fakeSession) setStdin(b []byte) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.stdinData = b
+}
+
+func (f *fakeSession) stdin() []byte {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.stdinData
 }
 
 func (f *fakeSession) addCmd(cmd string) {

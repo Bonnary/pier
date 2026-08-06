@@ -272,7 +272,20 @@ func servePipelineChannel(ch ssh.NewChannel, fs *fakeSession) {
 			cmd := string(req.Payload[4:])
 			fs.addCmd(cmd)
 			_ = req.Reply(true, nil)
+			if fs.captureStdin {
+				b, err := io.ReadAll(channel)
+				if err == nil {
+					fs.setStdin(b)
+				}
+			}
 			_, _ = channel.Write(fs.output)
+			// The stream tests read stderr (StreamIn) and stdout
+			// (StreamOut) separately; mirror the output on the stderr
+			// extended-data stream (code 1, the SSH spec's
+			// SSH_EXTENDED_DATA_STDERR) so both paths see it.
+			if ext, ok := channel.(interface{ WriteExtended([]byte, uint32) (int, error) }); ok {
+				_, _ = ext.WriteExtended(fs.output, 1)
+			}
 			st := fs.status
 			if fs.statusFn != nil {
 				st = fs.statusFn(cmd)
