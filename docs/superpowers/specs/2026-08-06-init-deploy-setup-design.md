@@ -10,7 +10,8 @@ writes a bare `[deploy.production]` section (host/user/path/builder left for
 later manual editing). This spec makes `pier init` walk the user through the
 full deploy setup: deploy host, user, path, branch, and the build machine
 (`builder` mode, with build server host/user/path when `build_server` is
-chosen).
+chosen). Since init now covers the build machine, the separate
+`pier buildmode <env>` command is removed entirely.
 
 ## Architecture
 
@@ -19,8 +20,8 @@ The builder question becomes the 4th state of the existing init TUI
 that are free text (host, user, path, branch, build host/user/path) are
 plain text prompts run after the TUI completes, using the existing `prompt`
 helper pattern. The flow reuses the single-select picker already used by the
-PHP/Node states and the builder labels from the buildmode command
-(`host_server`, `local_machine`, `build_server`).
+PHP/Node states and the builder labels (`host_server`, `local_machine`,
+`build_server`).
 
 ## Components
 
@@ -36,8 +37,7 @@ PHP/Node states and the builder labels from the buildmode command
   otherwise exactly one of `host_server` / `local_machine` / `build_server`.
 - `RunInit` gains the builder labels parameter:
   `RunInit(phpVersions, nodeVersions, services []string, builders []string)`
-  (and `newInitModel` likewise). The CLI passes the same three labels the
-  buildmode command uses.
+  (and `newInitModel` likewise).
 
 ### 2. CLI — `internal/cli/init.go`
 
@@ -68,7 +68,24 @@ PHP/Node states and the builder labels from the buildmode command
   today and stays that way; a fully-empty deploy section is valid, and
   partially-filled sections are caught later by the deploy-time validator.
 
-### 3. Tests
+### 3. `pier buildmode` removal
+
+- Delete `internal/cli/buildmode.go` (contains `newBuildmodeCmd`,
+  `runBuildmode`, the `pickBuilderTUI` seam, and `promptString`) and
+  `internal/cli/buildmode_test.go`; drop the registration in
+  `internal/cli/root.go`. The init flow does not depend on any of these:
+  the builder question is a TUI state, and the build-host/user/path prompts
+  use the existing `prompt` helper.
+- Remove the `pier buildmode` rows from README (Features bullet, Commands
+  table) and the CHANGELOG Unreleased entry, replacing it with the
+  `pier init` deploy-setup entry.
+- Consequence: after init, changing the builder later is a manual
+  `pier.toml` edit (`pier init` refuses to re-run on an existing
+  pier.toml). Accepted.
+- `tui.PickEnv` and `newBuildSSHConfig` stay: they are used by bootstrap
+  and deploy, not only by buildmode.
+
+### 4. Tests
 
 - `internal/tui/init_test.go`: builder state stores the picked value; abort
   during the builder state returns `Aborted`.
@@ -106,14 +123,14 @@ pier init [path]
   non-empty input. On EOF the `prompt` helper returns the default (empty
   for required fields), so a repeated EOF would spin: the reprompt loop
   counts consecutive EOF returns and breaks after 3, returning an error
-  telling the user to run `pier buildmode` or edit pier.toml instead.
+  telling the user to edit pier.toml instead.
   (Simpler alternative if this proves overengineered in review: accept
   the empty value and let deploy-time validation report it — decided in
   implementation.)
 
 ## Out of Scope
 
-- `pier buildmode` remains the way to change the builder later — no changes
-  to it.
 - No changes to deploy-time validation, bootstrap, or the pipeline.
 - No TUI text-input form; free-text fields stay plain prompts.
+- `pier buildmode` is removed, not replaced with another interactive
+  command; later builder changes are manual `pier.toml` edits.
