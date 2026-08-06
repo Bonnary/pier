@@ -118,11 +118,11 @@ func TestInitTUIInvokedWhenTTYAndNoFlags(t *testing.T) {
 	origRun := runInitTUI
 	runInitTUI = func(phpVersions, nodeVersions, services, builders []string) (tui.InitResult, error) {
 		called = true
-		_ = builders
 		return tui.InitResult{
 			PHP:      "8.3",
 			Node:     "22",
 			Services: []string{"redis"},
+			Builder:  "local_machine",
 		}, nil
 	}
 	defer func() { runInitTUI = origRun }()
@@ -145,6 +145,9 @@ func TestInitTUIInvokedWhenTTYAndNoFlags(t *testing.T) {
 	}
 	if !bytes.Contains(got, []byte(`"redis"`)) {
 		t.Errorf("redis not in pier.toml:\n%s", got)
+	}
+	if !bytes.Contains(got, []byte(`builder = "local_machine"`)) {
+		t.Errorf("builder = local_machine not in pier.toml:\n%s", got)
 	}
 }
 
@@ -272,7 +275,7 @@ func TestInitScaffoldsDeployProductionServices(t *testing.T) {
 	}
 }
 
-func TestInitWithoutServicesNoDeployScaffold(t *testing.T) {
+func TestInitAlwaysWritesDeploySection(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "artisan"), []byte("#!/usr/bin/env php\n"), 0644); err != nil {
 		t.Fatal(err)
@@ -288,7 +291,173 @@ func TestInitWithoutServicesNoDeployScaffold(t *testing.T) {
 		t.Fatalf("Execute: %v\n%s", err, buf.String())
 	}
 	got, _ := os.ReadFile(filepath.Join(dir, "pier.toml"))
-	if strings.Contains(string(got), "[deploy.") {
-		t.Errorf("init without services must not scaffold a deploy table:\n%s", got)
+	if !strings.Contains(string(got), "[deploy.production]") {
+		t.Errorf("init without services must still scaffold [deploy.production]:\n%s", got)
+	}
+	if _, err := config.Load(filepath.Join(dir, "pier.toml")); err != nil {
+		t.Errorf("init pier.toml must pass validation (empty deploy section is valid): %v", err)
+	}
+}
+
+func TestInitDeployFlagsWriteFullDeploySection(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "artisan"), []byte("#!/usr/bin/env php\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "composer.json"), []byte(`{"require":{"laravel/framework":"^11.0"}}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	root := NewRootCmd(&buf, &buf)
+	root.SetArgs([]string{"--config", filepath.Join(dir, "pier.toml"), "init", dir,
+		"--php", "8.3", "--node", "22",
+		"--builder", "build_server",
+		"--host", "prod.example.com", "--user", "deploy", "--path", "/srv/myapp",
+		"--build-host", "build.example.com", "--build-user", "builder", "--build-path", "/srv/build",
+	})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute: %v\n%s", err, buf.String())
+	}
+	got, err := os.ReadFile(filepath.Join(dir, "pier.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		`host = "prod.example.com"`,
+		`user = "deploy"`,
+		`path = "/srv/myapp"`,
+		`branch = "main"`,
+		`builder = "build_server"`,
+		`build_host = "build.example.com"`,
+		`build_user = "builder"`,
+		`build_path = "/srv/build"`,
+	} {
+		if !strings.Contains(string(got), want) {
+			t.Errorf("pier.toml missing %s:\n%s", want, got)
+		}
+	}
+	if _, err := config.Load(filepath.Join(dir, "pier.toml")); err != nil {
+		t.Errorf("init pier.toml must pass validation: %v", err)
+	}
+}
+
+func TestInitPromptsForDeployFields(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "artisan"), []byte("#!/usr/bin/env php\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "composer.json"), []byte(`{"require":{"laravel/framework":"^11.0"}}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	root := NewRootCmd(&buf, &buf)
+	root.SetIn(strings.NewReader(
+		"8.3\n22\nredis\n3\nprod.example.com\ndeploy\n/srv/myapp\nbuild.example.com\nbuilder\n/srv/build\n"))
+	root.SetArgs([]string{"init", dir})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute: %v\n%s", err, buf.String())
+	}
+	got, err := os.ReadFile(filepath.Join(dir, "pier.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		`builder = "build_server"`,
+		`host = "prod.example.com"`,
+		`user = "deploy"`,
+		`path = "/srv/myapp"`,
+		`build_host = "build.example.com"`,
+		`build_user = "builder"`,
+		`build_path = "/srv/build"`,
+	} {
+		if !strings.Contains(string(got), want) {
+			t.Errorf("pier.toml missing %s:\n%s", want, got)
+		}
+	}
+	if _, err := config.Load(filepath.Join(dir, "pier.toml")); err != nil {
+		t.Errorf("init pier.toml must pass validation: %v", err)
+	}
+}
+
+func TestInitEmptyDeployPromptsSkipFields(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "artisan"), []byte("#!/usr/bin/env php\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "composer.json"), []byte(`{"require":{"laravel/framework":"^11.0"}}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	root := NewRootCmd(&buf, &buf)
+	root.SetIn(strings.NewReader("8.3\n22\n\n1\n\n\n\n")) // services: none, builder: 1 (host_server), host/user/path: skip
+	root.SetArgs([]string{"init", dir})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute: %v\n%s", err, buf.String())
+	}
+	got, err := os.ReadFile(filepath.Join(dir, "pier.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	contents := string(got)
+	if !strings.Contains(contents, "[deploy.production]") {
+		t.Errorf("pier.toml missing [deploy.production]:\n%s", contents)
+	}
+	if strings.Contains(contents, `branch = "main"`) {
+		t.Errorf("branch must not be written when host/user/path are empty:\n%s", contents)
+	}
+	if _, err := config.Load(filepath.Join(dir, "pier.toml")); err != nil {
+		t.Errorf("init pier.toml must pass validation (empty deploy section is valid): %v", err)
+	}
+}
+
+func TestInitBuildServerEmptyAnswerReprompts(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "artisan"), []byte("#!/usr/bin/env php\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "composer.json"), []byte(`{"require":{"laravel/framework":"^11.0"}}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	root := NewRootCmd(&buf, &buf)
+	// Prompt order: php, node, services, builder, host, user, path,
+	// then (build_server) build host/user/path. Build path gets one
+	// empty answer, then a real one — the reprompt must recover.
+	root.SetIn(strings.NewReader("8.3\n22\n\n3\n\n\n\nbh\nbu\n\n/srv/build\n"))
+	root.SetArgs([]string{"init", dir})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute: %v\n%s", err, buf.String())
+	}
+	got, err := os.ReadFile(filepath.Join(dir, "pier.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(got), `build_path = "/srv/build"`) {
+		t.Errorf("pier.toml missing build_path after reprompt:\n%s", got)
+	}
+}
+
+func TestInitBuildServerRequiredFieldGivesUp(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "artisan"), []byte("#!/usr/bin/env php\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "composer.json"), []byte(`{"require":{"laravel/framework":"^11.0"}}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	root := NewRootCmd(&buf, &buf)
+	// build server host: three empty answers then EOF — must give up with an error.
+	root.SetIn(strings.NewReader("8.3\n22\n\n3\n\n\n\n"))
+	root.SetArgs([]string{"init", dir})
+	root.SilenceUsage = true
+	err := root.Execute()
+	if err == nil || !strings.Contains(err.Error(), "pier.toml") {
+		t.Errorf("err = %v, want error naming pier.toml after 3 empty answers", err)
 	}
 }
