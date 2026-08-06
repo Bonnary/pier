@@ -473,6 +473,7 @@ func TestInitPartialDeployFlagsFail(t *testing.T) {
 
 	var buf bytes.Buffer
 	root := NewRootCmd(&buf, &buf)
+	root.SetIn(strings.NewReader(""))
 	root.SetArgs([]string{"--config", filepath.Join(dir, "pier.toml"), "init", dir,
 		"--php", "8.3", "--node", "22", "--host", "prod.example.com"})
 	root.SilenceUsage = true
