@@ -22,6 +22,7 @@ func TestInitWritesPierToml(t *testing.T) {
 
 	var buf bytes.Buffer
 	root := NewRootCmd(&buf, &buf)
+	root.SetIn(strings.NewReader(""))
 	root.SetArgs([]string{"--config", filepath.Join(dir, "pier.toml"), "init", dir, "--php", "8.3", "--node", "22"})
 	if err := root.Execute(); err != nil {
 		t.Fatalf("Execute: %v\n%s", err, buf.String())
@@ -77,6 +78,7 @@ func TestInitEmitsDevBindHint(t *testing.T) {
 
 	var buf bytes.Buffer
 	root := NewRootCmd(&buf, &buf)
+	root.SetIn(strings.NewReader(""))
 	root.SetArgs([]string{"--config", filepath.Join(dir, "pier.toml"), "init", dir, "--php", "8.3", "--node", "22"})
 	if err := root.Execute(); err != nil {
 		t.Fatalf("Execute: %v\n%s", err, buf.String())
@@ -129,6 +131,7 @@ func TestInitTUIInvokedWhenTTYAndNoFlags(t *testing.T) {
 
 	var buf bytes.Buffer
 	root := NewRootCmd(&buf, &buf)
+	root.SetIn(strings.NewReader(""))
 	root.SetArgs([]string{"init", dir})
 	if err := root.Execute(); err != nil {
 		t.Fatalf("Execute: %v\n%s", err, buf.String())
@@ -178,6 +181,7 @@ func TestInit_PatchesViteConfig(t *testing.T) {
 
 	var buf bytes.Buffer
 	root := NewRootCmd(&buf, &buf)
+	root.SetIn(strings.NewReader(""))
 	root.SetArgs([]string{"--config", filepath.Join(dir, "pier.toml"), "init", dir, "--php", "8.3", "--node", "22"})
 	if err := root.Execute(); err != nil {
 		t.Fatalf("Execute: %v\n%s", err, buf.String())
@@ -213,6 +217,7 @@ export default defineConfig({
 
 	var buf bytes.Buffer
 	root := NewRootCmd(&buf, &buf)
+	root.SetIn(strings.NewReader(""))
 	root.SetArgs([]string{"--config", filepath.Join(dir, "pier.toml"), "init", dir, "--php", "8.3", "--node", "22"})
 	if err := root.Execute(); err != nil {
 		t.Fatalf("Execute: %v\n%s", err, buf.String())
@@ -233,6 +238,7 @@ func TestInit_NoPatchWhenNoViteConfig(t *testing.T) {
 
 	var buf bytes.Buffer
 	root := NewRootCmd(&buf, &buf)
+	root.SetIn(strings.NewReader(""))
 	root.SetArgs([]string{"--config", filepath.Join(dir, "pier.toml"), "init", dir, "--php", "8.3", "--node", "22"})
 	if err := root.Execute(); err != nil {
 		t.Fatalf("Execute: %v\n%s", err, buf.String())
@@ -253,6 +259,7 @@ func TestInitScaffoldsDeployProductionServices(t *testing.T) {
 
 	var buf bytes.Buffer
 	root := NewRootCmd(&buf, &buf)
+	root.SetIn(strings.NewReader(""))
 	root.SetArgs([]string{"--config", filepath.Join(dir, "pier.toml"), "init", dir, "--php", "8.3", "--node", "22", "--services", "redis,mailpit"})
 	if err := root.Execute(); err != nil {
 		t.Fatalf("Execute: %v\n%s", err, buf.String())
@@ -286,6 +293,7 @@ func TestInitAlwaysWritesDeploySection(t *testing.T) {
 
 	var buf bytes.Buffer
 	root := NewRootCmd(&buf, &buf)
+	root.SetIn(strings.NewReader(""))
 	root.SetArgs([]string{"--config", filepath.Join(dir, "pier.toml"), "init", dir, "--php", "8.3", "--node", "22"})
 	if err := root.Execute(); err != nil {
 		t.Fatalf("Execute: %v\n%s", err, buf.String())

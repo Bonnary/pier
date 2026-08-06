@@ -241,7 +241,7 @@ port forward.
 
 | Command | Description |
 | --- | --- |
-| `pier init [path]` | Detect Laravel, write `pier.toml`, generate `docker-compose.yml` + runtime, patch `vite.config.ts`. Prompts for the deploy target (host/user/path/branch) and the build machine; `--builder` / `--host` / `--user` / `--path` / `--build-host` / `--build-user` / `--build-path` skip the prompts. |
+| `pier init [path]` | Detect Laravel, write `pier.toml`, generate `docker-compose.yml` + runtime, patch `vite.config.ts`. Prompts for the deploy target (host/user/path, branch defaulting to main) and the build machine; `--builder` / `--host` / `--user` / `--path` / `--build-host` / `--build-user` / `--build-path` skip the prompts. |
 | `pier init --devcontainer` | Also generate `.devcontainer/devcontainer.json` for VS Code. |
 | `pier dev` | Bring up the dev stack. Runs a pre-flight port probe; exits with code 6 if a pier-owned host port is taken. |
 | `pier stop` | Stop the dev stack (volumes preserved). |

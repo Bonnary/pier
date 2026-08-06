@@ -4,11 +4,12 @@
 
 ### Added
 
-- `pier init` asks the full deploy setup — deploy host/user/path/branch
-  and the build machine (host_server / local_machine / build_server,
-  with build host/user/path when build_server); `--builder` /
-  `--host` / `--user` / `--path` / `--build-host` / `--build-user` /
-  `--build-path` flags skip the prompts.
+- `pier init` asks the full deploy setup — deploy host/user/path
+  (branch defaulting to main) and the build machine (host_server /
+  local_machine / build_server, with build host/user/path when
+  build_server); `--builder` / `--host` / `--user` / `--path` /
+  `--build-host` / `--build-user` / `--build-path` flags skip the
+  prompts.
 - `[deploy.<env>].builder` / `build_host` / `build_user` / `build_path`
   configuration for build server modes; `pier bootstrap <env>`
   provisions both machines when `build_server` is set.
