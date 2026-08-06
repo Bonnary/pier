@@ -116,8 +116,9 @@ func TestInitTUIInvokedWhenTTYAndNoFlags(t *testing.T) {
 	// Stub RunInit by swapping a package-level var — see step 3 for the seam.
 	called := false
 	origRun := runInitTUI
-	runInitTUI = func(phpVersions, nodeVersions, services []string) (tui.InitResult, error) {
+	runInitTUI = func(phpVersions, nodeVersions, services, builders []string) (tui.InitResult, error) {
 		called = true
+		_ = builders
 		return tui.InitResult{
 			PHP:      "8.3",
 			Node:     "22",

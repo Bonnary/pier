@@ -15,6 +15,7 @@ func TestInitModelFlowHappyPath(t *testing.T) {
 		[]string{"8.2", "8.3", "8.4", "8.5"},
 		[]string{"20", "22"},
 		[]string{"redis", "postgres"},
+		[]string{"host_server", "local_machine", "build_server"},
 	)
 	// Default cursor on latest for PHP and Node
 	if m.phpPicker.cursor != 3 {
@@ -44,8 +45,16 @@ func TestInitModelFlowHappyPath(t *testing.T) {
 	m = upd.(initModel)
 	upd, _ = m.Update(keyMsg("enter"))
 	m = upd.(initModel)
+	if m.state != stateBuilder {
+		t.Errorf("after enter on services: state = %d, want %d (stateBuilder)", m.state, stateBuilder)
+	}
+	upd, _ = m.Update(keyMsg("enter"))
+	m = upd.(initModel)
 	if m.state != stateDone {
-		t.Errorf("after enter on services: state = %d, want %d (stateDone)", m.state, stateDone)
+		t.Errorf("after enter on builder: state = %d, want %d (stateDone)", m.state, stateDone)
+	}
+	if m.result.Builder != "host_server" {
+		t.Errorf("result.Builder = %q, want host_server", m.result.Builder)
 	}
 	//nolint:staticcheck // brief: deliberate no-op sanity check (makes reader pause on invariant)
 	if !m.result.Aborted == false {
@@ -60,7 +69,7 @@ func TestInitModelFlowHappyPath(t *testing.T) {
 }
 
 func TestInitModelAbortOnPHP(t *testing.T) {
-	m := newInitModel([]string{"8.2", "8.3"}, []string{"20", "22"}, []string{"redis"})
+	m := newInitModel([]string{"8.2", "8.3"}, []string{"20", "22"}, []string{"redis"}, []string{"host_server", "local_machine", "build_server"})
 	upd, _ := m.Update(keyMsg("q"))
 	got := upd.(initModel)
 	if !got.result.Aborted {
@@ -69,7 +78,7 @@ func TestInitModelAbortOnPHP(t *testing.T) {
 }
 
 func TestInitModelAbortOnNode(t *testing.T) {
-	m := newInitModel([]string{"8.2", "8.3"}, []string{"20", "22"}, []string{"redis"})
+	m := newInitModel([]string{"8.2", "8.3"}, []string{"20", "22"}, []string{"redis"}, []string{"host_server", "local_machine", "build_server"})
 	upd, _ := m.Update(keyMsg("enter")) // -> stateNode
 	upd, _ = upd.(initModel).Update(keyMsg("q"))
 	got := upd.(initModel)
@@ -82,7 +91,7 @@ func TestInitModelAbortOnNode(t *testing.T) {
 }
 
 func TestInitModelAbortOnServices(t *testing.T) {
-	m := newInitModel([]string{"8.2", "8.3"}, []string{"20", "22"}, []string{"redis"})
+	m := newInitModel([]string{"8.2", "8.3"}, []string{"20", "22"}, []string{"redis"}, []string{"host_server", "local_machine", "build_server"})
 	upd, _ := m.Update(keyMsg("enter"))
 	upd, _ = upd.(initModel).Update(keyMsg("enter"))
 	upd, _ = upd.(initModel).Update(keyMsg("q"))
@@ -96,15 +105,59 @@ func TestInitModelAbortOnServices(t *testing.T) {
 }
 
 func TestInitModelEmptyServicesOK(t *testing.T) {
-	m := newInitModel([]string{"8.2", "8.3"}, []string{"20", "22"}, []string{"redis", "postgres"})
+	m := newInitModel([]string{"8.2", "8.3"}, []string{"20", "22"}, []string{"redis", "postgres"}, []string{"host_server", "local_machine", "build_server"})
 	upd, _ := m.Update(keyMsg("enter"))
 	upd, _ = upd.(initModel).Update(keyMsg("enter"))
-	upd, _ = upd.(initModel).Update(keyMsg("enter")) // confirm with no toggles
+	upd, _ = upd.(initModel).Update(keyMsg("enter")) // services confirm
+	upd, _ = upd.(initModel).Update(keyMsg("enter")) // builder confirm
 	got := upd.(initModel)
 	if got.state != stateDone {
 		t.Errorf("state = %d, want stateDone", got.state)
 	}
 	if len(got.result.Services) != 0 {
 		t.Errorf("Services = %v, want []", got.result.Services)
+	}
+}
+
+func TestInitModelBuilderStateStoresChoice(t *testing.T) {
+	builders := []string{"host_server", "local_machine", "build_server"}
+	m := newInitModel([]string{"8.2", "8.3"}, []string{"20", "22"}, []string{"redis"}, builders)
+	if m.builderPicker.cursor != 0 {
+		t.Errorf("builderPicker.cursor = %d, want 0 (host_server default)", m.builderPicker.cursor)
+	}
+	// Step through PHP, Node, services into the builder state.
+	for i := 0; i < 3; i++ {
+		upd, _ := m.Update(keyMsg("enter"))
+		m = upd.(initModel)
+	}
+	if m.state != stateBuilder {
+		t.Fatalf("state = %d, want %d (stateBuilder)", m.state, stateBuilder)
+	}
+	upd, _ := m.Update(keyMsg("j")) // down to local_machine
+	m = upd.(initModel)
+	upd, _ = m.Update(keyMsg("enter"))
+	m = upd.(initModel)
+	if m.state != stateDone {
+		t.Errorf("state = %d, want %d (stateDone)", m.state, stateDone)
+	}
+	if m.result.Builder != "local_machine" {
+		t.Errorf("result.Builder = %q, want local_machine", m.result.Builder)
+	}
+}
+
+func TestInitModelAbortOnBuilder(t *testing.T) {
+	builders := []string{"host_server", "local_machine", "build_server"}
+	m := newInitModel([]string{"8.2", "8.3"}, []string{"20", "22"}, []string{"redis"}, builders)
+	for i := 0; i < 3; i++ {
+		upd, _ := m.Update(keyMsg("enter"))
+		m = upd.(initModel)
+	}
+	upd, _ := m.Update(keyMsg("q"))
+	got := upd.(initModel)
+	if !got.result.Aborted {
+		t.Error("result.Aborted = false after q on builder, want true")
+	}
+	if got.result.Node != "22" {
+		t.Errorf("result.Node = %q after abort on builder, want 22 (carried from prior step)", got.result.Node)
 	}
 }

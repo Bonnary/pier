@@ -10,33 +10,37 @@ const (
 	statePHP initState = iota
 	stateNode
 	stateServices
+	stateBuilder
 	stateDone
 )
 
-// InitResult is what RunInit returns: the user's PHP and Node
-// choices, the list of services they ticked in the multi-select,
-// and an Aborted flag for q / Ctrl+C.
+// InitResult is what RunInit returns: the user's PHP, Node, and
+// Builder choices, the list of services they ticked in the
+// multi-select, and an Aborted flag for q / Ctrl+C.
 type InitResult struct {
 	PHP      string
 	Node     string
 	Services []string
+	Builder  string
 	Aborted  bool
 }
 
 type initModel struct {
-	state      initState
-	phpPicker  *Picker
-	nodePicker *Picker
-	svcPicker  *Picker
-	result     InitResult
+	state         initState
+	phpPicker     *Picker
+	nodePicker    *Picker
+	svcPicker     *Picker
+	builderPicker *Picker
+	result        InitResult
 }
 
-func newInitModel(phpVersions, nodeVersions, services []string) initModel {
+func newInitModel(phpVersions, nodeVersions, services, builders []string) initModel {
 	return initModel{
-		state:      statePHP,
-		phpPicker:  NewSinglePicker("PHP version", phpVersions, len(phpVersions)-1),
-		nodePicker: NewSinglePicker("Node version", nodeVersions, len(nodeVersions)-1),
-		svcPicker:  NewMultiPicker("Services (space to toggle)", services, nil),
+		state:         statePHP,
+		phpPicker:     NewSinglePicker("PHP version", phpVersions, len(phpVersions)-1),
+		nodePicker:    NewSinglePicker("Node version", nodeVersions, len(nodeVersions)-1),
+		svcPicker:     NewMultiPicker("Services (space to toggle)", services, nil),
+		builderPicker: NewSinglePicker("Build machine", builders, 0),
 	}
 }
 
@@ -64,6 +68,9 @@ func (m initModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case stateServices:
 			u, _ := m.svcPicker.Update(msg)
 			m.svcPicker = u.(*Picker)
+		case stateBuilder:
+			u, _ := m.builderPicker.Update(msg)
+			m.builderPicker = u.(*Picker)
 		}
 		return m, nil
 	}
@@ -83,6 +90,9 @@ func (m initModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.result.Services = picked
+		m.state = stateBuilder
+	case stateBuilder:
+		m.result.Builder = m.builderPicker.items[m.builderPicker.cursor]
 		m.state = stateDone
 		return m, tea.Quit
 	}
@@ -97,17 +107,19 @@ func (m initModel) View() string {
 		return m.nodePicker.View()
 	case stateServices:
 		return m.svcPicker.View()
+	case stateBuilder:
+		return m.builderPicker.View()
 	case stateDone:
 		return ""
 	}
 	return ""
 }
 
-// RunInit drives the three-picker init flow (PHP → Node →
-// services). It is a thin wrapper around the internal model; the
+// RunInit drives the four-picker init flow (PHP → Node → services →
+// build machine). It is a thin wrapper around the internal model; the
 // CLI uses it after the ShouldRun check passes.
-func RunInit(phpVersions, nodeVersions, services []string) (InitResult, error) {
-	m := newInitModel(phpVersions, nodeVersions, services)
+func RunInit(phpVersions, nodeVersions, services, builders []string) (InitResult, error) {
+	m := newInitModel(phpVersions, nodeVersions, services, builders)
 	final, err := tea.NewProgram(m).Run()
 	if err != nil {
 		return InitResult{}, err

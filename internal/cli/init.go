@@ -78,6 +78,7 @@ func runInit(cmd *cobra.Command, path string, f *initFlags) error {
 			laravelpkg.SupportedPHPRuntimes(),
 			laravelpkg.SupportedNodeVersions(),
 			laravelpkg.SupportedServices(),
+			[]string{"host_server", "local_machine", "build_server"},
 		)
 		if err != nil {
 			return err
