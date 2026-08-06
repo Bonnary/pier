@@ -85,6 +85,19 @@ type DeployConfig struct {
 	User   string `toml:"user"`
 	Path   string `toml:"path"`
 	Branch string `toml:"branch"`
+	// Builder selects where the production image is built for this
+	// env: "host_server" (default, empty means this) builds on the
+	// deploy host itself, "local_machine" builds on the machine
+	// running pier, "build_server" builds on a dedicated remote
+	// machine. The image-mode values stream the finished image to the
+	// host over SSH; host_server builds in place.
+	Builder string `toml:"builder"`
+	// BuildHost, BuildUser, and BuildPath configure the build server
+	// used when Builder is "build_server": SSH target and the path
+	// where the source tree is synced and built.
+	BuildHost string `toml:"build_host"`
+	BuildUser string `toml:"build_user"`
+	BuildPath string `toml:"build_path"`
 	// Services, when present, is the full list of sidecar services
 	// for this env, overriding [stack].services. When absent the env
 	// inherits [stack].services. An explicitly empty list means the
@@ -105,6 +118,23 @@ type DeployConfig struct {
 	// failure; a failing command aborts the deploy and rolls back to
 	// the previous image.
 	AfterDeploy []string `toml:"after_deploy"`
+}
+
+// validBuilder lists the accepted [deploy.<env>].builder values.
+var validBuilder = map[string]bool{
+	"host_server":   true,
+	"local_machine": true,
+	"build_server":  true,
+}
+
+// BuilderMode returns the effective builder for the env: the
+// configured value, or "host_server" when absent (the historical
+// behavior: build and host on the same machine).
+func (d DeployConfig) BuilderMode() string {
+	if d.Builder == "" {
+		return "host_server"
+	}
+	return d.Builder
 }
 
 // ServicesForEnv returns the effective sidecar service list for env:

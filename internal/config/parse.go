@@ -89,6 +89,12 @@ func (c *Config) Validate() error {
 		if err := validateHookList(env, "after_deploy", dc.AfterDeploy); err != nil {
 			return err
 		}
+		if dc.Builder != "" && !validBuilder[dc.Builder] {
+			return fmt.Errorf("%w: deploy.%s.builder %q must be host_server, local_machine, or build_server", ErrConfigInvalid, env, dc.Builder)
+		}
+		if dc.BuilderMode() == "build_server" && (dc.BuildHost == "" || dc.BuildUser == "" || dc.BuildPath == "") {
+			return fmt.Errorf("%w: deploy.%s.builder = \"build_server\" requires build_host, build_user, and build_path", ErrConfigInvalid, env)
+		}
 	}
 	for key, port := range c.Dev.Ports {
 		if !devPortKeys[key] {

@@ -383,6 +383,64 @@ func TestServicesForEnvExplicitEmpty(t *testing.T) {
 	}
 }
 
+func TestValidateBuilderModes(t *testing.T) {
+	base := &Config{
+		Project: ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Stack:   StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+		Deploy: map[string]DeployConfig{
+			"production": {Host: "h", User: "u", Path: "/srv/x", Branch: "main"},
+		},
+	}
+	// Every valid builder value passes.
+	for _, b := range []string{"host_server", "local_machine", "build_server"} {
+		c := *base
+		dc := c.Deploy["production"]
+		dc.Builder = b
+		if b == "build_server" {
+			dc.BuildHost, dc.BuildUser, dc.BuildPath = "bh", "bu", "/srv/build"
+		}
+		c.Deploy["production"] = dc
+		if err := c.Validate(); err != nil {
+			t.Errorf("builder %q: Validate() = %v, want nil", b, err)
+		}
+	}
+	// *base shares the Deploy map with the loop copies above, so
+	// restore the pristine entry before the negative checks below.
+	base.Deploy["production"] = DeployConfig{Host: "h", User: "u", Path: "/srv/x", Branch: "main"}
+	// Unknown builder value is rejected.
+	c := *base
+	dc := c.Deploy["production"]
+	dc.Builder = "spaceship"
+	c.Deploy["production"] = dc
+	if err := c.Validate(); err == nil {
+		t.Error("builder = spaceship: Validate() = nil, want invalid-config error")
+	}
+	// build_server without build_* fields is rejected.
+	c = *base
+	dc = c.Deploy["production"]
+	dc.Builder = "build_server"
+	c.Deploy["production"] = dc
+	if err := c.Validate(); err == nil {
+		t.Error("builder = build_server with no build_* fields: Validate() = nil, want invalid-config error")
+	}
+	// Absent builder defaults to host_server and stays valid.
+	base.Deploy["production"] = DeployConfig{Host: "h", User: "u", Path: "/srv/x", Branch: "main"}
+	if err := base.Validate(); err != nil {
+		t.Errorf("absent builder: Validate() = %v, want nil", err)
+	}
+}
+
+func TestBuilderModeDefaultsToHostServer(t *testing.T) {
+	var dc DeployConfig
+	if got := dc.BuilderMode(); got != "host_server" {
+		t.Errorf("BuilderMode() = %q, want host_server", got)
+	}
+	dc.Builder = "build_server"
+	if got := dc.BuilderMode(); got != "build_server" {
+		t.Errorf("BuilderMode() = %q, want build_server", got)
+	}
+}
+
 func TestDevBindRejectsUnknown(t *testing.T) {
 	cases := []string{"::", "localhost", "192.168.1.1", "0", "10.0.0.1", "::1", "1.2.3.4"}
 	for _, v := range cases {
