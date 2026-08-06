@@ -44,3 +44,18 @@ func newSSHConfig(dc config.DeployConfig) deploy.SSHConfig {
 		},
 	}
 }
+
+// newBuildSSHConfig builds the SSHConfig for the env's dedicated
+// build server ([deploy.<env>].build_host/build_user). The password
+// prompt names the build server so the user knows which machine they
+// are authenticating to.
+func newBuildSSHConfig(dc config.DeployConfig) deploy.SSHConfig {
+	return deploy.SSHConfig{
+		Host:    dc.BuildHost,
+		User:    dc.BuildUser,
+		KeyPath: sshKeyPath(),
+		PasswordPrompt: func() (string, error) {
+			return readPassword(fmt.Sprintf("SSH password for %s@%s: ", dc.BuildUser, dc.BuildHost))
+		},
+	}
+}

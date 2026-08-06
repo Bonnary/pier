@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -109,7 +110,7 @@ func TestResolveBootstrapEnvsNoArgsPicker(t *testing.T) {
 	tuiForTest = func() bool { return true }
 	defer func() { tuiForTest = origTTY }()
 	origPick := pickEnvTUI
-	pickEnvTUI = func(labels []string) (int, error) {
+	pickEnvTUI = func(labels []string, _ int) (int, error) {
 		if len(labels) != 2 {
 			t.Errorf("picker labels = %v, want 2 entries", labels)
 		}
@@ -323,7 +324,7 @@ func TestBootstrapAbortMapsToCleanExit(t *testing.T) {
 	tuiForTest = func() bool { return true }
 	defer func() { tuiForTest = origTTY }()
 	origPick := pickEnvTUI
-	pickEnvTUI = func(labels []string) (int, error) { return -1, tui.ErrAborted }
+	pickEnvTUI = func(labels []string, _ int) (int, error) { return -1, tui.ErrAborted }
 	defer func() { pickEnvTUI = origPick }()
 	dir := t.TempDir()
 	p := writeTestTOML(t, dir)
@@ -384,4 +385,46 @@ func equalStrings(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+func TestBootstrapBuildServerModeProvisionsBoth(t *testing.T) {
+	dir := t.TempDir()
+	writeServiceToml(t, dir, "[deploy.production]\nhost=\"h\"\nuser=\"u\"\npath=\"/srv/x\"\nbranch=\"main\"\nbuilder=\"build_server\"\nbuild_host=\"bh\"\nbuild_user=\"bu\"\nbuild_path=\"/srv/build\"\n")
+	oldCfg := cfgPath
+	cfgPath = filepath.Join(dir, "pier.toml")
+	defer func() { cfgPath = oldCfg }()
+
+	oldProbe, oldBoot, oldPwd := probeEnvFn, bootstrapEnvFn, readSudoPwd
+	probeEnvFn = func(ctx context.Context, cfg deploy.SSHConfig) (bool, error) { return false, nil }
+	provisioned := map[string]bool{}
+	bootstrapEnvFn = func(ctx context.Context, cfg deploy.SSHConfig, pw string, opts deploy.BootstrapOpts) error {
+		provisioned[cfg.Host] = true
+		if opts.Path == "/srv/build" {
+			return nil
+		}
+		if opts.Path == "/srv/x" {
+			return nil
+		}
+		return fmt.Errorf("unexpected path %q", opts.Path)
+	}
+	readSudoPwd = func(prompt string) (string, error) { return "pw", nil }
+	defer func() { probeEnvFn, bootstrapEnvFn, readSudoPwd = oldProbe, oldBoot, oldPwd }()
+
+	var out, errOut bytes.Buffer
+	cmd := newBootstrapCmd(&out, &errOut)
+	cmd.SetOut(&out)
+	cmd.SetErr(&errOut)
+	cmd.SetArgs([]string{"production"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("bootstrap: %v", err)
+	}
+	if !provisioned["h"] || !provisioned["bh"] {
+		t.Errorf("provisioned = %v, want both h and bh", provisioned)
+	}
+	if !contains(out.String(), "production: done") {
+		t.Errorf("output missing host done line: %q", out.String())
+	}
+	if !contains(out.String(), "production (build server): done") {
+		t.Errorf("output missing build-server done line: %q", out.String())
+	}
 }

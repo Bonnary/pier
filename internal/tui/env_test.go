@@ -3,7 +3,7 @@ package tui
 import "testing"
 
 func TestPickEnvEmpty(t *testing.T) {
-	idx, err := PickEnv(nil)
+	idx, err := PickEnv(nil, 0)
 	if err != nil {
 		t.Fatalf("PickEnv(nil) = %v, want nil", err)
 	}
@@ -13,7 +13,7 @@ func TestPickEnvEmpty(t *testing.T) {
 }
 
 func TestPickEnvBuildsSinglePicker(t *testing.T) {
-	idx, err := PickEnv([]string{"stage (s.example.com)", "production (p.example.com)"})
+	idx, err := PickEnv([]string{"stage (s.example.com)", "production (p.example.com)"}, 1)
 	_ = idx
 	_ = err
 	// Contract lock: constructing the picker must not panic and the

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -25,6 +26,54 @@ var (
 	bootstrapEnvFn = deploy.BootstrapEnv
 	readSudoPwd    = readPassword
 )
+
+// errAlreadyBootstrapped marks a skipped machine so the caller can
+// print its "already bootstrapped" line.
+var errAlreadyBootstrapped = errors.New("already bootstrapped")
+
+// provisionOne runs the full bootstrap flow (skip-check, sudo prompt,
+// provision, path creation) for one machine and prints its status.
+func provisionOne(ctx context.Context, cmd *cobra.Command, sshCfg deploy.SSHConfig, user, path string, force bool) error {
+	if !force {
+		ok, err := probeEnvFn(ctx, sshCfg)
+		if err != nil {
+			return err
+		}
+		if ok {
+			fmt.Fprintf(cmd.OutOrStdout(), "already bootstrapped — skipping\n")
+			return errAlreadyBootstrapped
+		}
+	}
+	pw, err := readSudoPwd(fmt.Sprintf("sudo password for %s@%s: ", sshCfg.User, sshCfg.Host))
+	if err != nil {
+		return err
+	}
+	bootstrap := func() error {
+		return bootstrapEnvFn(ctx, sshCfg, pw, deploy.BootstrapOpts{
+			User:     user,
+			Force:    force,
+			Path:     path,
+			OnStdout: func(line string) { fmt.Fprintln(cmd.OutOrStdout(), line) },
+			OnStderr: func(line string) { fmt.Fprintln(cmd.ErrOrStderr(), line) },
+		})
+	}
+	err = bootstrap()
+	if errors.Is(err, deploy.ErrSudoWrongPassword) {
+		pw, err = readSudoPwd("wrong password — try again: ")
+		if err != nil {
+			return err
+		}
+		err = bootstrap()
+	}
+	if errors.Is(err, deploy.ErrSudoNotSudoers) {
+		return fmt.Errorf("%w: add %q to sudoers on %s first, or bootstrap as a different user",
+			err, sshCfg.User, sshCfg.Host)
+	}
+	if err != nil {
+		return err
+	}
+	return nil
+}
 
 // newBootstrapCmd returns the `pier bootstrap` command: one-time
 // server provisioning (Docker install + docker group membership for
@@ -59,49 +108,25 @@ func runBootstrap(cmd *cobra.Command, args []string, f *bootstrapFlags) error {
 	}
 	for _, env := range envs {
 		dc := cfg.Deploy[env]
-		sshCfg := newSSHConfig(dc)
-		if !f.force {
-			ok, err := probeEnvFn(cmd.Context(), sshCfg)
-			if err != nil {
-				return err
-			}
-			if ok {
+		if err := provisionOne(cmd.Context(), cmd, newSSHConfig(dc), dc.User, dc.Path, f.force); err != nil {
+			if errors.Is(err, errAlreadyBootstrapped) {
 				fmt.Fprintf(cmd.OutOrStdout(), "%s: already bootstrapped — skipping\n", env)
 				continue
 			}
-		}
-		pw, err := readSudoPwd(fmt.Sprintf("sudo password for %s@%s: ", dc.User, dc.Host))
-		if err != nil {
-			return err
-		}
-		err = bootstrapEnvFn(cmd.Context(), sshCfg, pw, deploy.BootstrapOpts{
-			User:     dc.User,
-			Force:    f.force,
-			Path:     dc.Path,
-			OnStdout: func(line string) { fmt.Fprintln(cmd.OutOrStdout(), line) },
-			OnStderr: func(line string) { fmt.Fprintln(cmd.ErrOrStderr(), line) },
-		})
-		if errors.Is(err, deploy.ErrSudoWrongPassword) {
-			pw, err = readSudoPwd("wrong password — try again: ")
-			if err != nil {
-				return err
-			}
-			err = bootstrapEnvFn(cmd.Context(), sshCfg, pw, deploy.BootstrapOpts{
-				User:     dc.User,
-				Force:    f.force,
-				Path:     dc.Path,
-				OnStdout: func(line string) { fmt.Fprintln(cmd.OutOrStdout(), line) },
-				OnStderr: func(line string) { fmt.Fprintln(cmd.ErrOrStderr(), line) },
-			})
-		}
-		if errors.Is(err, deploy.ErrSudoNotSudoers) {
-			return fmt.Errorf("%w: add %q to sudoers on %s first, or bootstrap as a different user",
-				err, dc.User, dc.Host)
-		}
-		if err != nil {
 			return err
 		}
 		fmt.Fprintf(cmd.OutOrStdout(), "%s: done\n", env)
+		if dc.BuilderMode() == "build_server" {
+			buildSSH := newBuildSSHConfig(dc)
+			if err := provisionOne(cmd.Context(), cmd, buildSSH, dc.BuildUser, dc.BuildPath, f.force); err != nil {
+				if errors.Is(err, errAlreadyBootstrapped) {
+					fmt.Fprintf(cmd.OutOrStdout(), "%s (build server): already bootstrapped — skipping\n", env)
+					continue
+				}
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "%s (build server): done\n", env)
+		}
 	}
 	return nil
 }
@@ -130,7 +155,7 @@ func resolveBootstrapEnvs(cfg *config.Config, args []string, all bool) ([]string
 			for i, n := range names {
 				labels[i] = fmt.Sprintf("%s (%s)", n, cfg.Deploy[n].Host)
 			}
-			idx, err := pickEnvTUI(labels)
+			idx, err := pickEnvTUI(labels, 0)
 			if err != nil {
 				if errors.Is(err, tui.ErrAborted) {
 					return nil, nil // clean abort: exit 0
