@@ -4,6 +4,15 @@
 
 ### Added
 
+- `pier buildmode <env>` — choose where the production image is built
+  (host_server / local_machine / build_server); image modes stream the
+  image to the host over SSH in a new `transfer` deploy phase.
+- `[deploy.<env>].builder` / `build_host` / `build_user` / `build_path`
+  configuration for build server modes; `pier bootstrap <env>`
+  provisions both machines when `build_server` is set.
+- Real git SHA image tags (timestamp fallback) replace the hardcoded
+  `gitsha` placeholder; `docker tag` wiring fixes `pier rollback` in
+  every builder mode.
 - Per-env sidecar services: `[deploy.<env>].services` overrides
   `[stack].services` for that env (absent = inherit, `[]` = none).
   `pier init` scaffolds `[deploy.production]` with the chosen

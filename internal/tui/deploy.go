@@ -48,15 +48,27 @@ func ShouldRun() bool {
 	return (fi.Mode() & os.ModeCharDevice) != 0
 }
 
+// deployPhases returns the phase list for the pipeline's builder mode.
+// The image modes stream the built image to the host between build and
+// up, so they get an extra transfer phase.
+func deployPhases(p *deploy.Pipeline) []phase {
+	phases := []phase{
+		{Name: "preflight"}, {Name: "render"}, {Name: "sync"},
+		{Name: "build"},
+	}
+	if p.DeployEnv.BuilderMode() != "host_server" {
+		phases = append(phases, phase{Name: "transfer"})
+	}
+	return append(phases,
+		phase{Name: "up"}, phase{Name: "health"}, phase{Name: "commit"})
+}
+
 // Run starts the deploy TUI and concurrently runs p.Run in a
 // background goroutine, feeding the TUI a stream of phase and log
 // messages. Returns the pipeline error (wrapped via the TUI) or
 // the Bubble Tea error if the program itself failed.
 func Run(p *deploy.Pipeline) error {
-	phases := []phase{
-		{Name: "preflight"}, {Name: "render"}, {Name: "sync"},
-		{Name: "build"}, {Name: "up"}, {Name: "health"}, {Name: "commit"},
-	}
+	phases := deployPhases(p)
 	ch := make(chan tea.Msg, 100)
 	m := model{pipeline: p, phases: phases, ch: ch}
 	p.Logger = tuiLogger{ch: ch}

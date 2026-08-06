@@ -77,6 +77,14 @@ Docker CLI.
   commit a production image tag over SSH. A Bubble Tea TUI shows
   live phase progress. Key auth is tried first; password-only
   servers get an interactive prompt.
+- **`pier buildmode <env>`** — choose where the production image is
+  built: `host_server` (the deploy host builds in place, the
+  default), `local_machine` (your machine builds it), or
+  `build_server` (a dedicated remote machine). The two image modes
+  stream the finished image to the host over SSH (`docker save` →
+  `docker load`) in a `transfer` deploy phase — no registry, no
+  temp files. The host receives only the files it needs to run the
+  stack.
 - **`pier bootstrap [env...]`** — One-time server provisioning:
   installs Docker Engine + the compose plugin over SSH and grants
   the deploy user passwordless docker access (hidden one-time sudo
@@ -84,6 +92,8 @@ Docker CLI.
   `--all` / `--force`). Also creates each env's deploy directory
   (`[deploy.<env>].path`) and hands it to the deploy user, so
   `pier deploy` never hits a missing-path "not writable" error.
+  When `[deploy.<env>].builder = "build_server"`, the same
+  invocation also provisions the build server and its `build_path`.
 - **Automatic rollback** — Any failure in the `up`, `after_deploy`,
   or `health` phase re-tags the previous image and re-deploys it
   before the command exits non-zero. On a first deploy there is no
@@ -239,6 +249,7 @@ port forward.
 | `pier shell [env]` | Interactive `bash` in the `laravel.test` container, or in the remote `app` container when `<env>` names a deploy host (PTY, resize forwarding). |
 | `pier exec [env] <cmd...>` | Run a one-off command in `laravel.test`, or in the remote `app` container when the first arg names a deploy env. |
 | `pier service [env]` | Open the init-style services picker (current list pre-ticked); `pier service` edits dev services, `pier service <env>` edits `[deploy.<env>].services` (inherits `[stack]` until first edit). Removed remote services are torn down on the next deploy. |
+| `pier buildmode <env>` | Pick where the production image is built (`host_server` / `local_machine` / `build_server`); prompts for build host/user/path when `build_server` is chosen. |
 | `pier deploy <env>` | Build, sync, up, health-check; rollback on failure. Renders a Bubble Tea TUI with live phase progress. |
 | `pier bootstrap [env...]` | Provision one or more servers: install Docker + compose plugin, grant the deploy user docker access. Interactive picker when no env is given; `--all` for every env, `--force` to re-provision. |
 | `pier rollback <env>` | Re-deploy the previous image tag. |
@@ -301,6 +312,19 @@ falls back to the deploy host IP when the domain does not resolve
 yet, so the printed URL is always usable. `tls = true` renders HTTPS
 URLs and the 443 mapping, but SSL certificate provisioning is not
 shipped yet — keep it `false` for now.
+
+`[deploy.<env>].builder` chooses where the production image is built.
+`"host_server"` (the default when the key is absent) builds on the
+deploy host itself. `"local_machine"` builds on the machine running
+`pier` (Docker required locally). `"build_server"` builds on a
+dedicated machine configured with `build_host`, `build_user`, and
+`build_path` (the path the source tree is synced to and built in).
+Both image modes sync only the deploy files (`docker-compose.prod.yml`,
+`.env.production`, `docker/nginx/default.conf`) to the host, stream
+the built image over SSH, and render the prod compose with
+`image: <project>:current` instead of a build context. `pier bootstrap
+<env>` provisions both the host and the build server when
+`build_server` is set.
 
 `[deploy.<env>].services` optionally overrides `[stack].services`
 for that env (same `services = [...]` style). When absent the env
@@ -467,6 +491,8 @@ Run through this list locally before pushing changes (see
   `production: done` printed; re-run prints `already bootstrapped —
   skipping`; `--force` re-provisions; the deploy path exists and is
   owned by the deploy user
+- [ ] `pier bootstrap <env>` with `builder = "build_server"` — host
+  and build server both provisioned, two `done` lines printed
 - [ ] `pier deploy <env>` on an un-bootstrapped server fails fast with
   the bootstrap hint; after bootstrap it completes without any
   password prompt
