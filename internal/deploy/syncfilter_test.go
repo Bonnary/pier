@@ -30,3 +30,45 @@ func TestPathExcluded(t *testing.T) {
 		}
 	}
 }
+
+func TestDeployFilesOnly(t *testing.T) {
+	for _, rel := range []string{
+		"docker-compose.prod.yml",
+		".env.production",
+		"docker/nginx/default.conf",
+	} {
+		if pathExcluded(rel, deployFilesOnly) {
+			t.Errorf("pathExcluded(%q, deployFilesOnly) = true, want false (must be shipped)", rel)
+		}
+	}
+	for _, rel := range []string{
+		"docker-compose.yml",
+		"docker/8.3/Dockerfile.prod",
+		"app/Models/User.php",
+		"marker.txt",
+		".git/config",
+		".env",
+		".env.example",
+	} {
+		if !pathExcluded(rel, deployFilesOnly) {
+			t.Errorf("pathExcluded(%q, deployFilesOnly) = false, want true (must be skipped)", rel)
+		}
+	}
+}
+
+// TestDeployFilesOnlyDescendsAncestorDirs guards the WalkDir pruning
+// interaction: an excluded directory holding an included file must be
+// descended (--exclude=* matches "docker", but
+// docker/nginx/default.conf is included under it).
+func TestDeployFilesOnlyDescendsAncestorDirs(t *testing.T) {
+	for _, rel := range []string{"docker", "docker/nginx"} {
+		if pathExcluded(rel, deployFilesOnly) {
+			t.Errorf("pathExcluded(%q, deployFilesOnly) = true, want false (directory holds an included file)", rel)
+		}
+	}
+	for _, rel := range []string{"docker/php", "app"} {
+		if !pathExcluded(rel, deployFilesOnly) {
+			t.Errorf("pathExcluded(%q, deployFilesOnly) = false, want true (no included file beneath)", rel)
+		}
+	}
+}
