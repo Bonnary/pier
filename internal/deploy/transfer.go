@@ -70,12 +70,26 @@ var saveLocal = func(ctx context.Context, dir, image string, sink io.Writer, onL
 		stderrErr = sc.Err()
 	}()
 	_, copyErr := io.Copy(sink, stdout)
-	<-done
-	if err := cmd.Wait(); err != nil {
-		return err
+	if copyErr != nil {
+		// The sink died mid-stream (e.g. the remote docker load exited
+		// without draining stdin and TransferImage closed the pipe). The
+		// docker save subprocess is still writing into stdout; with no
+		// reader left it would block in write(2) forever and the Wait
+		// below would hang the deploy. Close the read end (EPIPE kills
+		// the subprocess) and kill it as a fallback so Wait can return.
+		stdout.Close()
+		cmd.Process.Kill()
 	}
+	<-done
+	waitErr := cmd.Wait()
+	// The copy error carries the real failure (the load error
+	// propagated through the pipe) and must not be masked by the
+	// teardown-induced Wait error.
 	if copyErr != nil {
 		return copyErr
+	}
+	if waitErr != nil {
+		return waitErr
 	}
 	return stderrErr
 }

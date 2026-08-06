@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -92,6 +94,46 @@ func TestTransferImageLoadExitEarlyDoesNotHang(t *testing.T) {
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("TransferImage hung: remote docker load exited without draining stdin and the saver never unblocked")
+	}
+}
+
+// TestTransferImageLocalSaveLoadExitEarlyDoesNotHang asserts the
+// local_machine path (real saveLocal streaming a local `docker save`)
+// also fails instead of hanging when the remote `docker load` exits
+// without draining stdin. A fake `docker` on PATH streams an endless
+// payload (`cat /dev/zero`), so the saver is blocked mid-write when
+// the load session dies and the pipe's read side closes. saveLocal's
+// io.Copy then returns the load error, but before the fix it never
+// closed the subprocess's stdout pipe: the blocked `cat` could not
+// get EPIPE, so `<-done`/`cmd.Wait()` — and with them `TransferImage`
+// — hung forever.
+func TestTransferImageLocalSaveLoadExitEarlyDoesNotHang(t *testing.T) {
+	binDir := t.TempDir()
+	fakeDocker := filepath.Join(binDir, "docker")
+	if err := os.WriteFile(fakeDocker, []byte("#!/bin/sh\ncat /dev/zero\n"), 0o755); err != nil {
+		t.Fatalf("write fake docker: %v", err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	keyPath, pub := writeTestKey(t)
+	fs := &fakeSession{output: []byte("docker load: open /var/lib/docker/tmp: permission denied\n"), status: 1}
+	host, port := testAddr(t, startPipelineServer(t, keyOnlyServer(pub), fs))
+	client := dialTestClient(t, SSHConfig{User: "deploy", Host: host, Port: port, KeyPath: keyPath})
+	defer client.Close()
+
+	saver := localSaver{dir: t.TempDir()}
+	done := make(chan error, 1)
+	go func() {
+		_, err := TransferImage(context.Background(), saver, client, "myapp:abc1234", nil)
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err == nil || !strings.Contains(err.Error(), "Process exited with status 1") {
+			t.Errorf("TransferImage() = %v, want the docker load exit error propagated", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("TransferImage hung: saveLocal left the docker save subprocess blocked and never unblocked")
 	}
 }
 
