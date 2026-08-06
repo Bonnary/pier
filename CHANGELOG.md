@@ -4,9 +4,11 @@
 
 ### Added
 
-- `pier buildmode <env>` — choose where the production image is built
-  (host_server / local_machine / build_server); image modes stream the
-  image to the host over SSH in a new `transfer` deploy phase.
+- `pier init` asks the full deploy setup — deploy host/user/path/branch
+  and the build machine (host_server / local_machine / build_server,
+  with build host/user/path when build_server); `--builder` /
+  `--host` / `--user` / `--path` / `--build-host` / `--build-user` /
+  `--build-path` flags skip the prompts.
 - `[deploy.<env>].builder` / `build_host` / `build_user` / `build_path`
   configuration for build server modes; `pier bootstrap <env>`
   provisions both machines when `build_server` is set.
@@ -25,6 +27,11 @@
 - Remote teardown: `docker compose up` runs with `--remove-orphans`,
   so sidecars removed from an env are stopped and removed on the
   server (named volumes are kept).
+
+### Removed
+
+- `pier buildmode <env>` — the init flow now asks the build-machine
+  question; change it later by editing `pier.toml`.
 
 ## v0.0.4-beta
 

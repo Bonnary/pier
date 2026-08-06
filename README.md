@@ -56,7 +56,10 @@ Docker CLI.
 - **`pier init`** — Detect Laravel, write `pier.toml`, generate
   `docker-compose.yml`, runtime Dockerfiles, and a matching
   `vite.config.ts` patch in one pass. Smart-merges into an existing
-  `docker-compose.yml` with warn-and-confirm on unknown keys.
+  `docker-compose.yml` with warn-and-confirm on unknown keys. Asks
+  the full deploy setup too: host, user, path, branch, and the build
+  machine (`host_server` / `local_machine` / `build_server`, plus
+  build host/user/path when `build_server` is chosen).
 - **`pier dev` / `pier stop`** — Bring up (or stop) the dev stack
   with a pre-flight port probe and a clear ready block.
 - **`pier shell [env]` / `pier exec [env] <cmd...>`** — Interactive
@@ -76,15 +79,11 @@ Docker CLI.
 - **`pier deploy <env>`** — Build, sync, up, health-check, and
   commit a production image tag over SSH. A Bubble Tea TUI shows
   live phase progress. Key auth is tried first; password-only
-  servers get an interactive prompt.
-- **`pier buildmode <env>`** — choose where the production image is
-  built: `host_server` (the deploy host builds in place, the
-  default), `local_machine` (your machine builds it), or
-  `build_server` (a dedicated remote machine). The two image modes
-  stream the finished image to the host over SSH (`docker save` →
-  `docker load`) in a `transfer` deploy phase — no registry, no
-  temp files. The host receives only the files it needs to run the
-  stack.
+  servers get an interactive prompt. The image is built on the
+  deploy host by default; `pier init` can pick `local_machine` or
+  `build_server`, which stream the finished image to the host over
+  SSH (`docker save` → `docker load`) in a `transfer` deploy phase —
+  no registry, no temp files.
 - **`pier bootstrap [env...]`** — One-time server provisioning:
   installs Docker Engine + the compose plugin over SSH and grants
   the deploy user passwordless docker access (hidden one-time sudo
@@ -242,14 +241,13 @@ port forward.
 
 | Command | Description |
 | --- | --- |
-| `pier init [path]` | Detect Laravel, write `pier.toml`, generate `docker-compose.yml` + runtime, patch `vite.config.ts`. |
+| `pier init [path]` | Detect Laravel, write `pier.toml`, generate `docker-compose.yml` + runtime, patch `vite.config.ts`. Prompts for the deploy target (host/user/path/branch) and the build machine; `--builder` / `--host` / `--user` / `--path` / `--build-host` / `--build-user` / `--build-path` skip the prompts. |
 | `pier init --devcontainer` | Also generate `.devcontainer/devcontainer.json` for VS Code. |
 | `pier dev` | Bring up the dev stack. Runs a pre-flight port probe; exits with code 6 if a pier-owned host port is taken. |
 | `pier stop` | Stop the dev stack (volumes preserved). |
 | `pier shell [env]` | Interactive `bash` in the `laravel.test` container, or in the remote `app` container when `<env>` names a deploy host (PTY, resize forwarding). |
 | `pier exec [env] <cmd...>` | Run a one-off command in `laravel.test`, or in the remote `app` container when the first arg names a deploy env. |
 | `pier service [env]` | Open the init-style services picker (current list pre-ticked); `pier service` edits dev services, `pier service <env>` edits `[deploy.<env>].services` (inherits `[stack]` until first edit). Removed remote services are torn down on the next deploy. |
-| `pier buildmode <env>` | Pick where the production image is built (`host_server` / `local_machine` / `build_server`); prompts for build host/user/path when `build_server` is chosen. |
 | `pier deploy <env>` | Build, sync, up, health-check; rollback on failure. Renders a Bubble Tea TUI with live phase progress. |
 | `pier bootstrap [env...]` | Provision one or more servers: install Docker + compose plugin, grant the deploy user docker access. Interactive picker when no env is given; `--all` for every env, `--force` to re-provision. |
 | `pier rollback <env>` | Re-deploy the previous image tag. |
