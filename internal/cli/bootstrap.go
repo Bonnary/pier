@@ -108,14 +108,22 @@ func runBootstrap(cmd *cobra.Command, args []string, f *bootstrapFlags) error {
 	}
 	for _, env := range envs {
 		dc := cfg.Deploy[env]
+		hostDone := true
 		if err := provisionOne(cmd.Context(), cmd, newSSHConfig(dc), dc.User, dc.Path, f.force); err != nil {
 			if errors.Is(err, errAlreadyBootstrapped) {
 				fmt.Fprintf(cmd.OutOrStdout(), "%s: already bootstrapped — skipping\n", env)
-				continue
+				hostDone = false
+			} else {
+				return err
 			}
-			return err
 		}
-		fmt.Fprintf(cmd.OutOrStdout(), "%s: done\n", env)
+		// The host's skip must not fall through past the done line:
+		// when builder = "build_server" the build server still needs
+		// provisioning even on a re-run (its own probe handles the
+		// already-bootstrapped case with its own skip line).
+		if hostDone {
+			fmt.Fprintf(cmd.OutOrStdout(), "%s: done\n", env)
+		}
 		if dc.BuilderMode() == "build_server" {
 			buildSSH := newBuildSSHConfig(dc)
 			if err := provisionOne(cmd.Context(), cmd, buildSSH, dc.BuildUser, dc.BuildPath, f.force); err != nil {

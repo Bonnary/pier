@@ -6,6 +6,7 @@ import (
 	"io"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Bonnary/pier/internal/config"
 )
@@ -59,6 +60,38 @@ func TestTransferImageSaveFailureAborts(t *testing.T) {
 	_, err := TransferImage(context.Background(), scriptedSaver{err: errors.New("save boom")}, client, "myapp:abc1234", nil)
 	if err == nil || !strings.Contains(err.Error(), "save boom") {
 		t.Errorf("TransferImage() = %v, want the save error propagated", err)
+	}
+}
+
+// TestTransferImageLoadExitEarlyDoesNotHang asserts that a remote
+// `docker load` which exits without draining stdin (daemon died,
+// permission error) fails the transfer instead of hanging forever.
+// captureStdin is OFF so the fake server never reads the channel,
+// mirroring the early exit; the payload exceeds the SSH transport
+// window so the saver is still blocked writing into the pipe when the
+// load session dies. The old code never closed the pipe's read side,
+// so the blocked save write could never unblock and `<-errCh` hung
+// the deploy.
+func TestTransferImageLoadExitEarlyDoesNotHang(t *testing.T) {
+	keyPath, pub := writeTestKey(t)
+	fs := &fakeSession{output: []byte("docker load: open /var/lib/docker/tmp: permission denied\n"), status: 1}
+	host, port := testAddr(t, startPipelineServer(t, keyOnlyServer(pub), fs))
+	client := dialTestClient(t, SSHConfig{User: "deploy", Host: host, Port: port, KeyPath: keyPath})
+	defer client.Close()
+
+	saver := scriptedSaver{data: strings.Repeat("x", 4<<20)}
+	done := make(chan error, 1)
+	go func() {
+		_, err := TransferImage(context.Background(), saver, client, "myapp:abc1234", nil)
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err == nil || !strings.Contains(err.Error(), "Process exited with status 1") {
+			t.Errorf("TransferImage() = %v, want the docker load exit error propagated", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("TransferImage hung: remote docker load exited without draining stdin and the saver never unblocked")
 	}
 }
 

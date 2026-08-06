@@ -613,12 +613,13 @@ func TestPipelineAfterDeployFailureRollsBackToPrevious(t *testing.T) {
 		t.Fatalf("Run() = %v, want ErrHooks (after_deploy hook failed)", err)
 	}
 	// build, tag, up, nginx reload, failing after_deploy hook, then
-	// the rollback: retag previous image, up again, nginx reload.
+	// the rollback: retag previous image (the env builds on the host,
+	// so the compose references :latest), up again, nginx reload.
 	if len(fs.cmds) != 8 {
 		t.Fatalf("recorded commands = %q, want exactly 8 (build, tag, up, reload, failing hook, rollback tag, up, reload)", fs.cmds)
 	}
-	if !strings.Contains(fs.cmds[5], "docker tag x:old x:current") {
-		t.Errorf("command 5 = %q, want the rollback retag of the previous image", fs.cmds[5])
+	if !strings.Contains(fs.cmds[5], "docker tag x:old x:latest") {
+		t.Errorf("command 5 = %q, want the rollback retag of the previous image to the host_server :latest tag", fs.cmds[5])
 	}
 	if !strings.Contains(fs.cmds[6], "up -d --wait") {
 		t.Errorf("command 6 = %q, want the rollback up", fs.cmds[6])

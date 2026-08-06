@@ -428,3 +428,52 @@ func TestBootstrapBuildServerModeProvisionsBoth(t *testing.T) {
 		t.Errorf("output missing build-server done line: %q", out.String())
 	}
 }
+
+// TestBootstrapBuildServerProvisionedWhenHostAlreadyBootstrapped
+// asserts re-running `pier bootstrap <env>` after the host was
+// bootstrapped earlier (e.g. before builder = "build_server" was set)
+// still provisions the build server: the host's skip must not skip
+// the build-server block.
+func TestBootstrapBuildServerProvisionedWhenHostAlreadyBootstrapped(t *testing.T) {
+	dir := t.TempDir()
+	writeServiceToml(t, dir, "[deploy.production]\nhost=\"h\"\nuser=\"u\"\npath=\"/srv/x\"\nbranch=\"main\"\nbuilder=\"build_server\"\nbuild_host=\"bh\"\nbuild_user=\"bu\"\nbuild_path=\"/srv/build\"\n")
+	oldCfg := cfgPath
+	cfgPath = filepath.Join(dir, "pier.toml")
+	defer func() { cfgPath = oldCfg }()
+
+	oldProbe, oldBoot, oldPwd := probeEnvFn, bootstrapEnvFn, readSudoPwd
+	probeEnvFn = func(ctx context.Context, cfg deploy.SSHConfig) (bool, error) {
+		return cfg.Host == "h", nil
+	}
+	provisioned := map[string]bool{}
+	bootstrapEnvFn = func(ctx context.Context, cfg deploy.SSHConfig, pw string, opts deploy.BootstrapOpts) error {
+		provisioned[cfg.Host] = true
+		return nil
+	}
+	readSudoPwd = func(prompt string) (string, error) { return "pw", nil }
+	defer func() { probeEnvFn, bootstrapEnvFn, readSudoPwd = oldProbe, oldBoot, oldPwd }()
+
+	var out, errOut bytes.Buffer
+	cmd := newBootstrapCmd(&out, &errOut)
+	cmd.SetOut(&out)
+	cmd.SetErr(&errOut)
+	cmd.SetArgs([]string{"production"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("bootstrap: %v", err)
+	}
+	if !provisioned["bh"] {
+		t.Errorf("provisioned = %v, want the build server bh provisioned even though the host is already bootstrapped", provisioned)
+	}
+	if provisioned["h"] {
+		t.Errorf("provisioned = %v, want the bootstrapped host h skipped", provisioned)
+	}
+	if !contains(out.String(), "production: already bootstrapped — skipping") {
+		t.Errorf("output missing host skip line: %q", out.String())
+	}
+	if contains(out.String(), "production: done") {
+		t.Errorf("output = %q, must not contain the host done line (it was skipped)", out.String())
+	}
+	if !contains(out.String(), "production (build server): done") {
+		t.Errorf("output missing build-server done line: %q", out.String())
+	}
+}

@@ -122,6 +122,11 @@ func TransferImage(ctx context.Context, saver imageSaver, dst *Client, image str
 	}()
 	counter := &countingReader{r: pr}
 	loadErr := dst.StreamIn(ctx, "docker load", counter, onLine)
+	// If the remote docker load died without draining stdin, the SSH
+	// session stops reading the pipe and the saver blocks forever in
+	// pw.Write. Close the read side with the load error so the blocked
+	// write fails and errCh fires instead of hanging the deploy.
+	_ = pr.CloseWithError(loadErr)
 	saveErr := <-errCh
 	if saveErr != nil {
 		return counter.count(), fmt.Errorf("docker save %s: %w", image, saveErr)

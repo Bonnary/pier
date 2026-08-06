@@ -322,15 +322,20 @@ func (p *Pipeline) render() error {
 	return fmt.Errorf("render: no local .env.production existed — generated a fresh template at .env.production with placeholder values (APP_KEY, DB_PASSWORD, ...). Deploy aborted before sync: review and fill in the real values, then re-run pier deploy; the sync would otherwise overwrite any .env.production already on the server")
 }
 
-// rollback retags the previous image as :current and re-runs Up after
-// an up-, after_deploy-, or health-stage failure. cause names the
-// failure that triggered the rollback; classify wraps the final error
-// so it carries the right sentinel and exit code (up/health failures
-// stay ErrUp, hook failures stay ErrHooks). When there is no previous
-// deploy on record (first deploy) there is nothing to roll back to,
-// so the cause is reported directly instead of a dead-end "no previous
-// deploy" rollback error that hides what actually failed. When the
-// rollback itself fails, that failure is reported instead.
+// rollback retags the previous image as the tag the prod compose file
+// references and re-runs Up after an up-, after_deploy-, or
+// health-stage failure. The host_server compose variant keeps the
+// build context and references <project>:latest, so the rollback
+// retag must repoint :latest (Tag only adds tags, so :latest would
+// keep serving the broken release); the image modes reference
+// <project>:current. cause names the failure that triggered the
+// rollback; classify wraps the final error so it carries the right
+// sentinel and exit code (up/health failures stay ErrUp, hook
+// failures stay ErrHooks). When there is no previous deploy on record
+// (first deploy) there is nothing to roll back to, so the cause is
+// reported directly instead of a dead-end "no previous deploy"
+// rollback error that hides what actually failed. When the rollback
+// itself fails, that failure is reported instead.
 func (p *Pipeline) rollback(ctx context.Context, c *Client, cause error, classify func(error) error) error {
 	st := SFTPStateStore{Client: c}
 	state, err := st.ReadState(ctx, p.DeployEnv.Path)
@@ -341,7 +346,11 @@ func (p *Pipeline) rollback(ctx context.Context, c *Client, cause error, classif
 		p.Logger.Log("rollback", "skipped: no previous image to roll back to (first deploy); reporting the failure directly")
 		return classify(cause)
 	}
-	if err := Rollback(ctx, st, c, p.DeployEnv.Path, p.Config.Project.Name); err != nil {
+	target := "current"
+	if p.DeployEnv.BuilderMode() == "host_server" {
+		target = "latest"
+	}
+	if err := Rollback(ctx, st, c, p.DeployEnv.Path, p.Config.Project.Name, target); err != nil {
 		return classify(err)
 	}
 	return classify(fmt.Errorf("%w; rolled back", cause))

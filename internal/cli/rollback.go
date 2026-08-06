@@ -45,7 +45,14 @@ func runRollback(cmd *cobra.Command, env string) error {
 	}
 	logger := NewLogger(jsonOut, cmd.OutOrStdout())
 	logger.PhaseStart("rollback")
-	if err := deploy.Rollback(context.Background(), deploy.SFTPStateStore{Client: c}, c, dc.Path, cfg.Project.Name); err != nil {
+	// The rollback must repoint the tag the env's prod compose file
+	// references: :latest when the image is built on the deploy host,
+	// :current in the image modes.
+	target := "current"
+	if dc.BuilderMode() == "host_server" {
+		target = "latest"
+	}
+	if err := deploy.Rollback(context.Background(), deploy.SFTPStateStore{Client: c}, c, dc.Path, cfg.Project.Name, target); err != nil {
 		logger.PhaseEnd("rollback", err)
 		return err
 	}
