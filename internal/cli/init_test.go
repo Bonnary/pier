@@ -461,3 +461,65 @@ func TestInitBuildServerRequiredFieldGivesUp(t *testing.T) {
 		t.Errorf("err = %v, want error naming pier.toml after 3 empty answers", err)
 	}
 }
+
+func TestInitPartialDeployFlagsFail(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "artisan"), []byte("#!/usr/bin/env php\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "composer.json"), []byte(`{"require":{"laravel/framework":"^11.0"}}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	root := NewRootCmd(&buf, &buf)
+	root.SetArgs([]string{"--config", filepath.Join(dir, "pier.toml"), "init", dir,
+		"--php", "8.3", "--node", "22", "--host", "prod.example.com"})
+	root.SilenceUsage = true
+	err := root.Execute()
+	if err == nil || !strings.Contains(err.Error(), "host, user, and path") {
+		t.Errorf("err = %v, want error requiring host, user, and path together", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, "pier.toml")); !os.IsNotExist(statErr) {
+		t.Errorf("pier.toml must not be written after partial deploy flags (stat err = %v)", statErr)
+	}
+}
+
+func TestInitBuildFlagsSkipPrompts(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "artisan"), []byte("#!/usr/bin/env php\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "composer.json"), []byte(`{"require":{"laravel/framework":"^11.0"}}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	root := NewRootCmd(&buf, &buf)
+	root.SetIn(strings.NewReader(""))
+	root.SetArgs([]string{"--config", filepath.Join(dir, "pier.toml"), "init", dir,
+		"--php", "8.3", "--node", "22",
+		"--builder", "build_server",
+		"--build-host", "bh", "--build-user", "bu", "--build-path", "bp",
+	})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute: %v\n%s", err, buf.String())
+	}
+	got, err := os.ReadFile(filepath.Join(dir, "pier.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		`builder = "build_server"`,
+		`build_host = "bh"`,
+		`build_user = "bu"`,
+		`build_path = "bp"`,
+	} {
+		if !strings.Contains(string(got), want) {
+			t.Errorf("pier.toml missing %s:\n%s", want, got)
+		}
+	}
+	if _, err := config.Load(filepath.Join(dir, "pier.toml")); err != nil {
+		t.Errorf("init pier.toml must pass validation: %v", err)
+	}
+}

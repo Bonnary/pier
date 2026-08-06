@@ -136,16 +136,25 @@ func runInit(cmd *cobra.Command, path string, f *initFlags) error {
 	if path == "" {
 		path = prompt(cmd.OutOrStdout(), cmd.InOrStdin(), "Deploy path (enter to skip): ", "")
 	}
+	if (host == "") != (user == "") || (host == "") != (path == "") {
+		return cliError("host, user, and path must all be set together (leave all three empty to scaffold)")
+	}
 	buildHost, buildUser, buildPath := f.buildHost, f.buildUser, f.buildPath
 	if builder == "build_server" {
-		if buildHost, err = promptRequired(cmd.OutOrStdout(), cmd.InOrStdin(), "Build server host: ", buildHost); err != nil {
-			return err
+		if buildHost == "" {
+			if buildHost, err = promptRequired(cmd.OutOrStdout(), cmd.InOrStdin(), "Build server host: ", ""); err != nil {
+				return err
+			}
 		}
-		if buildUser, err = promptRequired(cmd.OutOrStdout(), cmd.InOrStdin(), "Build server user: ", buildUser); err != nil {
-			return err
+		if buildUser == "" {
+			if buildUser, err = promptRequired(cmd.OutOrStdout(), cmd.InOrStdin(), "Build server user: ", ""); err != nil {
+				return err
+			}
 		}
-		if buildPath, err = promptRequired(cmd.OutOrStdout(), cmd.InOrStdin(), "Build server path: ", buildPath); err != nil {
-			return err
+		if buildPath == "" {
+			if buildPath, err = promptRequired(cmd.OutOrStdout(), cmd.InOrStdin(), "Build server path: ", ""); err != nil {
+				return err
+			}
 		}
 	}
 	dc := config.DeployConfig{
