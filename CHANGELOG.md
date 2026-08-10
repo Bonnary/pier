@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.0.5-beta (2026-08-11)
 
 ### Added
 
@@ -33,6 +33,42 @@
 
 - `pier buildmode <env>` — the init flow now asks the build-machine
   question; change it later by editing `pier.toml`.
+
+### Changed
+
+- The `pier init` deploy-host prompt now reads "Deploy host (SSH target
+  Domain name or IP address, enter to skip)" so the expected input is
+  clear.
+
+### Fixed
+
+- The `queue` / `scheduler` app-image sidecars in image modes
+  (`local_machine`, `build_server`) now reference the image tag the
+  transfer phase actually ships (`:current`) instead of `:latest`:
+  compose would otherwise try to pull `:latest` from the registry, and
+  a first deploy failed with `pull access denied`.
+- App-image sidecars now receive the same connection environment as the
+  app (`DB_*`, `REDIS_*`, `APP_KEY` interpolated from
+  `.env.production`): without it the worker authenticated with the dev
+  `.env` baked into the image and crash-looped with `password
+  authentication failed`.
+- With redis in the stack, the rendered env files now default
+  `CACHE_STORE=redis` and `QUEUE_CONNECTION=redis` (interpolated via
+  `${CACHE_STORE}` / `${QUEUE_CONNECTION}` in the prod compose so the
+  values can be overridden in `.env.production`; dev compose gets the
+  same defaults). The database-driver defaults made queue/scheduler
+  workers boot-check the `cache`/`jobs` tables — which only exist after
+  `after_deploy` migrations — so a first deploy's `up --wait` could
+  never pass, and a refused boot-time connection made `queue:work` exit
+  0, which supervisord's default `autorestart=unexpected` never
+  restarted, leaving the queue container unhealthy forever.
+- The prod runtime's supervisord now always restarts the php program
+  (`autorestart=true`), so a Laravel worker that exits 0 (`queue:
+  restart`, a lost-connection stop in newer Laravel) comes back instead
+  of staying dead.
+- Bumped version constant to `0.0.5-beta` (reflected in
+  `pier --version`, `cmd/pier/main_test.go`, and the README status
+  line).
 
 ## v0.0.4-beta
 

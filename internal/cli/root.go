@@ -17,7 +17,7 @@ import (
 
 // Version is the pier release string baked into the binary. Reported by
 // `pier --version` and embedded in deploy output.
-const Version = "0.0.4-beta"
+const Version = "0.0.5-beta"
 
 var (
 	cfgPath string
