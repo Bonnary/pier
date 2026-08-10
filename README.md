@@ -40,6 +40,7 @@ Docker CLI.
 - [Quickstart](#quickstart)
 - [Commands](#commands)
 - [Configuration (`pier.toml`)](#configuration-piertoml)
+- [Environment files (`.env`)](#environment-files-env)
 - [Project structure](#project-structure)
 - [Development](#development)
 - [Manual verification checklist](#manual-verification-checklist)
@@ -378,6 +379,72 @@ restart     = "unless-stopped"
 image = "grahamcampbell/php-fpm-log-viewer:latest"
 ports = ["8081:80"]
 ```
+
+---
+
+## Environment files (`.env`)
+
+`pier init` writes `.env` for the dev stack and
+`.env.production` for the deploy host (plus
+`.env.production.example`, a reference template for hand-managed
+environments). Values in `.env.production` are placeholders — fill
+in real secrets before `pier deploy <env>`. Every file starts with
+the app keys:
+
+```env
+APP_NAME=myapp
+APP_ENV=local            # dev; .env.production writes "production"
+APP_KEY=                 # generate: pier exec php artisan key:generate
+APP_DEBUG=true           # dev; .env.production writes "false"
+APP_URL=http://localhost # dev; .env.production writes http(s)://<domain>
+```
+
+Per service, the keys below are added only when that service is in
+`[stack].services` (dev) or `[deploy.<env>].services` (prod). `—`
+means the file does not get that key; set it by hand if you need it.
+
+| Service | Key | `.env` (dev) | `.env.production` |
+| --- | --- | --- | --- |
+| mysql | `DB_CONNECTION` | `mysql` | `mysql` |
+| mysql | `DB_HOST` | `mysql` | `mysql` |
+| mysql | `DB_PORT` | `3306` | `3306` |
+| mysql | `DB_DATABASE` | `laravel` | `laravel` |
+| mysql | `DB_USERNAME` | `root` | `laravel` |
+| mysql | `DB_PASSWORD` | `root` | `changeme` |
+| postgres | `DB_CONNECTION` | `pgsql` | `pgsql` |
+| postgres | `DB_HOST` | `postgres` | `postgres` |
+| postgres | `DB_PORT` | `5432` | `5432` |
+| postgres | `DB_DATABASE` | `laravel` | `laravel` |
+| postgres | `DB_USERNAME` | `laravel` | `laravel` |
+| postgres | `DB_PASSWORD` | `secret` | `changeme` |
+| redis | `REDIS_HOST` | `redis` | `redis` |
+| redis | `REDIS_PORT` | `6379` | `6379` |
+| redis | `QUEUE_CONNECTION` | `redis` | `redis` |
+| redis | `CACHE_STORE` | — | `redis` |
+| mailpit | `MAIL_MAILER` | `smtp` | — (dev-only) |
+| mailpit | `MAIL_HOST` | `mailpit` | — (dev-only) |
+| mailpit | `MAIL_PORT` | `1025` | — (dev-only) |
+| s3 | `AWS_ENDPOINT` | — | `http://s3:8333` |
+| s3 | `AWS_ACCESS_KEY_ID` | — | `somekey` |
+| s3 | `AWS_SECRET_ACCESS_KEY` | — | `somesecret` |
+| s3 | `AWS_BUCKET` | — | `app` |
+
+Notes:
+
+- No database service selected? The dev compose sets
+  `DB_CONNECTION=sqlite` and `.env` gets no `DB_*` keys.
+- The compose files also pass container-side env to the sidecars,
+  interpolated from these files: mysql gets
+  `MYSQL_ROOT_PASSWORD=${DB_PASSWORD}`, postgres gets
+  `POSTGRES_PASSWORD=${DB_PASSWORD}` (plus `POSTGRES_USER=laravel`,
+  `POSTGRES_DB=laravel`), and meilisearch gets
+  `MEILI_ENV=development` in dev. Changing `DB_PASSWORD` in the env
+  file updates the server and the app in lockstep.
+- `queue` and `scheduler` add no `.env` keys — they run the same app
+  image and read the same env, so they pick up `QUEUE_CONNECTION`,
+  `DB_*`, and friends automatically.
+- With `s3` (SeaweedFS) in dev, add the same `AWS_*` keys to `.env`
+  by hand, pointing at `http://s3:8333`.
 
 ---
 
