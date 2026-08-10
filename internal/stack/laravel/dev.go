@@ -238,6 +238,12 @@ func devEnvForServices(svcSet map[string]bool) map[string]string {
 	if svcSet["redis"] {
 		env["REDIS_HOST"] = "redis"
 		env["REDIS_PORT"] = "6379"
+		// The database-driver queue default makes the queue service's
+		// worker exit 0 on a refused boot-time connection (treated as
+		// "lost connection") and supervisord never restarts a clean
+		// exit — a dead queue with no warning. Redis is in the stack,
+		// so default the queue driver to it.
+		env["QUEUE_CONNECTION"] = "redis"
 	}
 	if svcSet["mailpit"] {
 		env["MAIL_MAILER"] = "smtp"
@@ -333,7 +339,7 @@ func renderDevEnv(cfg config.Config) ([]byte, error) {
 		b = append(b, []byte("DB_CONNECTION=pgsql\nDB_HOST=postgres\nDB_PORT=5432\nDB_DATABASE=laravel\nDB_USERNAME=laravel\nDB_PASSWORD=secret\n")...)
 	}
 	if svcSet["redis"] {
-		b = append(b, []byte("REDIS_HOST=redis\nREDIS_PORT=6379\n")...)
+		b = append(b, []byte("REDIS_HOST=redis\nREDIS_PORT=6379\nQUEUE_CONNECTION=redis\n")...)
 	}
 	return b, nil
 }

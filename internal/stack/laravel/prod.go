@@ -163,7 +163,29 @@ func renderProdCompose(cfg config.Config, env string, services []string) ([]byte
 			}
 		}
 		if cs.Image == "" {
-			cs.Image = appImageFor(cfg, prodImageTag)
+			// The app-image sidecars (queue, scheduler) must match the
+			// tag the pipeline actually ships: host_server builds and
+			// tags :latest in place; the image modes retag the
+			// transferred image only as :current, and a :latest
+			// reference would make compose pull it from the registry
+			// (first deploys fail with "pull access denied").
+			tag := prodImageTag
+			if deployCfg.BuilderMode() != "host_server" {
+				tag = ":current"
+			}
+			cs.Image = appImageFor(cfg, tag)
+			// They also need the same connection env as the app.
+			// Dev gets it from the bound ./:/var/www/html .env; prod
+			// has no bind mount, and the image may carry the dev .env
+			// (no .dockerignore), so without these the worker
+			// authenticates with dev credentials against the deploy
+			// host's database and crash-loops with "password
+			// authentication failed".
+			env := prodEnvForServices(services)
+			for k, v := range s.Env {
+				env[k] = v
+			}
+			cs.Environment = env
 		}
 		cf.Services[name] = cs
 	}
@@ -246,6 +268,25 @@ func prodEnvForServices(services []string) map[string]string {
 	if set["redis"] {
 		env["REDIS_HOST"] = "redis"
 		env["REDIS_PORT"] = "6379"
+		// Default the cache to redis when the stack ships it: the
+		// database-cache default makes app-image workers boot-check
+		// the `cache` table, which only exists after after_deploy
+		// migrations — but up --wait demands they be healthy first,
+		// so a first deploy can never pass. The value is interpolated
+		// from .env.production (CACHE_STORE=redis) so the user can
+		// override it.
+		env["CACHE_STORE"] = "${CACHE_STORE}"
+		// Same for the queue: the database-driver default makes
+		// queue:work query the `jobs` table (and require a live
+		// database) before after_deploy migrations run — and a
+		// refused connection at boot makes the worker exit 0, which
+		// supervisord's default autorestart=unexpected does not
+		// restart, so the queue container stays unhealthy forever and
+		// up --wait fails the deploy. Redis is in the stack, so point
+		// the queue at it; the value is interpolated from
+		// .env.production (QUEUE_CONNECTION=redis) so the user can
+		// override it.
+		env["QUEUE_CONNECTION"] = "${QUEUE_CONNECTION}"
 	}
 	return env
 }
@@ -278,6 +319,14 @@ func renderProdEnv(cfg config.Config, env string, services []string) []byte {
 	if set["redis"] {
 		fmt.Fprintln(&b, "\nREDIS_HOST=redis")
 		fmt.Fprintln(&b, "REDIS_PORT=6379")
+		// Redis is in the stack: default the cache to redis so
+		// queue/scheduler workers don't need the `cache` table before
+		// the first after_deploy migrate (see prodEnvForServices).
+		fmt.Fprintln(&b, "CACHE_STORE=redis")
+		// And the queue to redis: the database-driver default makes
+		// queue:work exit 0 on a refused boot-time connection (see
+		// prodEnvForServices), which supervisord never restarts.
+		fmt.Fprintln(&b, "QUEUE_CONNECTION=redis")
 	}
 	if set["s3"] {
 		fmt.Fprintln(&b, "\nAWS_ENDPOINT=http://s3:8333")

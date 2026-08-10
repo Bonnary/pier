@@ -652,6 +652,157 @@ func TestGenerateProdFilesUnknownEnvServiceFails(t *testing.T) {
 	}
 }
 
+func TestGenerateProdFilesImageModeQueueSchedulerUseCurrentTag(t *testing.T) {
+	s := New()
+	files, err := s.GenerateProdFiles(config.Config{
+		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22", Services: []string{"queue", "scheduler"}},
+		Deploy: map[string]config.DeployConfig{
+			"production": {Host: "h", User: "u", Path: "/srv/x", Branch: "main", Builder: "local_machine"},
+		},
+	}, "production")
+	if err != nil {
+		t.Fatalf("GenerateProdFiles: %v", err)
+	}
+	got := findFile(files, "docker-compose.prod.yml")
+	if got == nil {
+		t.Fatal("docker-compose.prod.yml missing")
+	}
+	var doc struct {
+		Services map[string]struct {
+			Image string `yaml:"image"`
+		} `yaml:"services"`
+	}
+	if err := yaml.Unmarshal(got.Contents, &doc); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	for _, name := range []string{"queue", "scheduler"} {
+		svc, ok := doc.Services[name]
+		if !ok {
+			t.Errorf("service %q missing from prod compose:\n%s", name, got.Contents)
+			continue
+		}
+		if svc.Image != "myapp:current" {
+			t.Errorf("image-mode prod %s image = %q, want %q (the transfer phase only retags the built image as :current; referencing :latest makes compose pull it from Docker Hub and first deploys fail with 'pull access denied')", name, svc.Image, "myapp:current")
+		}
+	}
+}
+
+func TestGenerateProdFilesQueueSchedulerGetConnectionEnv(t *testing.T) {
+	files, err := New().GenerateProdFiles(config.Config{
+		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22", Services: []string{"queue", "scheduler", "postgres", "redis"}},
+	}, "production")
+	if err != nil {
+		t.Fatalf("GenerateProdFiles: %v", err)
+	}
+	got := findFile(files, "docker-compose.prod.yml")
+	if got == nil {
+		t.Fatal("docker-compose.prod.yml missing")
+	}
+	var doc struct {
+		Services map[string]struct {
+			Env map[string]string `yaml:"environment"`
+		} `yaml:"services"`
+	}
+	if err := yaml.Unmarshal(got.Contents, &doc); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	want := map[string]string{
+		"DB_CONNECTION": "pgsql",
+		"DB_HOST":       "postgres",
+		"DB_PORT":       "5432",
+		"DB_DATABASE":   "laravel",
+		"DB_USERNAME":   "laravel",
+		"DB_PASSWORD":   "${DB_PASSWORD}",
+		"REDIS_HOST":    "redis",
+		"REDIS_PORT":    "6379",
+		"APP_KEY":       "${APP_KEY}",
+	}
+	for _, name := range []string{"queue", "scheduler"} {
+		svc, ok := doc.Services[name]
+		if !ok {
+			t.Errorf("service %q missing from prod compose:\n%s", name, got.Contents)
+			continue
+		}
+		for k, v := range want {
+			if svc.Env[k] != v {
+				t.Errorf("prod %s env[%s] = %q, want %q (the app-image sidecars must get the same connection env as the app — prod has no bind mount, and without it the worker authenticates with whatever dev .env got baked into the image and dies with 'password authentication failed')", name, k, svc.Env[k], v)
+			}
+		}
+	}
+}
+
+func TestGenerateProdFilesRedisDefaultsCacheStore(t *testing.T) {
+	// Without redis the stack must not decide the cache store.
+	noRedis, err := New().GenerateProdFiles(config.Config{
+		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+	}, "production")
+	if err != nil {
+		t.Fatalf("GenerateProdFiles (no redis): %v", err)
+	}
+	env := string(findFile(noRedis, ".env.production").Contents)
+	if contains(env, "CACHE_STORE") {
+		t.Errorf(".env.production must not set CACHE_STORE when redis is not in the stack:\n%s", env)
+	}
+	if contains(env, "QUEUE_CONNECTION") {
+		t.Errorf(".env.production must not set QUEUE_CONNECTION when redis is not in the stack:\n%s", env)
+	}
+
+	// With redis the fresh template defaults the cache to redis: the
+	// database-cache default makes queue/scheduler (and app) workers
+	// crash-loop with `relation "cache" does not exist` until
+	// after_deploy migrations run — but up --wait demands they be
+	// healthy before after_deploy, so a first deploy can never pass.
+	withRedis, err := New().GenerateProdFiles(config.Config{
+		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22", Services: []string{"redis", "queue", "scheduler"}},
+	}, "production")
+	if err != nil {
+		t.Fatalf("GenerateProdFiles (redis): %v", err)
+	}
+	env = string(findFile(withRedis, ".env.production").Contents)
+	if !contains(env, "CACHE_STORE=redis") {
+		t.Errorf(".env.production missing CACHE_STORE=redis when redis is in the stack:\n%s", env)
+	}
+	// Same for the queue: the database-driver default makes queue:work
+	// exit 0 on a refused boot-time connection (Laravel treats it as a
+	// lost connection and stops cleanly), and supervisord's default
+	// autorestart=unexpected never restarts a clean exit — so the queue
+	// container stays unhealthy forever and up --wait fails the deploy.
+	if !contains(env, "QUEUE_CONNECTION=redis") {
+		t.Errorf(".env.production missing QUEUE_CONNECTION=redis when redis is in the stack:\n%s", env)
+	}
+
+	// The container env must interpolate it from .env.production so
+	// the value reaches the app and the app-image sidecars; an entry
+	// that only sits in the env file is never injected into the
+	// container (compose environment is a static list).
+	compose := string(findFile(withRedis, "docker-compose.prod.yml").Contents)
+	var doc struct {
+		Services map[string]struct {
+			Env map[string]string `yaml:"environment"`
+		} `yaml:"services"`
+	}
+	if err := yaml.Unmarshal([]byte(compose), &doc); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	for _, name := range []string{"app", "queue", "scheduler"} {
+		svc, ok := doc.Services[name]
+		if !ok {
+			t.Errorf("service %q missing from prod compose:\n%s", name, compose)
+			continue
+		}
+		if got := svc.Env["CACHE_STORE"]; got != "${CACHE_STORE}" {
+			t.Errorf("prod %s env CACHE_STORE = %q, want ${CACHE_STORE} (resolved from .env.production at runtime)", name, got)
+		}
+		if got := svc.Env["QUEUE_CONNECTION"]; got != "${QUEUE_CONNECTION}" {
+			t.Errorf("prod %s env QUEUE_CONNECTION = %q, want ${QUEUE_CONNECTION} (resolved from .env.production at runtime)", name, got)
+		}
+	}
+}
+
 func TestGenerateProdFilesImageModeOmitsBuild(t *testing.T) {
 	s := New()
 	files, err := s.GenerateProdFiles(config.Config{
