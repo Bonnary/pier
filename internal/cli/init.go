@@ -126,7 +126,7 @@ func runInit(cmd *cobra.Command, path string, f *initFlags) error {
 	}
 	host := f.host
 	if host == "" {
-		host = prompt(cmd.OutOrStdout(), cmd.InOrStdin(), "Deploy host (SSH target, enter to skip): ", "")
+		host = prompt(cmd.OutOrStdout(), cmd.InOrStdin(), "Deploy host (SSH target Domain name or IP address, enter to skip): ", "")
 	}
 	user := f.user
 	if user == "" {

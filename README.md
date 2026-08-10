@@ -322,7 +322,10 @@ Both image modes sync only the deploy files (`docker-compose.prod.yml`,
 the built image over SSH, and render the prod compose with
 `image: <project>:current` instead of a build context. `pier bootstrap
 <env>` provisions both the host and the build server when
-`build_server` is set.
+`build_server` is set. The build server is not a deploy env: it lives
+inside `[deploy.<env>]` and has no `[deploy.build]` section, so
+`pier shell build` (or `pier exec build` / `pier status build`)
+errors with `no [deploy.build] section in pier.toml`.
 
 `[deploy.<env>].services` optionally overrides `[stack].services`
 for that env (same `services = [...]` style). When absent the env
