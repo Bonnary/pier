@@ -331,7 +331,7 @@ func renderDevEnv(cfg config.Config) ([]byte, error) {
 	b = append(b, []byte("APP_ENV=local\n")...)
 	b = append(b, []byte("APP_KEY=\n")...)
 	b = append(b, []byte("APP_DEBUG=true\n")...)
-	b = append(b, []byte("APP_URL=http://localhost\n")...)
+	b = append(b, []byte("APP_URL=http://localhost:8000\n")...)
 	switch {
 	case svcSet["mysql"]:
 		b = append(b, []byte("DB_CONNECTION=mysql\nDB_HOST=mysql\nDB_PORT=3306\nDB_DATABASE=laravel\nDB_USERNAME=root\nDB_PASSWORD=root\n")...)

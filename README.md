@@ -396,7 +396,7 @@ APP_NAME=myapp
 APP_ENV=local            # dev; .env.production writes "production"
 APP_KEY=                 # generate: pier exec php artisan key:generate
 APP_DEBUG=true           # dev; .env.production writes "false"
-APP_URL=http://localhost # dev; .env.production writes http(s)://<domain>
+APP_URL=http://localhost:8000 # dev; .env.production writes http(s)://<domain>
 ```
 
 Per service, the keys below are added only when that service is in
