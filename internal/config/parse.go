@@ -72,6 +72,9 @@ func (c *Config) Validate() error {
 	if !validNode[c.Stack.Node] {
 		return fmt.Errorf("%w: stack.node %q not in [20 22]", ErrConfigInvalid, c.Stack.Node)
 	}
+	if c.Stack.QueueWorkers < 0 || c.Stack.QueueWorkers > MaxQueueWorkers {
+		return fmt.Errorf("%w: stack.queue_workers = %d, must be in 0..%d (0 = default %d)", ErrConfigInvalid, c.Stack.QueueWorkers, MaxQueueWorkers, DefaultQueueWorkers)
+	}
 	if c.Dev.Bind == "" {
 		c.Dev.Bind = DefaultDevBind
 	}
@@ -134,6 +137,9 @@ func validateDeployEnv(env string, dc DeployConfig) error {
 	}
 	if dc.Builder != "" && !validBuilder[dc.Builder] {
 		return fmt.Errorf("%w: deploy.%s.builder %q must be host_server, local_machine, or build_server", ErrConfigInvalid, env, dc.Builder)
+	}
+	if dc.QueueWorkers < 0 || dc.QueueWorkers > MaxQueueWorkers {
+		return fmt.Errorf("%w: deploy.%s.queue_workers = %d, must be in 0..%d (0 = inherit)", ErrConfigInvalid, env, dc.QueueWorkers, MaxQueueWorkers)
 	}
 	if dc.BuilderMode() == "build_server" && (dc.BuildHost == "" || dc.BuildUser == "" || dc.BuildPath == "") {
 		return fmt.Errorf("%w: deploy.%s.builder = \"build_server\" requires build_host, build_user, and build_path", ErrConfigInvalid, env)

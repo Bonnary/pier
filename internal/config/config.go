@@ -16,6 +16,14 @@ var ErrConfigInvalid = errors.New("invalid pier.toml")
 // reachable only from the host — safe on shared networks.
 const DefaultDevBind = "127.0.0.1"
 
+// DefaultQueueWorkers is the number of queue:work processes the
+// queue service runs when queue_workers is not configured anywhere.
+const DefaultQueueWorkers = 1
+
+// MaxQueueWorkers is the largest queue_workers value pier accepts.
+// All workers share one container; 32 keeps a single host sane.
+const MaxQueueWorkers = 32
+
 var validPHP = map[string]bool{"8.2": true, "8.3": true, "8.4": true, "8.5": true}
 var validNode = map[string]bool{"20": true, "22": true}
 var validStackType = map[string]bool{"laravel": true}
@@ -50,6 +58,11 @@ type StackConfig struct {
 	PHP      string   `toml:"php"`
 	Node     string   `toml:"node"`
 	Services []string `toml:"services"`
+	// QueueWorkers is the number of queue:work processes the queue
+	// service runs (dev and, unless overridden per env, prod).
+	// 0 means "not set": dev uses DefaultQueueWorkers and prod
+	// envs fall back to it.
+	QueueWorkers int `toml:"queue_workers"`
 }
 
 // DevConfig is the [dev] table: host-side bind address, opt-in sidecar
@@ -105,6 +118,9 @@ type DeployConfig struct {
 	Services []string       `toml:"services"`
 	Ports    map[string]int `toml:"ports"`
 	TLS      bool           `toml:"tls"`
+	// QueueWorkers overrides [stack].queue_workers for this env.
+	// 0 means inherit the stack value.
+	QueueWorkers int `toml:"queue_workers"`
 	// BeforeDeploy runs inside the app container on the deploy host
 	// after the image build, while the old release is still serving.
 	// Commands run in order and stop at the first failure; a failing
@@ -145,4 +161,22 @@ func (c *Config) ServicesForEnv(env string) []string {
 		return dc.Services
 	}
 	return c.Stack.Services
+}
+
+// QueueWorkers returns the effective [stack] queue worker count:
+// the configured value, or DefaultQueueWorkers when absent.
+func (c *Config) QueueWorkers() int {
+	if c.Stack.QueueWorkers > 0 {
+		return c.Stack.QueueWorkers
+	}
+	return DefaultQueueWorkers
+}
+
+// QueueWorkersForEnv returns the effective queue worker count for
+// env: [deploy.<env>].queue_workers when set, else the stack value.
+func (c *Config) QueueWorkersForEnv(env string) int {
+	if dc, ok := c.Deploy[env]; ok && dc.QueueWorkers > 0 {
+		return dc.QueueWorkers
+	}
+	return c.QueueWorkers()
 }

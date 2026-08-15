@@ -459,3 +459,60 @@ func TestDevBindRejectsUnknown(t *testing.T) {
 		}
 	}
 }
+
+func TestQueueWorkersDefaults(t *testing.T) {
+	cfg, err := Load(filepath.Join("testdata", "minimal.toml"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got := cfg.QueueWorkers(); got != DefaultQueueWorkers {
+		t.Errorf("QueueWorkers() = %d, want %d (absent key must default)", got, DefaultQueueWorkers)
+	}
+	if got := cfg.QueueWorkersForEnv("production"); got != DefaultQueueWorkers {
+		t.Errorf("QueueWorkersForEnv(production) = %d, want %d (absent key must default)", got, DefaultQueueWorkers)
+	}
+}
+
+func TestQueueWorkersEnvOverride(t *testing.T) {
+	c := &Config{
+		Stack: StackConfig{Type: "laravel", PHP: "8.3", Node: "22", QueueWorkers: 4},
+		Deploy: map[string]DeployConfig{
+			"production": {QueueWorkers: 8},
+			"staging":    {},
+		},
+	}
+	if got := c.QueueWorkersForEnv("production"); got != 8 {
+		t.Errorf("QueueWorkersForEnv(production) = %d, want 8 (explicit env override wins)", got)
+	}
+	if got := c.QueueWorkersForEnv("staging"); got != 4 {
+		t.Errorf("QueueWorkersForEnv(staging) = %d, want 4 (absent env override inherits stack)", got)
+	}
+	if got := c.QueueWorkers(); got != 4 {
+		t.Errorf("QueueWorkers() = %d, want 4", got)
+	}
+}
+
+func TestValidateQueueWorkers(t *testing.T) {
+	valid := func(qw int) *Config {
+		return &Config{
+			Project: ProjectConfig{Name: "x", Domain: "x.example.com"},
+			Stack:   StackConfig{Type: "laravel", PHP: "8.3", Node: "22", QueueWorkers: qw},
+		}
+	}
+	if err := valid(0).Validate(); err != nil {
+		t.Errorf("Validate(queue_workers=0) = %v, want nil (0 = default)", err)
+	}
+	if err := valid(MaxQueueWorkers).Validate(); err != nil {
+		t.Errorf("Validate(queue_workers=%d) = %v, want nil", MaxQueueWorkers, err)
+	}
+	for _, bad := range []int{-1, MaxQueueWorkers + 1} {
+		if err := valid(bad).Validate(); !errors.Is(err, ErrConfigInvalid) {
+			t.Errorf("Validate(stack queue_workers=%d) = %v, want ErrConfigInvalid", bad, err)
+		}
+	}
+	c := valid(1)
+	c.Deploy = map[string]DeployConfig{"production": {QueueWorkers: MaxQueueWorkers + 1}}
+	if err := c.Validate(); !errors.Is(err, ErrConfigInvalid) {
+		t.Errorf("Validate(deploy queue_workers=%d) = %v, want ErrConfigInvalid", MaxQueueWorkers+1, err)
+	}
+}
