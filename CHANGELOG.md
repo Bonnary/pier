@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.0.6-beta (2026-08-15)
 
 ### Added
 
@@ -8,6 +8,12 @@
   override, max 32) runs that many `queue:work` processes in the
   queue container via supervisord `numprocs`, in dev and prod.
   `pier init` writes the explicit default.
+
+### Changed
+
+- Bumped version constant to `0.0.6-beta` (reflected in
+  `pier --version`, `cmd/pier/main_test.go`, and the README status
+  line).
 
 ## v0.0.5-beta (2026-08-11)
 
