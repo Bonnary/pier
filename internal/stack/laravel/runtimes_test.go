@@ -3,6 +3,7 @@ package laravel
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -62,6 +63,27 @@ func TestSupportedNodeVersions(t *testing.T) {
 	for i := 1; i < len(got); i++ {
 		if got[i-1] >= got[i] {
 			t.Errorf("not ascending: %v", got)
+		}
+	}
+}
+
+func TestRuntimeSupervisordNumprocs(t *testing.T) {
+	for _, v := range []string{"8.2", "8.3", "8.4", "8.5"} {
+		sv, err := os.ReadFile(filepath.Join("runtimes", v, "supervisord.conf"))
+		if err != nil {
+			t.Fatalf("read supervisord.conf: %v", err)
+		}
+		for _, want := range []string{"process_name=%(program_name)s_%(process_num)02d", "numprocs=%(ENV_SUPERVISOR_NUMPROCS)s"} {
+			if !strings.Contains(string(sv), want) {
+				t.Errorf("runtimes/%s/supervisord.conf missing %q (numprocs needs a %%(process_num) process_name; the env var lets the same file run 1 (app/scheduler) or N (queue) processes)", v, want)
+			}
+		}
+		df, err := os.ReadFile(filepath.Join("runtimes", v, "Dockerfile"))
+		if err != nil {
+			t.Fatalf("read Dockerfile: %v", err)
+		}
+		if !strings.Contains(string(df), `ENV SUPERVISOR_NUMPROCS="1"`) {
+			t.Errorf("runtimes/%s/Dockerfile missing ENV SUPERVISOR_NUMPROCS default (without it the env expansion is empty and supervisord fails to parse numprocs)", v)
 		}
 	}
 }
