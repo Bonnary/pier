@@ -2,6 +2,7 @@ package laravel
 
 import (
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/Bonnary/pier/internal/config"
@@ -176,5 +177,18 @@ func SupportedServices() []string {
 		out = append(out, k)
 	}
 	sort.Strings(out)
+	return out
+}
+
+// envWithWorkers returns a copy of base with SUPERVISOR_NUMPROCS set
+// to n. The copy matters: render code assigns s.Env (the shared
+// static registry map) directly, so mutating it would leak one
+// render's worker count into every later render.
+func envWithWorkers(base map[string]string, n int) map[string]string {
+	out := make(map[string]string, len(base)+1)
+	for k, v := range base {
+		out[k] = v
+	}
+	out["SUPERVISOR_NUMPROCS"] = strconv.Itoa(n)
 	return out
 }

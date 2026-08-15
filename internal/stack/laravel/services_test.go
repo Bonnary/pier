@@ -132,6 +132,20 @@ func TestServicesPortKeysMatchPorts(t *testing.T) {
 	}
 }
 
+func TestEnvWithWorkers(t *testing.T) {
+	base := map[string]string{"CONTAINER_ROLE": "queue"}
+	got := envWithWorkers(base, 3)
+	if v := got["SUPERVISOR_NUMPROCS"]; v != "3" {
+		t.Errorf("SUPERVISOR_NUMPROCS = %q, want 3", v)
+	}
+	if v := got["CONTAINER_ROLE"]; v != "queue" {
+		t.Errorf("CONTAINER_ROLE = %q, want queue (copy must keep base keys)", v)
+	}
+	if _, ok := base["SUPERVISOR_NUMPROCS"]; ok {
+		t.Error("envWithWorkers mutated base (the registry map is shared across renders; mutating it would leak a stale count)")
+	}
+}
+
 func TestQueueSchedulerSetSupervisorCommand(t *testing.T) {
 	for _, name := range []string{"queue", "scheduler"} {
 		s := services()[name]
