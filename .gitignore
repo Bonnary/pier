@@ -11,3 +11,4 @@ coverage.txt
 *.swp
 .DS_Store
 .worktrees/
+docs/
