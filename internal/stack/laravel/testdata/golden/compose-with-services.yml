@@ -20,6 +20,7 @@ services:
             QUEUE_CONNECTION: redis
             REDIS_HOST: redis
             REDIS_PORT: "6379"
+            SUPERVISOR_NUMPROCS: "1"
         volumes:
             - ./:/var/www/html
         extra_hosts:

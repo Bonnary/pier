@@ -14,6 +14,7 @@ services:
             APP_DEBUG: "true"
             APP_ENV: local
             DB_CONNECTION: sqlite
+            SUPERVISOR_NUMPROCS: "1"
         volumes:
             - ./:/var/www/html
         extra_hosts:

@@ -169,6 +169,12 @@ func renderDevCompose(cfg config.Config) ([]byte, error) {
 		if name == "queue" || name == "scheduler" {
 			cs.Volumes = append(cs.Volumes, "./:/var/www/html")
 		}
+		switch name {
+		case "queue":
+			cs.Environment = envWithWorkers(cs.Environment, cfg.QueueWorkers())
+		case "scheduler":
+			cs.Environment = envWithWorkers(cs.Environment, 1)
+		}
 		cf.Services[name] = cs
 	}
 
@@ -216,7 +222,7 @@ func renderDevCompose(cfg config.Config) ([]byte, error) {
 }
 
 func devEnvForServices(svcSet map[string]bool) map[string]string {
-	env := map[string]string{"APP_ENV": "local", "APP_DEBUG": "true"}
+	env := map[string]string{"APP_ENV": "local", "APP_DEBUG": "true", "SUPERVISOR_NUMPROCS": "1"}
 	switch {
 	case svcSet["mysql"]:
 		env["DB_CONNECTION"] = "mysql"

@@ -228,7 +228,7 @@ func TestGenerateDevComposeLaravelTestHasPorts(t *testing.T) {
 		t.Fatal("laravel.test missing")
 	}
 	wantPorts := map[string]bool{
-		"127.0.0.1:8000:80":  false,
+		"127.0.0.1:8000:80":   false,
 		"127.0.0.1:5173:5173": false,
 	}
 	for _, p := range lt.Ports {
@@ -449,6 +449,100 @@ func TestGenerateDevComposePortZeroOptOut(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("mailpit ports = %v, want 127.0.0.1:1025:1025 (SMTP) still present", mp.Ports)
+	}
+}
+
+func TestGenerateDevComposeQueueWorkers(t *testing.T) {
+	s := New()
+	files, err := s.GenerateDevCompose(config.Config{
+		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22", Services: []string{"queue", "scheduler"}, QueueWorkers: 3},
+	})
+	if err != nil {
+		t.Fatalf("GenerateDevCompose: %v", err)
+	}
+	got := findFile(files, "docker-compose.yml")
+	if got == nil {
+		t.Fatal("docker-compose.yml missing")
+	}
+	var doc struct {
+		Services map[string]struct {
+			Env map[string]string `yaml:"environment"`
+		} `yaml:"services"`
+	}
+	if err := yaml.Unmarshal(got.Contents, &doc); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	want := map[string]string{"queue": "3", "scheduler": "1", "laravel.test": "1"}
+	for name, n := range want {
+		svc, ok := doc.Services[name]
+		if !ok {
+			t.Errorf("service %q missing from dev compose", name)
+			continue
+		}
+		if v := svc.Env["SUPERVISOR_NUMPROCS"]; v != n {
+			t.Errorf("dev %s SUPERVISOR_NUMPROCS = %q, want %q", name, v, n)
+		}
+	}
+}
+
+func TestGenerateDevComposeQueueWorkersDefault(t *testing.T) {
+	s := New()
+	files, err := s.GenerateDevCompose(config.Config{
+		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22", Services: []string{"queue"}},
+	})
+	if err != nil {
+		t.Fatalf("GenerateDevCompose: %v", err)
+	}
+	got := findFile(files, "docker-compose.yml")
+	var doc struct {
+		Services map[string]struct {
+			Env map[string]string `yaml:"environment"`
+		} `yaml:"services"`
+	}
+	if err := yaml.Unmarshal(got.Contents, &doc); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if v := doc.Services["queue"].Env["SUPERVISOR_NUMPROCS"]; v != "1" {
+		t.Errorf("dev queue SUPERVISOR_NUMPROCS = %q, want 1 (absent config must default)", v)
+	}
+}
+
+func TestGenerateDevComposeQueueWorkersNoRegistryLeak(t *testing.T) {
+	s := New()
+	// A render with an explicit count must not poison a later render
+	// with the default (the registry Env map is shared).
+	first, err := s.GenerateDevCompose(config.Config{
+		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22", Services: []string{"queue"}, QueueWorkers: 5},
+	})
+	if err != nil {
+		t.Fatalf("GenerateDevCompose (first): %v", err)
+	}
+	second, err := s.GenerateDevCompose(config.Config{
+		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22", Services: []string{"queue"}},
+	})
+	if err != nil {
+		t.Fatalf("GenerateDevCompose (second): %v", err)
+	}
+	decode := func(b []byte) string {
+		var doc struct {
+			Services map[string]struct {
+				Env map[string]string `yaml:"environment"`
+			} `yaml:"services"`
+		}
+		if err := yaml.Unmarshal(b, &doc); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		return doc.Services["queue"].Env["SUPERVISOR_NUMPROCS"]
+	}
+	if v := decode(findFile(first, "docker-compose.yml").Contents); v != "5" {
+		t.Errorf("first render queue SUPERVISOR_NUMPROCS = %q, want 5", v)
+	}
+	if v := decode(findFile(second, "docker-compose.yml").Contents); v != "1" {
+		t.Errorf("second render queue SUPERVISOR_NUMPROCS = %q, want 1 (registry env must not leak between renders)", v)
 	}
 }
 
