@@ -32,6 +32,13 @@ func TestInitWritesPierToml(t *testing.T) {
 			t.Errorf("expected %s after init: %v", want, err)
 		}
 	}
+	tomlBytes, err := os.ReadFile(filepath.Join(dir, "pier.toml"))
+	if err != nil {
+		t.Fatalf("read pier.toml: %v", err)
+	}
+	if !strings.Contains(string(tomlBytes), "queue_workers = 1") {
+		t.Errorf("pier.toml missing queue_workers = 1:\n%s", tomlBytes)
+	}
 }
 
 func TestInitFailsOnExistingPierToml(t *testing.T) {

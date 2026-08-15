@@ -10,7 +10,7 @@ import (
 func tomlEncode(c config.Config) ([]byte, error) {
 	var b bytes.Buffer
 	fmt.Fprintf(&b, "[project]\nname = %q\ndomain = %q\n\n", c.Project.Name, c.Project.Domain)
-	fmt.Fprintf(&b, "[stack]\ntype = %q\nphp = %q\nnode = %q\nservices = [", c.Stack.Type, c.Stack.PHP, c.Stack.Node)
+	fmt.Fprintf(&b, "[stack]\ntype = %q\nphp = %q\nnode = %q\nqueue_workers = %d\nservices = [", c.Stack.Type, c.Stack.PHP, c.Stack.Node, c.QueueWorkers())
 	for i, s := range c.Stack.Services {
 		if i > 0 {
 			b.WriteString(", ")

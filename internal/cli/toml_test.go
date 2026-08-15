@@ -21,6 +21,7 @@ func TestTomlEncodeRendersCommentedHookExamples(t *testing.T) {
 	}
 	got := string(b)
 	for _, want := range []string{
+		`queue_workers = 1`,
 		`# before_deploy = ["php artisan down"]`,
 		`# after_deploy = ["php artisan migrate --force"]`,
 	} {
