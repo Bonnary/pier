@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/Bonnary/pier/internal/config"
@@ -181,11 +182,16 @@ func renderProdCompose(cfg config.Config, env string, services []string) ([]byte
 			// authenticates with dev credentials against the deploy
 			// host's database and crash-loops with "password
 			// authentication failed".
-			env := prodEnvForServices(services)
+			// svcEnv (not env) so the function parameter env — the
+			// deploy env name — stays reachable for QueueWorkersForEnv.
+			svcEnv := prodEnvForServices(services)
 			for k, v := range s.Env {
-				env[k] = v
+				svcEnv[k] = v
 			}
-			cs.Environment = env
+			if name == "queue" {
+				svcEnv["SUPERVISOR_NUMPROCS"] = strconv.Itoa(cfg.QueueWorkersForEnv(env))
+			}
+			cs.Environment = svcEnv
 		}
 		cf.Services[name] = cs
 	}
@@ -244,7 +250,7 @@ func prodEnvForServices(services []string) map[string]string {
 	// passes --env-file .env.production). APP_KEY must be present or
 	// session encryption throws; DB_PASSWORD must be present or
 	// Postgres answers `fe_sendauth: no password supplied` (500).
-	env := map[string]string{"APP_ENV": "production", "APP_DEBUG": "false", "APP_KEY": "${APP_KEY}"}
+	env := map[string]string{"APP_ENV": "production", "APP_DEBUG": "false", "APP_KEY": "${APP_KEY}", "SUPERVISOR_NUMPROCS": "1"}
 	set := map[string]bool{}
 	for _, s := range services {
 		set[s] = true

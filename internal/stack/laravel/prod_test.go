@@ -841,3 +841,52 @@ func TestGenerateProdFilesHostServerKeepsBuild(t *testing.T) {
 		t.Errorf("host_server prod compose must keep image myapp:latest:\n%s", body)
 	}
 }
+
+func TestGenerateProdComposeQueueWorkers(t *testing.T) {
+	s := New()
+	cfg := config.Config{
+		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22", Services: []string{"redis", "queue", "scheduler"}, QueueWorkers: 3},
+		Deploy: map[string]config.DeployConfig{
+			"production": {QueueWorkers: 5},
+		},
+	}
+	decode := func(t *testing.T, env string) map[string]string {
+		t.Helper()
+		files, err := s.GenerateProdFiles(cfg, env)
+		if err != nil {
+			t.Fatalf("GenerateProdFiles(%s): %v", env, err)
+		}
+		got := findFile(files, "docker-compose.prod.yml")
+		if got == nil {
+			t.Fatal("docker-compose.prod.yml missing")
+		}
+		var doc struct {
+			Services map[string]struct {
+				Env map[string]string `yaml:"environment"`
+			} `yaml:"services"`
+		}
+		if err := yaml.Unmarshal(got.Contents, &doc); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		out := map[string]string{}
+		for _, name := range []string{"queue", "scheduler", "app"} {
+			out[name] = doc.Services[name].Env["SUPERVISOR_NUMPROCS"]
+		}
+		return out
+	}
+	prod := decode(t, "production")
+	if v := prod["queue"]; v != "5" {
+		t.Errorf("prod queue SUPERVISOR_NUMPROCS = %q, want 5 (deploy override wins)", v)
+	}
+	if v := prod["scheduler"]; v != "1" {
+		t.Errorf("prod scheduler SUPERVISOR_NUMPROCS = %q, want 1", v)
+	}
+	if v := prod["app"]; v != "1" {
+		t.Errorf("prod app SUPERVISOR_NUMPROCS = %q, want 1", v)
+	}
+	staging := decode(t, "staging")
+	if v := staging["queue"]; v != "3" {
+		t.Errorf("staging queue SUPERVISOR_NUMPROCS = %q, want 3 (no override inherits stack)", v)
+	}
+}
