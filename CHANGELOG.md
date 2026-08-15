@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `queue_workers` config (`[stack]` default 1, `[deploy.<env>]`
+  override, max 32) runs that many `queue:work` processes in the
+  queue container via supervisord `numprocs`, in dev and prod.
+  `pier init` writes the explicit default.
+
 ## v0.0.5-beta (2026-08-11)
 
 ### Added

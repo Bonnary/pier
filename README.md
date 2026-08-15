@@ -278,6 +278,7 @@ type  = "laravel"
 php   = "8.3"
 node  = "22"
 services = ["redis", "mailpit"]
+queue_workers = 1   # concurrent queue:work processes (default: 1; max: 32)
 
 [dev]
 # bind = "0.0.0.0"   # uncomment to expose dev ports to your LAN (default: 127.0.0.1)
@@ -293,6 +294,7 @@ user   = "deploy"
 path   = "/srv/myapp"
 branch = "main"
 services = ["redis", "queue"]   # optional; absent = inherit [stack].services
+# queue_workers = 4   # optional; absent = inherit [stack].queue_workers
 tls    = false   # false (default): plain HTTP. true: HTTPS URLs + 443 — requires the upcoming cert feature
 before_deploy = ["php artisan down"]              # runs in the app container before the new release starts
 after_deploy = ["php artisan migrate --force"]    # runs in the app container after the new release is up
@@ -337,6 +339,17 @@ it (preserving hand-written edits), and containers of removed
 services are stopped and removed on the server (their volumes are
 kept). Use it to run SeaweedFS in dev but AWS S3 in production, or
 MySQL locally with Postgres on the server.
+
+`queue_workers` sets how many concurrent `queue:work` processes the
+queue service runs, in dev and prod. `[stack].queue_workers` is the
+base value (default 1); `[deploy.<env>].queue_workers` overrides it
+per env. Each worker is a separate PHP process (roughly 50–100 MB
+each), so size the count against the server's RAM — a small VPS
+should stay at 1–2 while a dedicated box can go higher (max 32). The
+value is baked into `docker-compose.yml` / `docker-compose.prod.yml`
+at render time, so changing it and running `pier dev` (or `pier
+deploy <env>`, which re-renders) recreates the queue container with
+the new count.
 
 `[deploy.<env>]` also accepts optional `before_deploy` and
 `after_deploy` command lists. Each entry runs inside the app
