@@ -27,6 +27,9 @@ func tomlEncode(c config.Config) ([]byte, error) {
 		fmt.Fprintf(&b, "path = %q\n", dc.Path)
 		fmt.Fprintf(&b, "branch = %q\n", dc.Branch)
 		fmt.Fprintf(&b, "builder = %q\n", dc.BuilderMode())
+		if dc.QueueWorkers > 0 {
+			fmt.Fprintf(&b, "queue_workers = %d\n", dc.QueueWorkers)
+		}
 		if dc.BuildHost != "" {
 			fmt.Fprintf(&b, "build_host = %q\n", dc.BuildHost)
 		}
