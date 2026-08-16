@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -26,8 +27,8 @@ func TestLoadFullWithPorts(t *testing.T) {
 	if got := prod.Domain; got != "myapp.example.com" {
 		t.Errorf("Deploy[production].Domain = %q, want myapp.example.com (domain = ... in full-ports.toml)", got)
 	}
-	if got := prod.ExtraDomains; len(got) != 1 || got[0] != "www.myapp.example.com" {
-		t.Errorf("Deploy[production].ExtraDomains = %v, want [www.myapp.example.com]", got)
+	if got := prod.RedirectDomains; len(got) != 1 || got[0] != "www.myapp.example.com" {
+		t.Errorf("Deploy[production].RedirectDomains = %v, want [www.myapp.example.com]", got)
 	}
 }
 
@@ -72,8 +73,8 @@ func TestLoadFull(t *testing.T) {
 	if staging.Branch != "develop" {
 		t.Errorf("staging.Branch = %q, want develop", staging.Branch)
 	}
-	if got := cfg.DomainForEnv("staging"); got != "myapp.example.com" {
-		t.Errorf("DomainForEnv(staging) = %q, want myapp.example.com (no [deploy.staging].domain → inherit [project].domain)", got)
+	if got := staging.Domain; got != "staging.myapp.example.com" {
+		t.Errorf("staging.Domain = %q, want staging.myapp.example.com (each env carries its own domain)", got)
 	}
 }
 
@@ -96,7 +97,7 @@ func TestLoadMissing(t *testing.T) {
 
 func TestValidatePHPVersion(t *testing.T) {
 	c := &Config{
-		Project: ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Project: ProjectConfig{Name: "x"},
 		Stack:   StackConfig{Type: "laravel", PHP: "7.4", Node: "22"},
 	}
 	if err := c.Validate(); !errors.Is(err, ErrConfigInvalid) {
@@ -106,7 +107,7 @@ func TestValidatePHPVersion(t *testing.T) {
 
 func TestValidateStackType(t *testing.T) {
 	c := &Config{
-		Project: ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Project: ProjectConfig{Name: "x"},
 		Stack:   StackConfig{Type: "rails", PHP: "8.3", Node: "22"},
 	}
 	if err := c.Validate(); !errors.Is(err, ErrConfigInvalid) {
@@ -116,7 +117,7 @@ func TestValidateStackType(t *testing.T) {
 
 func TestValidateDevPortOutOfRange(t *testing.T) {
 	c := &Config{
-		Project: ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Project: ProjectConfig{Name: "x"},
 		Stack:   StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 		Dev:     DevConfig{Ports: map[string]int{"laravel": -1}},
 	}
@@ -127,7 +128,7 @@ func TestValidateDevPortOutOfRange(t *testing.T) {
 
 func TestValidateDevPortTooLarge(t *testing.T) {
 	c := &Config{
-		Project: ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Project: ProjectConfig{Name: "x"},
 		Stack:   StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 		Dev:     DevConfig{Ports: map[string]int{"laravel": 70000}},
 	}
@@ -138,7 +139,7 @@ func TestValidateDevPortTooLarge(t *testing.T) {
 
 func TestValidateDevPortZeroAccepted(t *testing.T) {
 	c := &Config{
-		Project: ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Project: ProjectConfig{Name: "x"},
 		Stack:   StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 		Dev:     DevConfig{Ports: map[string]int{"laravel": 0}},
 	}
@@ -149,7 +150,7 @@ func TestValidateDevPortZeroAccepted(t *testing.T) {
 
 func TestValidateDevPortRejectsWebserverHTTP(t *testing.T) {
 	c := &Config{
-		Project: ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Project: ProjectConfig{Name: "x"},
 		Stack:   StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 		Dev:     DevConfig{Ports: map[string]int{"webserver_http": 80}},
 	}
@@ -164,7 +165,7 @@ func TestValidateDevPortRejectsWebserverHTTP(t *testing.T) {
 
 func TestValidateDeployPortRejectsVite(t *testing.T) {
 	c := &Config{
-		Project: ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Project: ProjectConfig{Name: "x"},
 		Stack:   StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 		Deploy: map[string]DeployConfig{
 			"production": {Host: "h", User: "u", Path: "p", Branch: "b", Ports: map[string]int{"vite": 5173}},
@@ -181,7 +182,7 @@ func TestValidateDeployPortRejectsVite(t *testing.T) {
 
 func TestValidateDeployPortRejectsMailpitSMTP(t *testing.T) {
 	c := &Config{
-		Project: ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Project: ProjectConfig{Name: "x"},
 		Stack:   StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 		Deploy: map[string]DeployConfig{
 			"production": {Host: "h", User: "u", Path: "p", Branch: "b", Ports: map[string]int{"mailpit_smtp": 1025}},
@@ -194,7 +195,7 @@ func TestValidateDeployPortRejectsMailpitSMTP(t *testing.T) {
 
 func TestValidateDeployPortAcceptsWebserverHTTP(t *testing.T) {
 	c := &Config{
-		Project: ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Project: ProjectConfig{Name: "x"},
 		Stack:   StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 		Deploy: map[string]DeployConfig{
 			"production": {Host: "h", User: "u", Path: "p", Branch: "b", Ports: map[string]int{"webserver_http": 8080}},
@@ -207,7 +208,7 @@ func TestValidateDeployPortAcceptsWebserverHTTP(t *testing.T) {
 
 func TestDevBindDefaults(t *testing.T) {
 	c := &Config{
-		Project: ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Project: ProjectConfig{Name: "x"},
 		Stack:   StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 	}
 	if err := c.Validate(); err != nil {
@@ -220,7 +221,7 @@ func TestDevBindDefaults(t *testing.T) {
 
 func TestDevBindEmptyStringTreatedAsAbsent(t *testing.T) {
 	c := &Config{
-		Project: ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Project: ProjectConfig{Name: "x"},
 		Stack:   StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 		Dev:     DevConfig{Bind: ""},
 	}
@@ -234,7 +235,7 @@ func TestDevBindEmptyStringTreatedAsAbsent(t *testing.T) {
 
 func TestDevBindLoopbackAccepted(t *testing.T) {
 	c := &Config{
-		Project: ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Project: ProjectConfig{Name: "x"},
 		Stack:   StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 		Dev:     DevConfig{Bind: "127.0.0.1"},
 	}
@@ -245,7 +246,7 @@ func TestDevBindLoopbackAccepted(t *testing.T) {
 
 func TestDevBindAllInterfacesAccepted(t *testing.T) {
 	c := &Config{
-		Project: ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Project: ProjectConfig{Name: "x"},
 		Stack:   StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 		Dev:     DevConfig{Bind: "0.0.0.0"},
 	}
@@ -270,7 +271,7 @@ func TestLoadHookLists(t *testing.T) {
 
 func TestValidateHookListAcceptsValid(t *testing.T) {
 	c := &Config{
-		Project: ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Project: ProjectConfig{Name: "x"},
 		Stack:   StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 		Deploy: map[string]DeployConfig{
 			"production": {
@@ -287,7 +288,7 @@ func TestValidateHookListAcceptsValid(t *testing.T) {
 
 func TestValidateHookListRejectsEmptyEntry(t *testing.T) {
 	c := &Config{
-		Project: ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Project: ProjectConfig{Name: "x"},
 		Stack:   StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 		Deploy: map[string]DeployConfig{
 			"production": {Host: "h", User: "u", Path: "p", Branch: "b", BeforeDeploy: []string{""}},
@@ -304,7 +305,7 @@ func TestValidateHookListRejectsEmptyEntry(t *testing.T) {
 
 func TestValidateHookListRejectsWhitespaceOnlyEntry(t *testing.T) {
 	c := &Config{
-		Project: ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Project: ProjectConfig{Name: "x"},
 		Stack:   StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 		Deploy: map[string]DeployConfig{
 			"production": {Host: "h", User: "u", Path: "p", Branch: "b", AfterDeploy: []string{"   "}},
@@ -321,7 +322,7 @@ func TestValidateHookListRejectsWhitespaceOnlyEntry(t *testing.T) {
 
 func TestValidateHookListRejectsUnterminatedQuote(t *testing.T) {
 	c := &Config{
-		Project: ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Project: ProjectConfig{Name: "x"},
 		Stack:   StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 		Deploy: map[string]DeployConfig{
 			"production": {Host: "h", User: "u", Path: "p", Branch: "b", BeforeDeploy: []string{`php "unterminated`}},
@@ -334,7 +335,7 @@ func TestValidateHookListRejectsUnterminatedQuote(t *testing.T) {
 
 func TestValidateDeployScaffoldAllowsEmptyHostUserPathBranch(t *testing.T) {
 	cfg := Config{
-		Project: ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Project: ProjectConfig{Name: "x"},
 		Stack:   StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 		Deploy:  map[string]DeployConfig{"production": {Services: []string{"redis"}}},
 	}
@@ -345,7 +346,7 @@ func TestValidateDeployScaffoldAllowsEmptyHostUserPathBranch(t *testing.T) {
 
 func TestValidateDeployPartialConfigStillRejected(t *testing.T) {
 	cfg := Config{
-		Project: ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Project: ProjectConfig{Name: "x"},
 		Stack:   StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 		Deploy:  map[string]DeployConfig{"production": {Host: "h"}},
 	}
@@ -389,7 +390,7 @@ func TestServicesForEnvExplicitEmpty(t *testing.T) {
 
 func TestValidateBuilderModes(t *testing.T) {
 	base := &Config{
-		Project: ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Project: ProjectConfig{Name: "x"},
 		Stack:   StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 		Deploy: map[string]DeployConfig{
 			"production": {Host: "h", User: "u", Path: "/srv/x", Branch: "main"},
@@ -449,7 +450,7 @@ func TestDevBindRejectsUnknown(t *testing.T) {
 	cases := []string{"::", "localhost", "192.168.1.1", "0", "10.0.0.1", "::1", "1.2.3.4"}
 	for _, v := range cases {
 		c := &Config{
-			Project: ProjectConfig{Name: "x", Domain: "x.example.com"},
+			Project: ProjectConfig{Name: "x"},
 			Stack:   StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 			Dev:     DevConfig{Bind: v},
 		}
@@ -499,7 +500,7 @@ func TestQueueWorkersEnvOverride(t *testing.T) {
 func TestValidateQueueWorkers(t *testing.T) {
 	valid := func(qw int) *Config {
 		return &Config{
-			Project: ProjectConfig{Name: "x", Domain: "x.example.com"},
+			Project: ProjectConfig{Name: "x"},
 			Stack:   StackConfig{Type: "laravel", PHP: "8.3", Node: "22", QueueWorkers: qw},
 		}
 	}
@@ -521,59 +522,32 @@ func TestValidateQueueWorkers(t *testing.T) {
 	}
 }
 
-func TestDomainForEnv(t *testing.T) {
-	cfg := Config{
-		Project: ProjectConfig{Name: "x", Domain: "x.example.com"},
-		Deploy: map[string]DeployConfig{
-			"prod":  {Domain: "prod.example.com"},
-			"stage": {},
-		},
-	}
-	if got := cfg.DomainForEnv("prod"); got != "prod.example.com" {
-		t.Errorf(`DomainForEnv("prod") = %q, want prod.example.com (env override wins)`, got)
-	}
-	if got := cfg.DomainForEnv("stage"); got != "x.example.com" {
-		t.Errorf(`DomainForEnv("stage") = %q, want x.example.com (inherit project domain)`, got)
-	}
-	if got := cfg.DomainForEnv("missing"); got != "x.example.com" {
-		t.Errorf(`DomainForEnv("missing") = %q, want x.example.com`, got)
-	}
-	empty := Config{Project: ProjectConfig{Name: "x"}}
-	if got := empty.DomainForEnv("prod"); got != "" {
-		t.Errorf("DomainForEnv(prod) = %q, want \"\" (no domain anywhere = plain HTTP)", got)
-	}
-}
-
-func TestValidateEmptyProjectDomainAllowed(t *testing.T) {
-	c := &Config{
-		Project: ProjectConfig{Name: "x"},
-		Stack:   StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
-	}
-	if err := c.Validate(); err != nil {
-		t.Errorf("Validate(empty domain) = %v, want nil (empty domain = plain HTTP by IP)", err)
-	}
-}
-
-func TestValidateDomainSyntax(t *testing.T) {
+func TestValidateDeployDomainSyntax(t *testing.T) {
 	cases := []struct {
 		name  string
 		field string
 	}{
-		{"project domain with scheme", "https://myapp.example.com"},
-		{"project domain with port", "myapp.example.com:8443"},
-		{"project domain with path", "myapp.example.com/app"},
-		{"project domain with tab", "myapp.example.com\t"},
-		{"project domain with bare IP", "192.168.122.30"},
+		{"deploy domain with scheme", "https://prod.example.com"},
+		{"deploy domain with port", "prod.example.com:8443"},
+		{"deploy domain with path", "prod.example.com/app"},
+		{"deploy domain with tab", "prod.example.com\t"},
+		{"deploy domain with bare IP", "192.168.122.30"},
 	}
 	for _, c := range cases {
 		cfg := &Config{
-			Project: ProjectConfig{Name: "x", Domain: c.field},
+			Project: ProjectConfig{Name: "x"},
 			Stack:   StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+			Deploy: map[string]DeployConfig{
+				"production": {Host: "h", User: "u", Path: "p", Branch: "b", Domain: c.field},
+			},
 		}
 		err := cfg.Validate()
 		if !errors.Is(err, ErrConfigInvalid) {
 			t.Errorf("%s: Validate = %v, want ErrConfigInvalid", c.name, err)
 			continue
+		}
+		if !strings.Contains(err.Error(), "deploy.production.domain") {
+			t.Errorf("%s: err = %q, want it to mention deploy.production.domain", c.name, err)
 		}
 		if !strings.Contains(err.Error(), fmt.Sprintf("%q", c.field)) {
 			t.Errorf("%s: err = %q, want it to mention the bad domain", c.name, err)
@@ -581,49 +555,48 @@ func TestValidateDomainSyntax(t *testing.T) {
 	}
 }
 
-func TestValidateDeployDomainSyntax(t *testing.T) {
-	c := &Config{
-		Project: ProjectConfig{Name: "x", Domain: "x.example.com"},
-		Stack:   StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
-		Deploy: map[string]DeployConfig{
-			"production": {Host: "h", User: "u", Path: "p", Branch: "b", Domain: "https://prod.example.com"},
-		},
-	}
-	err := c.Validate()
-	if !errors.Is(err, ErrConfigInvalid) {
-		t.Fatalf("Validate = %v, want ErrConfigInvalid", err)
-	}
-	if !strings.Contains(err.Error(), "deploy.production.domain") {
-		t.Errorf("err = %q, want it to mention deploy.production.domain", err)
-	}
-}
-
-func TestValidateExtraDomains(t *testing.T) {
+func TestValidateRedirectDomains(t *testing.T) {
 	base := func(extra []string) *Config {
 		return &Config{
-			Project: ProjectConfig{Name: "x", Domain: "x.example.com"},
+			Project: ProjectConfig{Name: "x"},
 			Stack:   StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 			Deploy: map[string]DeployConfig{
-				"production": {Host: "h", User: "u", Path: "p", Branch: "b", ExtraDomains: extra},
+				"production": {Host: "h", User: "u", Path: "p", Branch: "b", Domain: "x.example.com", RedirectDomains: extra},
 			},
 		}
 	}
 	if err := base([]string{"www.x.example.com"}).Validate(); err != nil {
-		t.Errorf("Validate(valid extra_domains) = %v, want nil", err)
+		t.Errorf("Validate(valid redirect_domains) = %v, want nil", err)
 	}
 	if err := base([]string{"bad domain"}).Validate(); !errors.Is(err, ErrConfigInvalid) {
-		t.Errorf("Validate(extra_domains with space) = %v, want ErrConfigInvalid", err)
+		t.Errorf("Validate(redirect_domains with space) = %v, want ErrConfigInvalid", err)
 	}
 	if err := base([]string{"www.x.example.com", "www.x.example.com"}).Validate(); !errors.Is(err, ErrConfigInvalid) {
-		t.Errorf("Validate(duplicate extra_domains) = %v, want ErrConfigInvalid", err)
+		t.Errorf("Validate(duplicate redirect_domains) = %v, want ErrConfigInvalid", err)
 	}
 	if err := base([]string{"X.EXAMPLE.COM"}).Validate(); !errors.Is(err, ErrConfigInvalid) {
-		t.Errorf("Validate(extra_domains case-variant of primary) = %v, want ErrConfigInvalid", err)
+		t.Errorf("Validate(redirect_domains case-variant of domain) = %v, want ErrConfigInvalid", err)
 	}
 	if err := base([]string{"www.x.example.com", "WWW.X.EXAMPLE.COM"}).Validate(); !errors.Is(err, ErrConfigInvalid) {
-		t.Errorf("Validate(duplicate extra_domains case-variant) = %v, want ErrConfigInvalid", err)
+		t.Errorf("Validate(duplicate redirect_domains case-variant) = %v, want ErrConfigInvalid", err)
 	}
 	if err := base([]string{"x.example.com"}).Validate(); !errors.Is(err, ErrConfigInvalid) {
-		t.Errorf("Validate(extra_domains containing primary) = %v, want ErrConfigInvalid", err)
+		t.Errorf("Validate(redirect_domains containing the domain) = %v, want ErrConfigInvalid", err)
+	}
+}
+
+func TestLoadIgnoresProjectDomain(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "pier.toml")
+	toml := "[project]\nname=\"x\"\ndomain=\"x.example.com\"\n[stack]\ntype=\"laravel\"\nphp=\"8.3\"\nnode=\"22\"\n[deploy.production]\nhost=\"h\"\nuser=\"u\"\npath=\"p\"\nbranch=\"b\"\n"
+	if err := os.WriteFile(path, []byte(toml), 0644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got := cfg.Deploy["production"].Domain; got != "" {
+		t.Errorf("Deploy[production].Domain = %q, want \"\" (old [project].domain is ignored; envs serve plain HTTP)", got)
 	}
 }

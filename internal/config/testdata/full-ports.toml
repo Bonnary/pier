@@ -1,6 +1,5 @@
 [project]
 name = "myapp"
-domain = "myapp.example.com"
 
 [stack]
 type = "laravel"
@@ -18,7 +17,7 @@ user   = "deploy"
 path   = "/srv/myapp"
 branch = "main"
 domain = "myapp.example.com"
-extra_domains = ["www.myapp.example.com"]
+redirect_domains = ["www.myapp.example.com"]
 
 [deploy.production.ports]
 laravel = 8383

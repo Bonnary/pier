@@ -43,14 +43,10 @@ type Config struct {
 	Deploy  map[string]DeployConfig `toml:"deploy"`
 }
 
-// ProjectConfig is the [project] table: a friendly name and the
-// public domain the app will be served from in production. An empty
-// domain means deploy envs serve plain HTTP by IP (no TLS); a
-// non-empty domain means Caddy serves HTTPS with a Let's Encrypt
-// certificate.
+// ProjectConfig is the [project] table: the project's friendly name.
+// Public domains are configured per deploy env in [deploy.<env>].domain.
 type ProjectConfig struct {
-	Name   string `toml:"name"`
-	Domain string `toml:"domain"`
+	Name string `toml:"name"`
 }
 
 // StackConfig is the [stack] table: stack type, PHP and Node major
@@ -93,7 +89,7 @@ type DevService struct {
 // DeployConfig is one [deploy.<env>] table: SSH target, remote path,
 // branch to build from, per-env host-port overrides, the public
 // domain(s) Caddy serves, and the pre/post deploy hook commands.
-// A non-empty effective domain means Caddy serves HTTPS with an
+// A non-empty env domain means Caddy serves HTTPS with an
 // automatic Let's Encrypt certificate; an empty one means plain
 // HTTP by IP.
 type DeployConfig struct {
@@ -101,13 +97,14 @@ type DeployConfig struct {
 	User   string `toml:"user"`
 	Path   string `toml:"path"`
 	Branch string `toml:"branch"`
-	// Domain overrides [project].domain for this env. See
-	// Config.DomainForEnv for the effective-domain resolution.
+	// Domain is the env's public domain. A non-empty domain means
+	// Caddy serves HTTPS with an automatic Let's Encrypt certificate;
+	// an empty one means plain HTTP by IP.
 	Domain string `toml:"domain"`
-	// ExtraDomains lists additional domains Caddy serves, redirecting
-	// each to the effective domain (e.g. www.example.com for
+	// RedirectDomains lists additional domains Caddy serves,
+	// redirecting each to this env's domain (e.g. www.example.com for
 	// example.com).
-	ExtraDomains []string `toml:"extra_domains"`
+	RedirectDomains []string `toml:"redirect_domains"`
 	// Builder selects where the production image is built for this
 	// env: "host_server" (default, empty means this) builds on the
 	// deploy host itself, "local_machine" builds on the machine
@@ -170,18 +167,6 @@ func (c *Config) ServicesForEnv(env string) []string {
 		return dc.Services
 	}
 	return c.Stack.Services
-}
-
-// DomainForEnv returns the effective public domain for env:
-// [deploy.<env>].domain when set, else [project].domain. An empty
-// result means the env serves plain HTTP (no TLS); a non-empty
-// result means Caddy serves HTTPS with an automatic Let's Encrypt
-// certificate.
-func (c *Config) DomainForEnv(env string) string {
-	if dc, ok := c.Deploy[env]; ok && dc.Domain != "" {
-		return dc.Domain
-	}
-	return c.Project.Domain
 }
 
 // QueueWorkers returns the effective [stack] queue worker count:

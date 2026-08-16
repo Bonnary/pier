@@ -1,6 +1,5 @@
 [project]
 name = "myapp"
-domain = "myapp.example.com"
 
 [stack]
 type = "laravel"
