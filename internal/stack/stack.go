@@ -51,7 +51,7 @@ type Stack interface {
 	// development.
 	GenerateDevCompose(cfg config.Config) (Files, error)
 	// GenerateProdFiles renders docker-compose.prod.yml,
-	// .env.production.example, the nginx default.conf, and the
+	// .env.production.example, the caddy Caddyfile, and the
 	// production runtime Dockerfile for the named env.
 	GenerateProdFiles(cfg config.Config, env string) (Files, error)
 	// RequiredDirs is the list of project-tree directories this

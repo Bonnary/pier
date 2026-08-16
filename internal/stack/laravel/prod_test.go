@@ -28,8 +28,8 @@ func TestGenerateProdFilesNoServices(t *testing.T) {
 	if findFile(files, ".env.production.example") == nil {
 		t.Error(".env.production.example missing")
 	}
-	if findFile(files, "docker/nginx/default.conf") == nil {
-		t.Error("docker/nginx/default.conf missing")
+	if findFile(files, "docker/caddy/Caddyfile") == nil {
+		t.Error("docker/caddy/Caddyfile missing")
 	}
 	compose := string(findFile(files, "docker-compose.prod.yml").Contents)
 	if contains(compose, ":/var/www/html") {
@@ -170,7 +170,7 @@ func TestGenerateProdFilesRendersProdDockerfile(t *testing.T) {
 	}
 }
 
-func TestGenerateProdFilesNginxProxiesToAppHTTPServer(t *testing.T) {
+func TestGenerateProdFilesCaddyfileProxiesToAppHTTPServer(t *testing.T) {
 	s := New()
 	files, err := s.GenerateProdFiles(config.Config{
 		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
@@ -179,19 +179,58 @@ func TestGenerateProdFilesNginxProxiesToAppHTTPServer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateProdFiles: %v", err)
 	}
-	conf := findFile(files, "docker/nginx/default.conf")
+	conf := findFile(files, "docker/caddy/Caddyfile")
 	if conf == nil {
-		t.Fatal("docker/nginx/default.conf missing")
+		t.Fatal("docker/caddy/Caddyfile missing")
 	}
 	body := string(conf.Contents)
-	if strings.Contains(body, "fastcgi_pass") {
-		t.Errorf("nginx conf must not use fastcgi_pass: the app container runs `artisan serve` (PHP built-in server on port 80), not php-fpm — there is no php-fpm binary in the runtime image (apt installs php8.x-cli only), so every request 502s:\n%s", body)
+	if strings.Contains(body, "fastcgi") {
+		t.Errorf("Caddyfile must not use fastcgi: the app container runs `artisan serve` (PHP built-in server on port 80), not php-fpm — there is no php-fpm binary in the runtime image:\n%s", body)
 	}
-	if strings.Contains(body, "try_files") {
-		t.Errorf("nginx conf must not rewrite to /index.php via try_files: the built-in server executes an existing public file directly (bypassing the Laravel router) and returns 500 'headers already sent' for /index.php — every non-file request like /up 500s:\n%s", body)
+	if !strings.Contains(body, "reverse_proxy app:80") {
+		t.Errorf("Caddyfile must proxy requests verbatim to the app's HTTP listener (reverse_proxy app:80), matching the runtime's `artisan serve --host=0.0.0.0 --port=80`:\n%s", body)
 	}
-	if !strings.Contains(body, "proxy_pass http://app:80") {
-		t.Errorf("nginx conf must proxy requests verbatim to the app's HTTP listener (proxy_pass http://app:80), matching the runtime's `artisan serve --host=0.0.0.0 --port=80`:\n%s", body)
+	if !strings.Contains(body, "myapp.example.com") {
+		t.Errorf("Caddyfile missing the site block for the effective domain:\n%s", body)
+	}
+}
+
+func TestRenderCaddyfileHTTPOnly(t *testing.T) {
+	body := renderCaddyfile(config.Config{
+		Project: config.ProjectConfig{Name: "myapp"},
+		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+	}, "production")
+	if !strings.Contains(string(body), ":80 {") {
+		t.Errorf("no-domain Caddyfile must serve :80 (site address with no hostname):\n%s", body)
+	}
+	if !strings.Contains(string(body), "reverse_proxy app:80") {
+		t.Errorf("no-domain Caddyfile missing reverse_proxy app:80:\n%s", body)
+	}
+}
+
+func TestRenderCaddyfileExtraDomains(t *testing.T) {
+	body := renderCaddyfile(config.Config{
+		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+		Deploy: map[string]config.DeployConfig{
+			"production": {ExtraDomains: []string{"www.myapp.example.com"}},
+		},
+	}, "production")
+	if !strings.Contains(string(body), "www.myapp.example.com {\n    redir https://myapp.example.com{uri}\n}") {
+		t.Errorf("extra_domains entry must redirect to the primary domain:\n%s", body)
+	}
+}
+
+func TestRenderCaddyfilePerEnvDomainOverride(t *testing.T) {
+	body := renderCaddyfile(config.Config{
+		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+		Deploy: map[string]config.DeployConfig{
+			"staging": {Domain: "staging.myapp.example.com"},
+		},
+	}, "staging")
+	if !strings.Contains(string(body), "staging.myapp.example.com {") {
+		t.Errorf("per-env domain override must win over [project].domain:\n%s", body)
 	}
 }
 
@@ -375,10 +414,10 @@ func TestGenerateProdFilesInterpolatesSecretsFromEnvFile(t *testing.T) {
 	}
 }
 
-func TestGenerateProdFilesWebserverDefaultPorts(t *testing.T) {
+func TestGenerateProdFilesWebserverNoDomainPorts(t *testing.T) {
 	s := New()
 	files, err := s.GenerateProdFiles(config.Config{
-		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Project: config.ProjectConfig{Name: "myapp"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 		Deploy: map[string]config.DeployConfig{
 			"production": {Host: "h", User: "u", Path: "p", Branch: "b"},
@@ -413,10 +452,10 @@ func TestGenerateProdFilesWebserverDefaultPorts(t *testing.T) {
 		}
 	}
 	if !found80 {
-		t.Errorf("webserver ports = %v, want it to include 80:80 (plain-HTTP default: laravel → container 80)", web.Ports)
+		t.Errorf("webserver ports = %v, want it to include 80:80 (no domain: laravel → container 80)", web.Ports)
 	}
 	if found443 {
-		t.Errorf("webserver ports = %v, must not include 443:443 when tls is off (nginx serves HTTP on 80 only)", web.Ports)
+		t.Errorf("webserver ports = %v, must not include 443:443 when no domain is set (plain HTTP only)", web.Ports)
 	}
 }
 
@@ -453,7 +492,7 @@ func TestGenerateProdFilesPortPartialOverride(t *testing.T) {
 	web := doc.Services["webserver"]
 	found8383, found80 := false, false
 	for _, p := range web.Ports {
-		if p == "8383:80" {
+		if p == "8383:443" {
 			found8383 = true
 		}
 		if p == "80:80" {
@@ -461,10 +500,10 @@ func TestGenerateProdFilesPortPartialOverride(t *testing.T) {
 		}
 	}
 	if !found8383 {
-		t.Errorf("webserver ports = %v, want it to include 8383:80 (laravel override → container 80 when tls is off)", web.Ports)
+		t.Errorf("webserver ports = %v, want it to include 8383:443 (laravel override → container 443 when a domain is set)", web.Ports)
 	}
-	if found80 {
-		t.Errorf("webserver ports = %v, must not publish the webserver_http default 80:80 when tls is off", web.Ports)
+	if !found80 {
+		t.Errorf("webserver ports = %v, want the webserver_http default 80:80 published when a domain is set", web.Ports)
 	}
 	redis := doc.Services["redis"]
 	foundRedis := false
@@ -484,7 +523,7 @@ func TestGenerateProdFilesWebserverTLSPorts(t *testing.T) {
 		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 		Deploy: map[string]config.DeployConfig{
-			"production": {Host: "h", User: "u", Path: "p", Branch: "b", TLS: true},
+			"production": {Host: "h", User: "u", Path: "p", Branch: "b"},
 		},
 	}, "production")
 	if err != nil {
@@ -517,15 +556,43 @@ func TestGenerateProdFilesWebserverTLSPorts(t *testing.T) {
 	}
 	for p, found := range wantPorts {
 		if !found {
-			t.Errorf("webserver ports missing %q; got %v (tls on: laravel=443, webserver_http=80)", p, web.Ports)
+			t.Errorf("webserver ports missing %q; got %v (domain set: laravel=443, webserver_http=80)", p, web.Ports)
+		}
+	}
+	var img struct {
+		Services map[string]struct {
+			Image   string   `yaml:"image"`
+			Volumes []string `yaml:"volumes"`
+		} `yaml:"services"`
+	}
+	if err := yaml.Unmarshal(got.Contents, &img); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if img.Services["webserver"].Image != "caddy:2-alpine" {
+		t.Errorf("webserver image = %q, want caddy:2-alpine", img.Services["webserver"].Image)
+	}
+	wantVols := []string{
+		"./docker/caddy/Caddyfile:/etc/caddy/Caddyfile:ro",
+		"caddy_data:/data",
+		"caddy_config:/config",
+	}
+	for _, v := range wantVols {
+		found := false
+		for _, got := range img.Services["webserver"].Volumes {
+			if got == v {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("webserver volumes = %v, missing %q (Caddyfile bind mount + persistent cert volumes)", img.Services["webserver"].Volumes, v)
 		}
 	}
 }
 
-func TestGenerateProdFilesWebserverHTTPOverrideWhenNoTLS(t *testing.T) {
+func TestGenerateProdFilesWebserverHTTPOverrideWhenNoDomain(t *testing.T) {
 	s := New()
 	files, err := s.GenerateProdFiles(config.Config{
-		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Project: config.ProjectConfig{Name: "myapp"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 		Deploy: map[string]config.DeployConfig{
 			"production": {Host: "h", User: "u", Path: "p", Branch: "b", Ports: map[string]int{"webserver_http": 8080}},
@@ -561,7 +628,7 @@ func TestGenerateProdFilesWebserverHTTPOverrideWhenNoTLS(t *testing.T) {
 	}
 	for p, found := range wantPorts {
 		if !found {
-			t.Errorf("webserver ports missing %q; got %v (tls off: laravel default 80:80 + explicit webserver_http 8080:80)", p, web.Ports)
+			t.Errorf("webserver ports missing %q; got %v (no domain: laravel default 80:80 + explicit webserver_http 8080:80)", p, web.Ports)
 		}
 	}
 }
@@ -569,7 +636,7 @@ func TestGenerateProdFilesWebserverHTTPOverrideWhenNoTLS(t *testing.T) {
 func TestGenerateProdEnvExampleAPPURL(t *testing.T) {
 	s := New()
 	httpFiles, err := s.GenerateProdFiles(config.Config{
-		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Project: config.ProjectConfig{Name: "myapp"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 		Deploy:  map[string]config.DeployConfig{"production": {Host: "h", User: "u", Path: "p", Branch: "b"}},
 	}, "production")
@@ -583,14 +650,14 @@ func TestGenerateProdEnvExampleAPPURL(t *testing.T) {
 	if contains(string(httpEnv.Contents), "Copy to") {
 		t.Errorf(".env.production should not contain copy instructions:\n%s", httpEnv.Contents)
 	}
-	if !contains(string(httpEnv.Contents), "APP_URL=http://myapp.example.com") {
-		t.Errorf("env missing plain-HTTP APP_URL:\n%s", httpEnv.Contents)
+	if !contains(string(httpEnv.Contents), "APP_URL=http://h:80") {
+		t.Errorf("env missing no-domain APP_URL (host:port fallback):\n%s", httpEnv.Contents)
 	}
 
 	httpsFiles, err := s.GenerateProdFiles(config.Config{
 		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
-		Deploy:  map[string]config.DeployConfig{"production": {Host: "h", User: "u", Path: "p", Branch: "b", TLS: true}},
+		Deploy:  map[string]config.DeployConfig{"production": {Host: "h", User: "u", Path: "p", Branch: "b"}},
 	}, "production")
 	if err != nil {
 		t.Fatalf("GenerateProdFiles (https): %v", err)

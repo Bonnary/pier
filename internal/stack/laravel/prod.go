@@ -30,7 +30,7 @@ func (s *Stack) GenerateProdFiles(cfg config.Config, env string) (stack.Files, e
 		return nil, err
 	}
 	envExample := renderProdEnvExample(cfg, env, prodServices)
-	nginx := renderNginx(cfg)
+	caddyfile := renderCaddyfile(cfg, env)
 
 	runtimeDir, err := Runtime(cfg.Stack.PHP)
 	if err != nil {
@@ -47,7 +47,7 @@ func (s *Stack) GenerateProdFiles(cfg config.Config, env string) (stack.Files, e
 		{Path: "docker-compose.prod.yml", Contents: compose, Mode: 0644},
 		{Path: ".env.production", Contents: envFile, Mode: 0644},
 		{Path: ".env.production.example", Contents: envExample, Mode: 0644},
-		{Path: "docker/nginx/default.conf", Contents: nginx, Mode: 0644},
+		{Path: "docker/caddy/Caddyfile", Contents: caddyfile, Mode: 0644},
 		{Path: filepath.Join("docker", cfg.Stack.PHP, "Dockerfile"), Contents: dockerfile, Mode: 0644},
 		{Path: filepath.Join("docker", cfg.Stack.PHP, "Dockerfile.prod"), Contents: renderProdDockerfile(dockerfile, cfg.Stack.PHP), Mode: 0644},
 	}, nil
@@ -96,10 +96,14 @@ func renderProdCompose(cfg config.Config, env string, services []string) ([]byte
 				Networks:    []string{"pier"},
 			},
 			"webserver": {
-				Image:     "nginx:alpine",
-				Restart:   "unless-stopped",
-				Ports:     webserverPorts("", deployCfg.Ports, deployCfg.TLS),
-				Volumes:   []string{"./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro"},
+				Image:   "caddy:2-alpine",
+				Restart: "unless-stopped",
+				Ports:   webserverPorts("", deployCfg.Ports, cfg.DomainForEnv(env) != ""),
+				Volumes: []string{
+					"./docker/caddy/Caddyfile:/etc/caddy/Caddyfile:ro",
+					"caddy_data:/data",
+					"caddy_config:/config",
+				},
 				Networks:  []string{"pier"},
 				DependsOn: []string{"app"},
 			},
@@ -216,17 +220,18 @@ func renderProdCompose(cfg config.Config, env string, services []string) ([]byte
 	return yamlMarshal(cf)
 }
 
-// webserverPorts assembles the `ports:` slice for the webserver service.
-// The "laravel" key is the primary visible port: container 443 when TLS
-// is enabled, container 80 for the plain-HTTP default. "webserver_http"
-// (the HTTP→HTTPS redirect listener) is only published when TLS is
-// enabled, unless the user explicitly set it while TLS is off. Either
-// key may be 0 in the override to opt out. bind is the host-side bind
-// prefix ("" = no prefix, host firewall restricts access; the deploy
-// path always passes "").
-func webserverPorts(bind string, override map[string]int, tls bool) []string {
+// webserverPorts assembles the `ports:` slice for the webserver
+// service. domain reports whether the env has an effective domain:
+// then Caddy serves HTTPS (container 443, port key "laravel") plus
+// the HTTP→HTTPS redirect listener (container 80, port key
+// "webserver_http"); without a domain it serves plain HTTP on
+// container 80 under the "laravel" key. Either key may be 0 in the
+// override to opt out. bind is the host-side bind prefix ("" = no
+// prefix, host firewall restricts access; the deploy path always
+// passes "").
+func webserverPorts(bind string, override map[string]int, domain bool) []string {
 	laravelDefault, laravelContainer := 80, 80
-	if tls {
+	if domain {
 		laravelDefault, laravelContainer = 443, 443
 	}
 	defaults := map[string]int{"laravel": laravelDefault, "webserver_http": 80}
@@ -234,7 +239,7 @@ func webserverPorts(bind string, override map[string]int, tls bool) []string {
 	if host, ok := ResolvePort("laravel", override, defaults); ok {
 		out = append(out, PortBinding(bind, host, laravelContainer))
 	}
-	if tls {
+	if domain {
 		if host, ok := ResolvePort("webserver_http", override, defaults); ok {
 			out = append(out, PortBinding(bind, host, 80))
 		}
@@ -309,7 +314,15 @@ func renderProdEnv(cfg config.Config, env string, services []string) []byte {
 	fmt.Fprintln(&b, "APP_ENV=production")
 	fmt.Fprintln(&b, "APP_KEY=")
 	fmt.Fprintln(&b, "APP_DEBUG=false")
-	fmt.Fprintf(&b, "APP_URL=%s://%s\n\n", WebScheme(cfg, env), cfg.Project.Domain)
+	if domain := cfg.DomainForEnv(env); domain != "" {
+		fmt.Fprintf(&b, "APP_URL=%s://%s\n\n", WebScheme(cfg, env), domain)
+	} else {
+		host := "localhost"
+		if dc, ok := cfg.Deploy[env]; ok && dc.Host != "" {
+			host = dc.Host
+		}
+		fmt.Fprintf(&b, "APP_URL=http://%s:%d\n\n", host, WebPort(cfg, env))
+	}
 	set := map[string]bool{}
 	for _, s := range services {
 		set[s] = true
@@ -350,30 +363,28 @@ func renderProdEnvExample(cfg config.Config, env string, services []string) []by
 	return []byte("# Reference template. pier init writes .env.production with the same keys.\n\n" + string(renderProdEnv(cfg, env, services)))
 }
 
-func renderNginx(cfg config.Config) []byte {
-	return []byte(fmt.Sprintf(`server {
-    listen 80;
-    server_name %s;
-    root /var/www/html/public;
-    index index.php;
-
-    gzip on;
-    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
-    gzip_min_length 256;
-
-    location / {
-        proxy_pass http://app:80;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-
-    location ~ /\.ht {
-        deny all;
-    }
-}
-`, cfg.Project.Domain))
+// renderCaddyfile renders the production Caddyfile for env. With an
+// effective domain, Caddy serves HTTPS with an automatic Let's
+// Encrypt certificate — ownership is proven by the ACME HTTP-01
+// challenge on ports 80/443, so the domain's A record must point at
+// the deploy host — and every extra_domains entry redirects to the
+// primary domain. Without a domain it serves plain HTTP on container
+// port 80.
+func renderCaddyfile(cfg config.Config, env string) []byte {
+	domain := cfg.DomainForEnv(env)
+	if domain == "" {
+		return []byte(":80 {\n    encode gzip\n    reverse_proxy app:80\n}\n")
+	}
+	var dc config.DeployConfig
+	if v, ok := cfg.Deploy[env]; ok {
+		dc = v
+	}
+	var b bytes.Buffer
+	fmt.Fprintf(&b, "%s {\n    encode gzip\n    reverse_proxy app:80\n}\n", domain)
+	for _, extra := range dc.ExtraDomains {
+		fmt.Fprintf(&b, "\n%s {\n    redir https://%s{uri}\n}\n", extra, domain)
+	}
+	return b.Bytes()
 }
 
 func ternary[T any](cond bool, a, b T) T {
