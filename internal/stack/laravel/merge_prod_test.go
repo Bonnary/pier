@@ -10,7 +10,7 @@ func keep(MergeWarning) Decision { return DecisionKeep }
 
 func TestMergeProdEmptyExistingReturnsFresh(t *testing.T) {
 	cfg := config.Config{
-		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Project: config.ProjectConfig{Name: "myapp"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22", Services: []string{"redis"}},
 	}
 	merged, warns, err := MergeProd("", cfg, "production", keep)
@@ -43,7 +43,7 @@ networks:
         driver: bridge
 `
 	cfg := config.Config{
-		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Project: config.ProjectConfig{Name: "myapp"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22", Services: []string{"redis"}},
 	}
 	merged, _, err := MergeProd(existing, cfg, "production", keep)
@@ -67,7 +67,7 @@ func TestMergeProdDropsRemovedPierService(t *testing.T) {
         image: redis:7-alpine
 `
 	cfg := config.Config{
-		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Project: config.ProjectConfig{Name: "myapp"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 		Deploy:  map[string]config.DeployConfig{"production": {Services: []string{}}}, // explicit: no sidecars
 	}
@@ -91,7 +91,7 @@ func TestMergeProdAddsNewPierService(t *testing.T) {
         image: nginx:alpine
 `
 	cfg := config.Config{
-		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Project: config.ProjectConfig{Name: "myapp"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 		Deploy:  map[string]config.DeployConfig{"production": {Services: []string{"postgres"}}},
 	}

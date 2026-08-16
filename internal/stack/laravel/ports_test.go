@@ -173,9 +173,9 @@ services:
 func TestWebScheme(t *testing.T) {
 	base := func(domain string) config.Config {
 		return config.Config{
-			Project: config.ProjectConfig{Name: "x", Domain: domain},
+			Project: config.ProjectConfig{Name: "x"},
 			Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
-			Deploy:  map[string]config.DeployConfig{"production": {}},
+			Deploy:  map[string]config.DeployConfig{"production": {Domain: domain}},
 		}
 	}
 	if got := WebScheme(base(""), "production"); got != "http" {
@@ -192,9 +192,9 @@ func TestWebScheme(t *testing.T) {
 func TestWebPort(t *testing.T) {
 	cfgWith := func(domain string, ports map[string]int) config.Config {
 		return config.Config{
-			Project: config.ProjectConfig{Name: "x", Domain: domain},
+			Project: config.ProjectConfig{Name: "x"},
 			Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
-			Deploy:  map[string]config.DeployConfig{"production": {Ports: ports}},
+			Deploy:  map[string]config.DeployConfig{"production": {Domain: domain, Ports: ports}},
 		}
 	}
 	cases := []struct {

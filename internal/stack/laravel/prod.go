@@ -98,7 +98,7 @@ func renderProdCompose(cfg config.Config, env string, services []string) ([]byte
 			"webserver": {
 				Image:   "caddy:2-alpine",
 				Restart: "unless-stopped",
-				Ports:   webserverPorts("", deployCfg.Ports, cfg.DomainForEnv(env) != ""),
+				Ports:   webserverPorts("", deployCfg.Ports, deployCfg.Domain != ""),
 				Volumes: []string{
 					"./docker/caddy/Caddyfile:/etc/caddy/Caddyfile:ro",
 					"caddy_data:/data",
@@ -221,8 +221,8 @@ func renderProdCompose(cfg config.Config, env string, services []string) ([]byte
 }
 
 // webserverPorts assembles the `ports:` slice for the webserver
-// service. domain reports whether the env has an effective domain:
-// then Caddy serves HTTPS (container 443, port key "laravel") plus
+// service. domain reports whether the env's domain is set: then Caddy
+// serves HTTPS (container 443, port key "laravel") plus
 // the HTTP→HTTPS redirect listener (container 80, port key
 // "webserver_http"); without a domain it serves plain HTTP on
 // container 80 under the "laravel" key. Either key may be 0 in the
@@ -308,22 +308,26 @@ func prodEnvForServices(services []string) map[string]string {
 // real values before deploying.
 func renderProdEnv(cfg config.Config, env string, services []string) []byte {
 	var b bytes.Buffer
+	deployCfg, ok := cfg.Deploy[env]
+	if !ok {
+		deployCfg = config.DeployConfig{}
+	}
 	fmt.Fprintf(&b, "# %s production environment\n", cfg.Project.Name)
 	fmt.Fprintf(&b, "# Fill in real values before deploying.\n\n")
 	fmt.Fprintln(&b, "APP_NAME="+cfg.Project.Name)
 	fmt.Fprintln(&b, "APP_ENV=production")
 	fmt.Fprintln(&b, "APP_KEY=")
 	fmt.Fprintln(&b, "APP_DEBUG=false")
-	if domain := cfg.DomainForEnv(env); domain != "" {
+	if deployCfg.Domain != "" {
 		if WebPort(cfg, env) == 443 {
-			fmt.Fprintf(&b, "APP_URL=%s://%s\n\n", WebScheme(cfg, env), domain)
+			fmt.Fprintf(&b, "APP_URL=%s://%s\n\n", WebScheme(cfg, env), deployCfg.Domain)
 		} else {
-			fmt.Fprintf(&b, "APP_URL=%s://%s:%d\n\n", WebScheme(cfg, env), domain, WebPort(cfg, env))
+			fmt.Fprintf(&b, "APP_URL=%s://%s:%d\n\n", WebScheme(cfg, env), deployCfg.Domain, WebPort(cfg, env))
 		}
 	} else {
 		host := "localhost"
-		if dc, ok := cfg.Deploy[env]; ok && dc.Host != "" {
-			host = dc.Host
+		if deployCfg.Host != "" {
+			host = deployCfg.Host
 		}
 		fmt.Fprintf(&b, "APP_URL=http://%s:%d\n\n", host, WebPort(cfg, env))
 	}
@@ -367,26 +371,24 @@ func renderProdEnvExample(cfg config.Config, env string, services []string) []by
 	return []byte("# Reference template. pier init writes .env.production with the same keys.\n\n" + string(renderProdEnv(cfg, env, services)))
 }
 
-// renderCaddyfile renders the production Caddyfile for env. With an
-// effective domain, Caddy serves HTTPS with an automatic Let's
-// Encrypt certificate — ownership is proven by the ACME HTTP-01
-// challenge on ports 80/443, so the domain's A record must point at
-// the deploy host — and every extra_domains entry redirects to the
-// primary domain. Without a domain it serves plain HTTP on container
-// port 80.
+// renderCaddyfile renders the production Caddyfile for env. With a
+// domain, Caddy serves HTTPS with an automatic Let's Encrypt
+// certificate — ownership is proven by the ACME HTTP-01 challenge on
+// ports 80/443, so the domain's A record must point at the deploy
+// host — and every redirect_domains entry redirects to the env's
+// domain. Without a domain it serves plain HTTP on container port 80.
 func renderCaddyfile(cfg config.Config, env string) []byte {
-	domain := cfg.DomainForEnv(env)
-	if domain == "" {
+	dc, ok := cfg.Deploy[env]
+	if !ok {
+		dc = config.DeployConfig{}
+	}
+	if dc.Domain == "" {
 		return []byte(":80 {\n    encode gzip\n    reverse_proxy app:80\n}\n")
 	}
-	var dc config.DeployConfig
-	if v, ok := cfg.Deploy[env]; ok {
-		dc = v
-	}
 	var b bytes.Buffer
-	fmt.Fprintf(&b, "%s {\n    encode gzip\n    reverse_proxy app:80\n}\n", domain)
-	for _, extra := range dc.ExtraDomains {
-		fmt.Fprintf(&b, "\n%s {\n    redir https://%s{uri}\n}\n", extra, domain)
+	fmt.Fprintf(&b, "%s {\n    encode gzip\n    reverse_proxy app:80\n}\n", dc.Domain)
+	for _, extra := range dc.RedirectDomains {
+		fmt.Fprintf(&b, "\n%s {\n    redir https://%s{uri}\n}\n", extra, dc.Domain)
 	}
 	return b.Bytes()
 }

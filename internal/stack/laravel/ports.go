@@ -85,12 +85,16 @@ func ResolvePort(key string, override, defaults map[string]int) (host int, ok bo
 }
 
 // WebScheme returns the URL scheme for the env's primary web
-// endpoint: "https" when the env has an effective domain (Caddy
-// provisions a Let's Encrypt certificate automatically, proving
-// ownership via the ACME HTTP-01 challenge on ports 80/443), else
-// "http" (no domain, plain HTTP by IP).
+// endpoint: "https" when the env has a domain (Caddy provisions a
+// Let's Encrypt certificate automatically, proving ownership via the
+// ACME HTTP-01 challenge on ports 80/443), else "http" (no domain,
+// plain HTTP by IP).
 func WebScheme(cfg config.Config, env string) string {
-	if cfg.DomainForEnv(env) != "" {
+	deployCfg, ok := cfg.Deploy[env]
+	if !ok {
+		deployCfg = config.DeployConfig{}
+	}
+	if deployCfg.Domain != "" {
 		return "https"
 	}
 	return "http"
@@ -108,7 +112,7 @@ func WebPort(cfg config.Config, env string) int {
 	if v, set := deployCfg.Ports["laravel"]; set && v != 0 {
 		return v
 	}
-	if cfg.DomainForEnv(env) != "" {
+	if deployCfg.Domain != "" {
 		return 443
 	}
 	return 80

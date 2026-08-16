@@ -12,7 +12,7 @@ import (
 func TestGenerateDevComposeRendersDevServices(t *testing.T) {
 	s := New()
 	files, err := s.GenerateDevCompose(config.Config{
-		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Project: config.ProjectConfig{Name: "myapp"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 		Dev: config.DevConfig{
 			Services: map[string]config.DevService{

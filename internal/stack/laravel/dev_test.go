@@ -21,7 +21,7 @@ func TestGenerateDevComposeNoServices(t *testing.T) {
 	t.Setenv("PIER_WWWGROUP", "1000")
 	s := New()
 	files, err := s.GenerateDevCompose(config.Config{
-		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Project: config.ProjectConfig{Name: "myapp"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 		Dev:     config.DevConfig{Bind: "127.0.0.1"},
 	})
@@ -44,7 +44,7 @@ func TestGenerateDevComposeWithServices(t *testing.T) {
 	t.Setenv("PIER_WWWGROUP", "1000")
 	s := New()
 	files, err := s.GenerateDevCompose(config.Config{
-		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Project: config.ProjectConfig{Name: "myapp"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22", Services: []string{"redis", "mailpit"}},
 		Dev:     config.DevConfig{Bind: "127.0.0.1"},
 	})
@@ -75,7 +75,7 @@ func TestGenerateDevComposeRejectsUnknownService(t *testing.T) {
 func TestGenerateDevComposeQueueSchedulerReuseAppImage(t *testing.T) {
 	s := New()
 	files, err := s.GenerateDevCompose(config.Config{
-		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Project: config.ProjectConfig{Name: "myapp"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22", Services: []string{"queue", "scheduler"}},
 	})
 	if err != nil {
@@ -111,7 +111,7 @@ func TestGenerateDevComposeQueueSchedulerReuseAppImage(t *testing.T) {
 func TestGenerateDevComposeQueueSchedulerBindMountApp(t *testing.T) {
 	s := New()
 	files, err := s.GenerateDevCompose(config.Config{
-		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Project: config.ProjectConfig{Name: "myapp"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22", Services: []string{"queue", "scheduler"}},
 	})
 	if err != nil {
@@ -204,7 +204,7 @@ func TestLaravelTestPortsForwardHost8000ToContainer80(t *testing.T) {
 func TestGenerateDevComposeLaravelTestHasPorts(t *testing.T) {
 	s := New()
 	files, err := s.GenerateDevCompose(config.Config{
-		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Project: config.ProjectConfig{Name: "myapp"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 		Dev:     config.DevConfig{Bind: "127.0.0.1"},
 	})
@@ -246,7 +246,7 @@ func TestGenerateDevComposeLaravelTestHasPorts(t *testing.T) {
 func TestGenerateDevComposeSidecarPortsBindLoopback(t *testing.T) {
 	s := New()
 	files, err := s.GenerateDevCompose(config.Config{
-		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Project: config.ProjectConfig{Name: "myapp"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22", Services: []string{"redis", "mailpit"}},
 		Dev:     config.DevConfig{Bind: "127.0.0.1"},
 	})
@@ -297,7 +297,7 @@ func TestGenerateDevComposeSidecarPortsBindLoopback(t *testing.T) {
 func TestGenerateDevComposeBindsAllInterfacesWhenOptedIn(t *testing.T) {
 	s := New()
 	files, err := s.GenerateDevCompose(config.Config{
-		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Project: config.ProjectConfig{Name: "myapp"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22", Services: []string{"redis", "mailpit"}},
 		Dev:     config.DevConfig{Bind: "0.0.0.0"},
 	})
@@ -358,7 +358,7 @@ func TestRuntimeDirHasStartContainer(t *testing.T) {
 func TestGenerateDevComposePortOverride(t *testing.T) {
 	s := New()
 	files, err := s.GenerateDevCompose(config.Config{
-		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Project: config.ProjectConfig{Name: "myapp"},
 		Stack: config.StackConfig{
 			Type: "laravel", PHP: "8.3", Node: "22",
 			Services: []string{"redis"},
@@ -410,7 +410,7 @@ func TestGenerateDevComposePortOverride(t *testing.T) {
 func TestGenerateDevComposePortZeroOptOut(t *testing.T) {
 	s := New()
 	files, err := s.GenerateDevCompose(config.Config{
-		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Project: config.ProjectConfig{Name: "myapp"},
 		Stack: config.StackConfig{
 			Type: "laravel", PHP: "8.3", Node: "22",
 			Services: []string{"mailpit"},
@@ -455,7 +455,7 @@ func TestGenerateDevComposePortZeroOptOut(t *testing.T) {
 func TestGenerateDevComposeQueueWorkers(t *testing.T) {
 	s := New()
 	files, err := s.GenerateDevCompose(config.Config{
-		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Project: config.ProjectConfig{Name: "myapp"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22", Services: []string{"queue", "scheduler"}, QueueWorkers: 3},
 	})
 	if err != nil {
@@ -489,7 +489,7 @@ func TestGenerateDevComposeQueueWorkers(t *testing.T) {
 func TestGenerateDevComposeQueueWorkersDefault(t *testing.T) {
 	s := New()
 	files, err := s.GenerateDevCompose(config.Config{
-		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Project: config.ProjectConfig{Name: "myapp"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22", Services: []string{"queue"}},
 	})
 	if err != nil {
@@ -514,14 +514,14 @@ func TestGenerateDevComposeQueueWorkersNoRegistryLeak(t *testing.T) {
 	// A render with an explicit count must not poison a later render
 	// with the default (the registry Env map is shared).
 	first, err := s.GenerateDevCompose(config.Config{
-		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Project: config.ProjectConfig{Name: "myapp"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22", Services: []string{"queue"}, QueueWorkers: 5},
 	})
 	if err != nil {
 		t.Fatalf("GenerateDevCompose (first): %v", err)
 	}
 	second, err := s.GenerateDevCompose(config.Config{
-		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Project: config.ProjectConfig{Name: "myapp"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22", Services: []string{"queue"}},
 	})
 	if err != nil {

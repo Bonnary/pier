@@ -13,7 +13,7 @@ import (
 func TestGenerateProdFilesNoServices(t *testing.T) {
 	s := New()
 	files, err := s.GenerateProdFiles(config.Config{
-		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Project: config.ProjectConfig{Name: "myapp"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 	}, "production")
 	if err != nil {
@@ -54,7 +54,7 @@ func TestGenerateProdFilesWithServices(t *testing.T) {
 func TestGenerateProdFilesAppBuildArgs(t *testing.T) {
 	s := New()
 	files, err := s.GenerateProdFiles(config.Config{
-		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Project: config.ProjectConfig{Name: "myapp"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 	}, "production")
 	if err != nil {
@@ -96,7 +96,7 @@ func TestGenerateProdFilesAppBuildArgs(t *testing.T) {
 func TestGenerateProdFilesAppBuildsFromProdDockerfile(t *testing.T) {
 	s := New()
 	files, err := s.GenerateProdFiles(config.Config{
-		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Project: config.ProjectConfig{Name: "myapp"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 	}, "production")
 	if err != nil {
@@ -135,7 +135,7 @@ func TestGenerateProdFilesAppBuildsFromProdDockerfile(t *testing.T) {
 func TestGenerateProdFilesRendersProdDockerfile(t *testing.T) {
 	s := New()
 	files, err := s.GenerateProdFiles(config.Config{
-		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Project: config.ProjectConfig{Name: "myapp"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 	}, "production")
 	if err != nil {
@@ -173,8 +173,9 @@ func TestGenerateProdFilesRendersProdDockerfile(t *testing.T) {
 func TestGenerateProdFilesCaddyfileProxiesToAppHTTPServer(t *testing.T) {
 	s := New()
 	files, err := s.GenerateProdFiles(config.Config{
-		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Project: config.ProjectConfig{Name: "myapp"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+		Deploy:  map[string]config.DeployConfig{"production": {Domain: "myapp.example.com"}},
 	}, "production")
 	if err != nil {
 		t.Fatalf("GenerateProdFiles: %v", err)
@@ -191,7 +192,7 @@ func TestGenerateProdFilesCaddyfileProxiesToAppHTTPServer(t *testing.T) {
 		t.Errorf("Caddyfile must proxy requests verbatim to the app's HTTP listener (reverse_proxy app:80), matching the runtime's `artisan serve --host=0.0.0.0 --port=80`:\n%s", body)
 	}
 	if !strings.Contains(body, "myapp.example.com") {
-		t.Errorf("Caddyfile missing the site block for the effective domain:\n%s", body)
+		t.Errorf("Caddyfile missing the site block for the env's domain:\n%s", body)
 	}
 }
 
@@ -208,36 +209,36 @@ func TestRenderCaddyfileHTTPOnly(t *testing.T) {
 	}
 }
 
-func TestRenderCaddyfileExtraDomains(t *testing.T) {
+func TestRenderCaddyfileRedirectDomains(t *testing.T) {
 	body := renderCaddyfile(config.Config{
-		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Project: config.ProjectConfig{Name: "myapp"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 		Deploy: map[string]config.DeployConfig{
-			"production": {ExtraDomains: []string{"www.myapp.example.com"}},
+			"production": {Domain: "myapp.example.com", RedirectDomains: []string{"www.myapp.example.com"}},
 		},
 	}, "production")
 	if !strings.Contains(string(body), "www.myapp.example.com {\n    redir https://myapp.example.com{uri}\n}") {
-		t.Errorf("extra_domains entry must redirect to the primary domain:\n%s", body)
+		t.Errorf("redirect_domains entry must redirect to the env's domain:\n%s", body)
 	}
 }
 
-func TestRenderCaddyfilePerEnvDomainOverride(t *testing.T) {
+func TestRenderCaddyfilePerEnvDomain(t *testing.T) {
 	body := renderCaddyfile(config.Config{
-		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Project: config.ProjectConfig{Name: "myapp"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 		Deploy: map[string]config.DeployConfig{
 			"staging": {Domain: "staging.myapp.example.com"},
 		},
 	}, "staging")
 	if !strings.Contains(string(body), "staging.myapp.example.com {") {
-		t.Errorf("per-env domain override must win over [project].domain:\n%s", body)
+		t.Errorf("each env must serve its own domain:\n%s", body)
 	}
 }
 
 func TestGenerateProdFilesDeclaresNamedVolumes(t *testing.T) {
 	s := New()
 	files, err := s.GenerateProdFiles(config.Config{
-		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Project: config.ProjectConfig{Name: "myapp"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22", Services: []string{"mysql", "postgres", "redis", "meilisearch", "s3"}},
 	}, "production")
 	if err != nil {
@@ -285,7 +286,7 @@ func TestGenerateProdFilesDevOnlyExcluded(t *testing.T) {
 func TestGenerateProdFilesQueueSchedulerReuseAppImage(t *testing.T) {
 	s := New()
 	files, err := s.GenerateProdFiles(config.Config{
-		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Project: config.ProjectConfig{Name: "myapp"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22", Services: []string{"queue", "scheduler"}},
 	}, "production")
 	if err != nil {
@@ -321,7 +322,7 @@ func TestGenerateProdFilesQueueSchedulerReuseAppImage(t *testing.T) {
 func TestGenerateProdFilesQueueSchedulerSetSupervisorCommand(t *testing.T) {
 	s := New()
 	files, err := s.GenerateProdFiles(config.Config{
-		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Project: config.ProjectConfig{Name: "myapp"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22", Services: []string{"queue", "scheduler"}},
 	}, "production")
 	if err != nil {
@@ -366,7 +367,7 @@ func TestGenerateProdFilesQueueSchedulerSetSupervisorCommand(t *testing.T) {
 func TestGenerateProdFilesInterpolatesSecretsFromEnvFile(t *testing.T) {
 	s := New()
 	files, err := s.GenerateProdFiles(config.Config{
-		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Project: config.ProjectConfig{Name: "myapp"},
 		Stack: config.StackConfig{
 			Type: "laravel", PHP: "8.3", Node: "22",
 			Services: []string{"postgres", "mysql", "redis"},
@@ -462,7 +463,7 @@ func TestGenerateProdFilesWebserverNoDomainPorts(t *testing.T) {
 func TestGenerateProdFilesPortPartialOverride(t *testing.T) {
 	s := New()
 	files, err := s.GenerateProdFiles(config.Config{
-		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Project: config.ProjectConfig{Name: "myapp"},
 		Stack: config.StackConfig{
 			Type: "laravel", PHP: "8.3", Node: "22",
 			Services: []string{"redis"},
@@ -470,7 +471,8 @@ func TestGenerateProdFilesPortPartialOverride(t *testing.T) {
 		Deploy: map[string]config.DeployConfig{
 			"production": {
 				Host: "h", User: "u", Path: "p", Branch: "b",
-				Ports: map[string]int{"laravel": 8383},
+				Ports:  map[string]int{"laravel": 8383},
+				Domain: "myapp.example.com",
 			},
 		},
 	}, "production")
@@ -520,10 +522,10 @@ func TestGenerateProdFilesPortPartialOverride(t *testing.T) {
 func TestGenerateProdFilesWebserverTLSPorts(t *testing.T) {
 	s := New()
 	files, err := s.GenerateProdFiles(config.Config{
-		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Project: config.ProjectConfig{Name: "myapp"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 		Deploy: map[string]config.DeployConfig{
-			"production": {Host: "h", User: "u", Path: "p", Branch: "b"},
+			"production": {Host: "h", User: "u", Path: "p", Branch: "b", Domain: "myapp.example.com"},
 		},
 	}, "production")
 	if err != nil {
@@ -655,9 +657,9 @@ func TestGenerateProdEnvExampleAPPURL(t *testing.T) {
 	}
 
 	httpsFiles, err := s.GenerateProdFiles(config.Config{
-		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Project: config.ProjectConfig{Name: "myapp"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
-		Deploy:  map[string]config.DeployConfig{"production": {Host: "h", User: "u", Path: "p", Branch: "b"}},
+		Deploy:  map[string]config.DeployConfig{"production": {Host: "h", User: "u", Path: "p", Branch: "b", Domain: "myapp.example.com"}},
 	}, "production")
 	if err != nil {
 		t.Fatalf("GenerateProdFiles (https): %v", err)
@@ -671,9 +673,9 @@ func TestGenerateProdEnvExampleAPPURL(t *testing.T) {
 	}
 
 	overrideFiles, err := s.GenerateProdFiles(config.Config{
-		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Project: config.ProjectConfig{Name: "myapp"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
-		Deploy:  map[string]config.DeployConfig{"production": {Host: "h", User: "u", Path: "p", Branch: "b", Ports: map[string]int{"laravel": 8383}}},
+		Deploy:  map[string]config.DeployConfig{"production": {Host: "h", User: "u", Path: "p", Branch: "b", Domain: "myapp.example.com", Ports: map[string]int{"laravel": 8383}}},
 	}, "production")
 	if err != nil {
 		t.Fatalf("GenerateProdFiles (https override): %v", err)
@@ -738,7 +740,7 @@ func TestGenerateProdFilesUnknownEnvServiceFails(t *testing.T) {
 func TestGenerateProdFilesImageModeQueueSchedulerUseCurrentTag(t *testing.T) {
 	s := New()
 	files, err := s.GenerateProdFiles(config.Config{
-		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Project: config.ProjectConfig{Name: "myapp"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22", Services: []string{"queue", "scheduler"}},
 		Deploy: map[string]config.DeployConfig{
 			"production": {Host: "h", User: "u", Path: "/srv/x", Branch: "main", Builder: "local_machine"},
@@ -773,7 +775,7 @@ func TestGenerateProdFilesImageModeQueueSchedulerUseCurrentTag(t *testing.T) {
 
 func TestGenerateProdFilesQueueSchedulerGetConnectionEnv(t *testing.T) {
 	files, err := New().GenerateProdFiles(config.Config{
-		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Project: config.ProjectConfig{Name: "myapp"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22", Services: []string{"queue", "scheduler", "postgres", "redis"}},
 	}, "production")
 	if err != nil {
@@ -819,7 +821,7 @@ func TestGenerateProdFilesQueueSchedulerGetConnectionEnv(t *testing.T) {
 func TestGenerateProdFilesRedisDefaultsCacheStore(t *testing.T) {
 	// Without redis the stack must not decide the cache store.
 	noRedis, err := New().GenerateProdFiles(config.Config{
-		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Project: config.ProjectConfig{Name: "myapp"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 	}, "production")
 	if err != nil {
@@ -839,7 +841,7 @@ func TestGenerateProdFilesRedisDefaultsCacheStore(t *testing.T) {
 	// after_deploy migrations run — but up --wait demands they be
 	// healthy before after_deploy, so a first deploy can never pass.
 	withRedis, err := New().GenerateProdFiles(config.Config{
-		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Project: config.ProjectConfig{Name: "myapp"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22", Services: []string{"redis", "queue", "scheduler"}},
 	}, "production")
 	if err != nil {
@@ -889,7 +891,7 @@ func TestGenerateProdFilesRedisDefaultsCacheStore(t *testing.T) {
 func TestGenerateProdFilesImageModeOmitsBuild(t *testing.T) {
 	s := New()
 	files, err := s.GenerateProdFiles(config.Config{
-		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Project: config.ProjectConfig{Name: "myapp"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 		Deploy: map[string]config.DeployConfig{
 			"production": {Host: "h", User: "u", Path: "/srv/x", Branch: "main", Builder: "local_machine"},
@@ -910,7 +912,7 @@ func TestGenerateProdFilesImageModeOmitsBuild(t *testing.T) {
 func TestGenerateProdFilesHostServerKeepsBuild(t *testing.T) {
 	s := New()
 	files, err := s.GenerateProdFiles(config.Config{
-		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Project: config.ProjectConfig{Name: "myapp"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 	}, "production")
 	if err != nil {
@@ -928,7 +930,7 @@ func TestGenerateProdFilesHostServerKeepsBuild(t *testing.T) {
 func TestGenerateProdComposeQueueWorkers(t *testing.T) {
 	s := New()
 	cfg := config.Config{
-		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Project: config.ProjectConfig{Name: "myapp"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22", Services: []string{"redis", "queue", "scheduler"}, QueueWorkers: 3},
 		Deploy: map[string]config.DeployConfig{
 			"production": {QueueWorkers: 5},
