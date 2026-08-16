@@ -5,7 +5,7 @@
 <h1 align="center">pier</h1>
 
 <p align="center">
-  Personal cross-platform CLI for Laravel Docker dev + production deploys.<br />
+  Cross-platform CLI for Laravel Docker dev + production deploys.<br />
   One command from a fresh Laravel repo to a production deploy with health checks and automatic rollback.
 </p>
 
@@ -58,8 +58,8 @@ Docker CLI.
   `docker-compose.yml`, runtime Dockerfiles, and a matching
   `vite.config.ts` patch in one pass. Smart-merges into an existing
   `docker-compose.yml` with warn-and-confirm on unknown keys. Asks
-  the full deploy setup too: host, user, path, branch, and the build
-  machine (`host_server` / `local_machine` / `build_server`, plus
+  the full deploy setup too: domain, host, user, path, branch, and
+  the build machine (`host_server` / `local_machine` / `build_server`, plus
   build host/user/path when `build_server` is chosen).
 - **`pier dev` / `pier stop`** — Bring up (or stop) the dev stack
   with a pre-flight port probe and a clear ready block.
@@ -85,6 +85,10 @@ Docker CLI.
   `build_server`, which stream the finished image to the host over
   SSH (`docker save` → `docker load`) in a `transfer` deploy phase —
   no registry, no temp files.
+- **Custom domains + HTTPS** — set `domain` in `pier.toml` (per env
+  or project-wide) and production serves HTTPS through Caddy with an
+  automatic Let's Encrypt certificate (plus `extra_domains` such as
+  `www.example.com`). Leave the domain empty for plain HTTP by IP.
 - **`pier bootstrap [env...]`** — One-time server provisioning:
   installs Docker Engine + the compose plugin over SSH and grants
   the deploy user passwordless docker access (hidden one-time sudo
@@ -295,7 +299,8 @@ path   = "/srv/myapp"
 branch = "main"
 services = ["redis", "queue"]   # optional; absent = inherit [stack].services
 # queue_workers = 4   # optional; absent = inherit [stack].queue_workers
-tls    = false   # false (default): plain HTTP. true: HTTPS URLs + 443 — requires the upcoming cert feature
+# domain = "myapp.example.com"   # optional: serves HTTPS (Let's Encrypt); absent = inherit [project].domain
+# extra_domains = ["www.myapp.example.com"]   # optional: served and redirected to the domain
 before_deploy = ["php artisan down"]              # runs in the app container before the new release starts
 after_deploy = ["php artisan migrate --force"]    # runs in the app container after the new release is up
 
@@ -304,15 +309,19 @@ laravel = 443   # only the keys the user writes are applied
 ```
 
 `[deploy.<env>]` fields: `host`, `user`, `path`, `branch`, optional
-`tls`, and optional `ports` overrides. `tls = false` (the default)
+`domain` / `extra_domains`, and optional `ports` overrides. HTTPS is
+implied by domain presence: the effective domain is
+`[deploy.<env>].domain` when set, else `[project].domain`; when it is
+non-empty, Caddy serves HTTPS with an automatic Let's Encrypt
+certificate (and redirects HTTP to HTTPS), and the deploy health
+check probes `https://<domain>/up`. When no domain is set the env
 serves plain HTTP end-to-end: the deploy health check probes
 `http://<host-ip>:<laravel-port>/up` directly on the deploy host IP,
 so it passes before DNS or `/etc/hosts` entries point the domain at
-the server. The deploy "done" URL prints the project domain, but
+the server. The deploy "done" URL prints the effective domain, but
 falls back to the deploy host IP when the domain does not resolve
-yet, so the printed URL is always usable. `tls = true` renders HTTPS
-URLs and the 443 mapping, but SSL certificate provisioning is not
-shipped yet — keep it `false` for now.
+yet, so the printed URL is always usable. The old `tls = true/false`
+key is removed — delete it and set (or blank) the domain instead.
 
 `[deploy.<env>].builder` chooses where the production image is built.
 `"host_server"` (the default when the key is absent) builds on the
@@ -321,7 +330,7 @@ deploy host itself. `"local_machine"` builds on the machine running
 dedicated machine configured with `build_host`, `build_user`, and
 `build_path` (the path the source tree is synced to and built in).
 Both image modes sync only the deploy files (`docker-compose.prod.yml`,
-`.env.production`, `docker/nginx/default.conf`) to the host, stream
+`.env.production`, `docker/caddy/Caddyfile`) to the host, stream
 the built image over SSH, and render the prod compose with
 `image: <project>:current` instead of a build context. `pier bootstrap
 <env>` provisions both the host and the build server when
@@ -360,7 +369,7 @@ after `docker compose up --wait` (compose returns only once every
 service with a healthcheck — postgres, redis, the sidecars — is
 healthy, so a still-initializing database on a fresh volume can't
 race the first `after_deploy` command; a `--wait-timeout 120` bounds
-the wait) and the nginx reload, before the health probe. Commands run
+the wait) and the caddy reload, before the health probe. Commands run
 in order and stop at the first failure: a
 failing command aborts the deploy (exit code 7), so a broken hook is
 never silently swallowed. `before_deploy` failures leave the old
@@ -373,6 +382,58 @@ loudly. On a first deploy the app
 container does not exist yet, so `before_deploy` is skipped entirely —
 put first-run setup in `after_deploy`. `pier init` writes both keys
 commented out.
+
+### Custom domain & HTTPS
+
+Every deploy env serves HTTPS automatically once a domain is
+configured, powered by Caddy and Let's Encrypt — no certificate
+management. Ownership is proven by the ACME HTTP-01 challenge: you
+point the domain's A record at your server, and Caddy answers Let's
+Encrypt's token on port 80. Certificates issue on the first deploy
+and renew automatically inside Caddy (stored in the `caddy_data`
+volume, so they survive re-deploys).
+
+Walkthrough (Namecheap, Vercel, or any registrar):
+
+1. **Buy the domain** (e.g. `myapp.com`) at your registrar.
+2. **Find your server's public IP** — `pier status <env>` prints the
+   deploy host.
+3. **Create DNS A records** in your registrar's DNS settings:
+   - `@` (or `myapp.com`) → your server IP
+   - `www` → your server IP (optional; pair it with `extra_domains`)
+   DNS changes can take a few minutes to a few hours to propagate.
+4. **Set the domain in `pier.toml`:**
+
+   ```toml
+   [project]
+   domain = "myapp.com"
+
+   [deploy.production]
+   # domain = "myapp.com"      # or per env — staging can use staging.myapp.com
+   extra_domains = ["www.myapp.com"]
+   ```
+
+   An empty domain (`domain = ""`) means plain HTTP by IP — the
+   default for fresh `pier init` projects that skip the domain
+   prompt.
+5. **Deploy** — `pier deploy production`. Pier verifies the domain
+   resolves to the deploy host before syncing: if the A record is
+   missing or points elsewhere, the deploy fails fast with
+   "point an A record for myapp.com at the deploy host IP" — fix the
+   DNS entry, wait for propagation, and re-deploy. Caddy fetches the
+   certificate during the first `up` (the health probe retries with
+   backoff, so slow issuance is absorbed).
+
+Requirements: ports **80 and 443** must be open on the server (the
+ACME HTTP-01 challenge runs on 80, HTTPS on 443), and the domain must
+resolve directly to the server — Caddy cannot issue certificates for
+domains proxied through a CDN (Cloudflare, Vercel edge) without
+additional configuration, which pier does not set up.
+
+Multiple domains: `extra_domains = ["www.myapp.com"]` serves
+`www.myapp.com` and redirects it to the primary domain. Staging:
+add a `[deploy.staging]` section with its own `domain =
+"staging.myapp.com"` (same A record step for that hostname).
 
 ### `[dev.services.<name>]` — opt-in dev sidecars
 
@@ -409,7 +470,7 @@ APP_NAME=myapp
 APP_ENV=local            # dev; .env.production writes "production"
 APP_KEY=                 # generate: pier exec php artisan key:generate
 APP_DEBUG=true           # dev; .env.production writes "false"
-APP_URL=http://localhost:8000 # dev; .env.production writes http(s)://<domain>
+APP_URL=http://localhost:8000 # dev; .env.production writes https://<domain> (or http://<host>:<port> with no domain)
 ```
 
 Per service, the keys below are added only when that service is in
@@ -584,6 +645,11 @@ Run through this list locally before pushing changes (see
 - [ ] `pier deploy production` against a compose file with an
   undeclared volume — the `build failed` line shows the compose
   validation error
+- [ ] `pier deploy production` with a domain set — DNS preflight
+  passes (A record pointing at the host), health probe GETs
+  `https://<domain>/up`, and the site serves a valid Let's Encrypt
+  certificate; re-deploy with the domain unset — plain HTTP by IP
+  still works
 - [ ] `pier rollback production` after a deliberate bad deploy
 - [ ] Rebuild the binary (`go build -o pier ./cmd/pier`) and re-run a
   real deploy end to end
@@ -632,6 +698,12 @@ Run through this list locally before pushing changes (see
   Laravel Composer package, not a container image. The same is true
   for `nicolasbissig/laravel-dumps`. Use the `[dev.services.<name>]`
   block in `pier.toml` with a real Docker image instead.
+- **"domain ... does not resolve — point an A record"** on
+  `pier deploy` — the env has a domain configured but DNS does not
+  point it at the deploy host. Create the A record at your registrar
+  (see [Custom domain & HTTPS](#custom-domain--https)), wait for
+  propagation, and re-deploy. Servers blocking ports 80/443 cannot
+  get certificates via the HTTP-01 challenge.
 
 Still stuck? [Open an issue](https://github.com/Bonnary/pier/issues).
 

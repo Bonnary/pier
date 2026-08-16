@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Custom domains + HTTPS: the production webserver is now Caddy
+  (`caddy:2-alpine`) with a pier-rendered `docker/caddy/Caddyfile`.
+  A non-empty effective domain (`[deploy.<env>].domain`, falling
+  back to `[project].domain`) enables HTTPS with automatic Let's
+  Encrypt certificates; `[deploy.<env>].extra_domains` (e.g. `www`)
+  are served and redirected to the primary domain. Empty domain =
+  plain HTTP by IP.
+- Deploy DNS preflight: when a domain is set, `pier deploy` verifies
+  it resolves to the deploy host before syncing and fails fast with
+  an A-record hint otherwise; the health probe then checks
+  `https://<domain>/up` end to end.
+- `pier init` prompts for the project domain (blank = plain HTTP by
+  IP).
+
+### Removed
+
+- `[deploy.<env>].tls` — HTTPS is now implied by domain presence.
+  Existing configs keep loading (the key is ignored); delete it and
+  set the domain instead.
+
 ## v0.0.6-beta (2026-08-15)
 
 ### Added
