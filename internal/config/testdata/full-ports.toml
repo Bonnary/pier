@@ -17,7 +17,8 @@ host   = "prod.example.com"
 user   = "deploy"
 path   = "/srv/myapp"
 branch = "main"
-tls    = true
+domain = "myapp.example.com"
+extra_domains = ["www.myapp.example.com"]
 
 [deploy.production.ports]
 laravel = 8383

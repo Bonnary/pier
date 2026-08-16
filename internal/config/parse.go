@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 )
@@ -60,8 +61,8 @@ func (c *Config) Validate() error {
 	if c.Project.Name == "" {
 		return fmt.Errorf("%w: project.name is required", ErrConfigInvalid)
 	}
-	if c.Project.Domain == "" {
-		return fmt.Errorf("%w: project.domain is required", ErrConfigInvalid)
+	if c.Project.Domain != "" && !validHostname(c.Project.Domain) {
+		return fmt.Errorf("%w: project.domain %q is not a valid hostname (no scheme, port, or path)", ErrConfigInvalid, c.Project.Domain)
 	}
 	if !validStackType[c.Stack.Type] {
 		return fmt.Errorf("%w: stack.type %q not supported (valid: laravel)", ErrConfigInvalid, c.Stack.Type)
@@ -82,7 +83,7 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("%w: [dev] bind = %q must be %q or %q", ErrConfigInvalid, c.Dev.Bind, "127.0.0.1", "0.0.0.0")
 	}
 	for env, dc := range c.Deploy {
-		if err := validateDeployEnv(env, dc); err != nil {
+		if err := c.validateDeployEnv(env, dc); err != nil {
 			return err
 		}
 	}
@@ -121,13 +122,29 @@ func validateHookList(env, key string, list []string) error {
 }
 
 // validateDeployEnv checks every required field and enum-style value
-// of one [deploy.<env>] section. Extracted from Validate so the
-// per-env rule set stays reviewable and Validate's complexity stays
-// in check.
-func validateDeployEnv(env string, dc DeployConfig) error {
+// of one [deploy.<env>] section, plus the domain and extra_domains
+// hostname syntax. Extracted from Validate so the per-env rule set
+// stays reviewable and Validate's complexity stays in check.
+func (c *Config) validateDeployEnv(env string, dc DeployConfig) error {
 	configured := dc.Host != "" || dc.User != "" || dc.Path != "" || dc.Branch != ""
 	if configured && (dc.Host == "" || dc.User == "" || dc.Path == "" || dc.Branch == "") {
 		return fmt.Errorf("%w: deploy.%s requires host, user, path, branch (leave all empty to scaffold)", ErrConfigInvalid, env)
+	}
+	if dc.Domain != "" && !validHostname(dc.Domain) {
+		return fmt.Errorf("%w: deploy.%s.domain %q is not a valid hostname (no scheme, port, or path)", ErrConfigInvalid, env, dc.Domain)
+	}
+	seen := map[string]bool{}
+	for _, d := range dc.ExtraDomains {
+		if !validHostname(d) {
+			return fmt.Errorf("%w: deploy.%s.extra_domains entry %q is not a valid hostname (no scheme, port, or path)", ErrConfigInvalid, env, d)
+		}
+		if seen[d] {
+			return fmt.Errorf("%w: deploy.%s.extra_domains has duplicate %q", ErrConfigInvalid, env, d)
+		}
+		seen[d] = true
+	}
+	if seen[c.DomainForEnv(env)] {
+		return fmt.Errorf("%w: deploy.%s.extra_domains must not contain the primary domain %q", ErrConfigInvalid, env, c.DomainForEnv(env))
 	}
 	if err := validateHookList(env, "before_deploy", dc.BeforeDeploy); err != nil {
 		return err
@@ -145,4 +162,15 @@ func validateDeployEnv(env string, dc DeployConfig) error {
 		return fmt.Errorf("%w: deploy.%s.builder = \"build_server\" requires build_host, build_user, and build_path", ErrConfigInvalid, env)
 	}
 	return nil
+}
+
+// validHostname reports whether s is a bare hostname or IP: no
+// scheme, port, path, whitespace, or userinfo. Used to validate
+// project and deploy domains so a pasted URL fails fast at config
+// load instead of rendering a broken Caddyfile.
+func validHostname(s string) bool {
+	if s == "" || strings.ContainsAny(s, " /:@") {
+		return false
+	}
+	return true
 }
