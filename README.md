@@ -85,10 +85,10 @@ Docker CLI.
   `build_server`, which stream the finished image to the host over
   SSH (`docker save` → `docker load`) in a `transfer` deploy phase —
   no registry, no temp files.
-- **Custom domains + HTTPS** — set `domain` in `pier.toml` (per env
-  or project-wide) and production serves HTTPS through Caddy with an
-  automatic Let's Encrypt certificate (plus `extra_domains` such as
-  `www.example.com`). Leave the domain empty for plain HTTP by IP.
+- **Custom domains + HTTPS** — set `domain` in a `[deploy.<env>]`
+  section and production serves HTTPS through Caddy with an
+  automatic Let's Encrypt certificate (plus `redirect_domains` such
+  as `www.example.com`). Leave the domain empty for plain HTTP by IP.
 - **`pier bootstrap [env...]`** — One-time server provisioning:
   installs Docker Engine + the compose plugin over SSH and grants
   the deploy user passwordless docker access (hidden one-time sudo
@@ -275,7 +275,6 @@ A minimal `pier.toml`:
 ```toml
 [project]
 name = "myapp"
-domain = "myapp.example.com"
 
 [stack]
 type  = "laravel"
@@ -299,8 +298,8 @@ path   = "/srv/myapp"
 branch = "main"
 services = ["redis", "queue"]   # optional; absent = inherit [stack].services
 # queue_workers = 4   # optional; absent = inherit [stack].queue_workers
-# domain = "myapp.example.com"   # optional: serves HTTPS (Let's Encrypt); absent = inherit [project].domain
-# extra_domains = ["www.myapp.example.com"]   # optional: served and redirected to the domain
+# domain = "myapp.example.com"   # optional: serves HTTPS (Let's Encrypt); absent = plain HTTP by IP
+# redirect_domains = ["www.myapp.example.com"]   # optional: served and redirected to the domain
 before_deploy = ["php artisan down"]              # runs in the app container before the new release starts
 after_deploy = ["php artisan migrate --force"]    # runs in the app container after the new release is up
 
@@ -309,9 +308,8 @@ laravel = 443   # only the keys the user writes are applied
 ```
 
 `[deploy.<env>]` fields: `host`, `user`, `path`, `branch`, optional
-`domain` / `extra_domains`, and optional `ports` overrides. HTTPS is
-implied by domain presence: the effective domain is
-`[deploy.<env>].domain` when set, else `[project].domain`; when it is
+`domain` / `redirect_domains`, and optional `ports` overrides. HTTPS is
+implied by domain presence: when `domain` is
 non-empty, Caddy serves HTTPS with an automatic Let's Encrypt
 certificate (and redirects HTTP to HTTPS), and the deploy health
 check probes `https://<domain>/up` — or, with a custom `ports.laravel`
@@ -319,7 +317,7 @@ value, `https://<domain>:<port>/up`. When no domain is set the env
 serves plain HTTP end-to-end: the deploy health check probes
 `http://<host-ip>:<laravel-port>/up` directly on the deploy host IP,
 so it passes before DNS or `/etc/hosts` entries point the domain at
-the server. The deploy "done" URL prints the effective domain, but
+the server. The deploy "done" URL prints the env's domain, but
 falls back to the deploy host IP when the domain does not resolve
 yet, so the printed URL is always usable. The old `tls = true/false`
 key is removed — delete it and set (or blank) the domain instead.
@@ -400,18 +398,15 @@ Walkthrough (Namecheap, Vercel, or any registrar):
 2. **Find your server's public IP** — `pier status <env>` prints the
    deploy host.
 3. **Create DNS A records** in your registrar's DNS settings:
-   - `@` (or `myapp.com`) → your server IP
-   - `www` → your server IP (optional; pair it with `extra_domains`)
+   - `@` (or `A record`) → your server Public IP
+   - `www` → your server IP (optional; pair it with `redirect_domains`)
    DNS changes can take a few minutes to a few hours to propagate.
 4. **Set the domain in `pier.toml`:**
 
    ```toml
-   [project]
-   domain = "myapp.com"
-
    [deploy.production]
-   # domain = "myapp.com"      # or per env — staging can use staging.myapp.com
-   extra_domains = ["www.myapp.com"]
+   domain = "myapp.com"
+   redirect_domains = ["www.myapp.com"]
    ```
 
    An empty domain (`domain = ""`) means plain HTTP by IP — the
@@ -431,8 +426,8 @@ resolve directly to the server — Caddy cannot issue certificates for
 domains proxied through a CDN (Cloudflare, Vercel edge) without
 additional configuration, which pier does not set up.
 
-Multiple domains: `extra_domains = ["www.myapp.com"]` serves
-`www.myapp.com` and redirects it to the primary domain. Staging:
+Multiple domains: `redirect_domains = ["www.myapp.com"]` serves
+`www.myapp.com` and redirects it to the env's domain. Staging:
 add a `[deploy.staging]` section with its own `domain =
 "staging.myapp.com"` (same A record step for that hostname).
 

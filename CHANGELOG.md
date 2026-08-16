@@ -6,17 +6,25 @@
 
 - Custom domains + HTTPS: the production webserver is now Caddy
   (`caddy:2-alpine`) with a pier-rendered `docker/caddy/Caddyfile`.
-  A non-empty effective domain (`[deploy.<env>].domain`, falling
-  back to `[project].domain`) enables HTTPS with automatic Let's
-  Encrypt certificates; `[deploy.<env>].extra_domains` (e.g. `www`)
-  are served and redirected to the primary domain. Empty domain =
-  plain HTTP by IP.
+  A non-empty `[deploy.<env>].domain` enables HTTPS with automatic
+  Let's Encrypt certificates; `[deploy.<env>].redirect_domains`
+  (e.g. `www`) are served and redirected to the env's domain. Empty
+  domain = plain HTTP by IP.
 - Deploy DNS preflight: when a domain is set, `pier deploy` verifies
   it resolves to the deploy host before syncing and fails fast with
   an A-record hint otherwise; the health probe then checks
   `https://<domain>/up` end to end.
-- `pier init` prompts for the project domain (blank = plain HTTP by
-  IP).
+- `pier init` prompts for the production domain, written to
+  `[deploy.production].domain` (blank = plain HTTP by IP).
+
+### Changed
+
+- Domains are per deploy env: `[project].domain` is removed and the
+  old per-env extra-domains key is renamed to
+  `[deploy.<env>].redirect_domains`. Existing configs keep loading
+  (unknown keys are ignored), but envs no longer inherit a
+  project-wide domain — set `domain` in each `[deploy.<env>]`
+  section.
 
 ### Removed
 

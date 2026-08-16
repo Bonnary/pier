@@ -72,10 +72,10 @@ object per line per deploy event), `--verbose` (unfiltered build output).
 
 | Section | Meaning |
 | --- | --- |
-| `[project]` | `name`, `domain`. |
+| `[project]` | `name`. |
 | `[stack]` | `type`, `php`, `node`, `queue_workers` (concurrent `queue:work` processes, default 1, max 32), `services` (the sidecar list). |
 | `[dev]` | `bind` (`0.0.0.0` exposes dev ports to LAN), `[dev.ports]` (`laravel`, `vite`, `redis`, ...). |
-| `[deploy.<env>]` | `host`, `user`, `path`, `branch`, optional `services` override, `tls` (keep `false` — cert provisioning not shipped), `ports` overrides, optional `queue_workers` (absent = inherit `[stack]`), `before_deploy` / `after_deploy` hook lists. |
+| `[deploy.<env>]` | `host`, `user`, `path`, `branch`, optional `services` override, `domain` (HTTPS via Caddy; empty = plain HTTP), `redirect_domains` (served and redirected to `domain`), `ports` overrides, optional `queue_workers` (absent = inherit `[stack]`), `before_deploy` / `after_deploy` hook lists. |
 | `[deploy.<env>].builder` | Where the image is built: `host_server` (default), `local_machine`, or `build_server` (needs `build_host` / `build_user` / `build_path`). |
 | `[dev.services.<name>]` | Dev-only sidecars (log viewers, Reverb, ...) — never appear in the production compose. |
 
