@@ -331,7 +331,7 @@ func seedEnvFile(t *testing.T) {
 // TestPipelineRunsHooksAtCorrectStages drives the full pipeline
 // against an in-process SSH server (sftp + exec) and asserts the
 // recorded remote commands are ordered build → before_deploy → up →
-// nginx reload → after_deploy. The health probe targets a dead port,
+// caddy reload → after_deploy. The health probe targets a dead port,
 // so the run ends in the rollback path (up-phase error) after the
 // hook commands were recorded.
 func TestPipelineRunsHooksAtCorrectStages(t *testing.T) {
@@ -394,8 +394,8 @@ func TestPipelineRunsHooksAtCorrectStages(t *testing.T) {
 	if !strings.Contains(fs.cmds[3], "up -d") {
 		t.Errorf("command 3 = %q, want the up command", fs.cmds[3])
 	}
-	if !strings.Contains(fs.cmds[4], "nginx -s reload") {
-		t.Errorf("command 4 = %q, want the nginx reload", fs.cmds[4])
+	if !strings.Contains(fs.cmds[4], "caddy reload --config /etc/caddy/Caddyfile") {
+		t.Errorf("command 4 = %q, want the caddy reload", fs.cmds[4])
 	}
 	wantAfter := "cd '" + remote + "' && docker compose --env-file .env.production -f docker-compose.prod.yml exec -T app 'php' 'artisan' 'migrate' '--force'"
 	if fs.cmds[5] != wantAfter {
@@ -612,9 +612,9 @@ func TestPipelineAfterDeployFailureRollsBackToPrevious(t *testing.T) {
 	if !errors.Is(err, ErrHooks) {
 		t.Fatalf("Run() = %v, want ErrHooks (after_deploy hook failed)", err)
 	}
-	// build, tag, up, nginx reload, failing after_deploy hook, then
+	// build, tag, up, caddy reload, failing after_deploy hook, then
 	// the rollback: retag previous image (the env builds on the host,
-	// so the compose references :latest), up again, nginx reload.
+	// so the compose references :latest), up again, caddy reload.
 	if len(fs.cmds) != 8 {
 		t.Fatalf("recorded commands = %q, want exactly 8 (build, tag, up, reload, failing hook, rollback tag, up, reload)", fs.cmds)
 	}
@@ -624,14 +624,14 @@ func TestPipelineAfterDeployFailureRollsBackToPrevious(t *testing.T) {
 	if !strings.Contains(fs.cmds[6], "up -d --wait") {
 		t.Errorf("command 6 = %q, want the rollback up", fs.cmds[6])
 	}
-	if !strings.Contains(fs.cmds[7], "nginx -s reload") {
-		t.Errorf("command 7 = %q, want the rollback nginx reload", fs.cmds[7])
+	if !strings.Contains(fs.cmds[7], "caddy reload --config /etc/caddy/Caddyfile") {
+		t.Errorf("command 7 = %q, want the rollback caddy reload", fs.cmds[7])
 	}
 }
 
 // TestPipelineBeforeDeploySkippedOnFirstDeploy asserts before_deploy
 // never runs when the remote host has no deploy state yet (no app
-// container exists): only build, up, and the nginx reload run, and
+// container exists): only build, up, and the caddy reload run, and
 // after_deploy still executes against the fresh release.
 func TestPipelineBeforeDeploySkippedOnFirstDeploy(t *testing.T) {
 	t.Chdir(t.TempDir())
@@ -672,7 +672,7 @@ func TestPipelineBeforeDeploySkippedOnFirstDeploy(t *testing.T) {
 		t.Fatalf("Run() = %v, want ErrUp (health failed, rollback path)", err)
 	}
 
-	// build, tag, up, nginx reload, after_deploy — no before_deploy
+	// build, tag, up, caddy reload, after_deploy — no before_deploy
 	// command.
 	if len(fs.cmds) != 5 {
 		t.Fatalf("recorded commands = %q, want exactly 5 (build, tag, up, reload, after_deploy)", fs.cmds)

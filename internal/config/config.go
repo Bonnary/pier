@@ -138,7 +138,7 @@ type DeployConfig struct {
 	// exists yet.
 	BeforeDeploy []string `toml:"before_deploy"`
 	// AfterDeploy runs inside the app container on the deploy host
-	// after `docker compose up` (and the nginx reload), before the
+	// after `docker compose up` (and the caddy reload), before the
 	// health probe. Commands run in order and stop at the first
 	// failure; a failing command aborts the deploy and rolls back to
 	// the previous image.

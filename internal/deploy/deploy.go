@@ -194,7 +194,7 @@ func (p *Pipeline) Run(ctx context.Context) error {
 	p.Logger.PhaseEnd("up", nil)
 
 	// Phase 7: after_deploy — run user hooks in the app container
-	// against the new release (after up and the nginx reload, before
+	// against the new release (after up and the caddy reload, before
 	// the health probe). A failing hook aborts the deploy and rolls
 	// back to the previous image, like a failed health probe.
 	if err := p.runHooks(ctx, client, "after_deploy", p.DeployEnv.AfterDeploy); err != nil {

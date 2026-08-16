@@ -24,13 +24,13 @@ var rsyncExcludes = []string{
 
 // deployFilesOnly is the filter for image-mode host syncs: exactly
 // the files the host needs to run the stack (the compose file, the
-// env file with secrets, and the bind-mounted nginx conf). Everything
-// else is excluded — the host never receives the source tree when the
-// image is built elsewhere.
+// env file with secrets, and the bind-mounted caddy Caddyfile).
+// Everything else is excluded — the host never receives the source
+// tree when the image is built elsewhere.
 var deployFilesOnly = []string{
 	"--include=docker-compose.prod.yml",
 	"--include=.env.production",
-	"--include=docker/nginx/default.conf",
+	"--include=docker/caddy/Caddyfile",
 	"--exclude=*",
 }
 
@@ -55,7 +55,7 @@ func pathExcluded(rel string, excludes []string) bool {
 		if matchPattern(rel, strings.TrimPrefix(rule, "--exclude=")) {
 			// An excluded directory may still hold an included file
 			// (--exclude=* matches "docker" while
-			// docker/nginx/default.conf is included beneath it);
+			// docker/caddy/Caddyfile is included beneath it);
 			// WalkDir must descend into it or the include never ships.
 			if dirHoldsIncludedFile(rel, excludes) {
 				return false
@@ -67,7 +67,7 @@ func pathExcluded(rel string, excludes []string) bool {
 }
 
 // dirHoldsIncludedFile reports whether any include rule is anchored
-// under rel (e.g. rel "docker" and include "docker/nginx/default.conf").
+// under rel (e.g. rel "docker" and include "docker/caddy/Caddyfile").
 func dirHoldsIncludedFile(rel string, excludes []string) bool {
 	prefix := rel + "/"
 	for _, rule := range excludes {

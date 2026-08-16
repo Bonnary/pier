@@ -21,7 +21,7 @@ type HealthConfig struct {
 
 // DefaultHealthConfig returns a sensible default HealthConfig for a
 // deploy env: GET to the deploy host's web endpoint (scheme and port
-// resolved from [deploy.<env>].tls and the "laravel" port), 60 s
+// resolved from the env's effective domain (see HealthURL)), 60 s
 // total timeout, 2 s base interval, 30 attempts (interval doubles
 // each attempt up to a 10 s cap).
 func DefaultHealthConfig(cfg config.Config, env string) HealthConfig {

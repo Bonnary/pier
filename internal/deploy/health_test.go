@@ -59,8 +59,8 @@ func TestDefaultHealthConfig(t *testing.T) {
 		Deploy:  map[string]config.DeployConfig{"production": {Host: "192.168.1.10", User: "u", Path: "p", Branch: "b"}},
 	}
 	h := DefaultHealthConfig(cfg, "production")
-	if h.URL != "http://192.168.1.10:80/up" {
-		t.Errorf("URL = %q, want http://192.168.1.10:80/up (host IP, plain HTTP)", h.URL)
+	if h.URL != "https://192.168.1.10:443/up" {
+		t.Errorf("URL = %q, want https://192.168.1.10:443/up (host IP, HTTPS: the domain sets the scheme)", h.URL)
 	}
 	if h.Timeout != 60*time.Second || h.Interval != 2*time.Second || h.MaxAttempts != 30 {
 		t.Errorf("DefaultHealthConfig = %+v, want 60s timeout / 2s interval / 30 attempts", h)

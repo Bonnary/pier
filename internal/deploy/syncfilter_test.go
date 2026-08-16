@@ -35,7 +35,7 @@ func TestDeployFilesOnly(t *testing.T) {
 	for _, rel := range []string{
 		"docker-compose.prod.yml",
 		".env.production",
-		"docker/nginx/default.conf",
+		"docker/caddy/Caddyfile",
 	} {
 		if pathExcluded(rel, deployFilesOnly) {
 			t.Errorf("pathExcluded(%q, deployFilesOnly) = true, want false (must be shipped)", rel)
@@ -59,9 +59,9 @@ func TestDeployFilesOnly(t *testing.T) {
 // TestDeployFilesOnlyDescendsAncestorDirs guards the WalkDir pruning
 // interaction: an excluded directory holding an included file must be
 // descended (--exclude=* matches "docker", but
-// docker/nginx/default.conf is included under it).
+// docker/caddy/Caddyfile is included under it).
 func TestDeployFilesOnlyDescendsAncestorDirs(t *testing.T) {
-	for _, rel := range []string{"docker", "docker/nginx"} {
+	for _, rel := range []string{"docker", "docker/caddy"} {
 		if pathExcluded(rel, deployFilesOnly) {
 			t.Errorf("pathExcluded(%q, deployFilesOnly) = true, want false (directory holds an included file)", rel)
 		}

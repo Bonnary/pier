@@ -8,7 +8,7 @@ import (
 // Up runs `docker compose --env-file .env.production -f
 // docker-compose.prod.yml up -d --wait --wait-timeout 120
 // --remove-orphans` on the remote host and then reloads the
-// webserver's nginx. Used as stage 5
+// webserver's caddy. Used as stage 5
 // of the deploy pipeline and by Rollback. The --env-file is required:
 // the compose file interpolates ${DB_PASSWORD}/${APP_KEY} from it
 // (without it compose warns and the app container gets blank secrets
@@ -21,8 +21,8 @@ import (
 // interactive shell. --wait-timeout bounds that wait so a never-
 // healthy service fails the deploy instead of hanging it. The reload
 // is needed because the sync writes bind-mounted files in place
-// (inode preserved), so a changed nginx conf is visible to the
-// webserver container, but nginx only reads config at start/reload
+// (inode preserved), so a changed Caddyfile is visible to the
+// webserver container, but caddy only reads config at start/reload
 // and compose does not recreate a service whose spec is unchanged.
 // Reloading unconditionally is harmless when nothing changed; the
 // error is ignored because a freshly created container already loaded
@@ -35,7 +35,7 @@ func Up(ctx context.Context, r runner, dir string) error {
 	if _, _, err := r.Run(ctx, cmd); err != nil {
 		return err
 	}
-	reload := fmt.Sprintf("cd %s && docker compose --env-file %s -f %s exec -T webserver nginx -s reload || true", dir, remoteEnvFile, remoteComposeFile)
+	reload := fmt.Sprintf("cd %s && docker compose --env-file %s -f %s exec -T webserver caddy reload --config /etc/caddy/Caddyfile || true", dir, remoteEnvFile, remoteComposeFile)
 	_, _, err := r.Run(ctx, reload)
 	return err
 }

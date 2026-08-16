@@ -69,7 +69,7 @@ func TestDeployFinalStateURL(t *testing.T) {
 			"production": {Host: "h", User: "u", Path: "p", Branch: "b", Ports: map[string]int{"laravel": 8383}},
 		},
 	}, "production")
-	want := "http://myapp.example.com:8383"
+	want := "https://myapp.example.com:8383"
 	if url != want {
 		t.Errorf("ResolvedURL = %q, want %q", url, want)
 	}
@@ -84,22 +84,22 @@ func TestDeployFinalStateURLDefault(t *testing.T) {
 			"production": {Host: "h", User: "u", Path: "p", Branch: "b"},
 		},
 	}, "production")
-	want := "http://myapp.example.com:80"
+	want := "https://myapp.example.com:443"
 	if url != want {
-		t.Errorf("ResolvedURL = %q, want %q (no override → default 80 over plain HTTP)", url, want)
+		t.Errorf("ResolvedURL = %q, want %q (no override → default 443 over HTTPS)", url, want)
 	}
 }
 
-func TestDeployFinalStateURLTLS(t *testing.T) {
+func TestDeployFinalStateURLDomain(t *testing.T) {
 	pinLookup(t, true)
 	cases := []struct {
 		name string
 		dc   config.DeployConfig
 		want string
 	}{
-		{"tls on, no override", config.DeployConfig{Host: "h", User: "u", Path: "p", Branch: "b", TLS: true}, "https://myapp.example.com:443"},
-		{"tls on, override", config.DeployConfig{Host: "h", User: "u", Path: "p", Branch: "b", TLS: true, Ports: map[string]int{"laravel": 8443}}, "https://myapp.example.com:8443"},
-		{"tls on, laravel=0 falls back to 443", config.DeployConfig{Host: "h", User: "u", Path: "p", Branch: "b", TLS: true, Ports: map[string]int{"laravel": 0}}, "https://myapp.example.com:443"},
+		{"domain, no override", config.DeployConfig{Host: "h", User: "u", Path: "p", Branch: "b"}, "https://myapp.example.com:443"},
+		{"domain, override", config.DeployConfig{Host: "h", User: "u", Path: "p", Branch: "b", Ports: map[string]int{"laravel": 8443}}, "https://myapp.example.com:8443"},
+		{"domain, laravel=0 falls back to 443", config.DeployConfig{Host: "h", User: "u", Path: "p", Branch: "b", Ports: map[string]int{"laravel": 0}}, "https://myapp.example.com:443"},
 	}
 	for _, c := range cases {
 		url := ResolvedURL(config.Config{
@@ -115,17 +115,18 @@ func TestDeployFinalStateURLTLS(t *testing.T) {
 
 func TestHealthURL(t *testing.T) {
 	cases := []struct {
-		name string
-		dc   config.DeployConfig
-		want string
+		name   string
+		domain string
+		dc     config.DeployConfig
+		want   string
 	}{
-		{"plain http default", config.DeployConfig{Host: "192.168.1.10", User: "u", Path: "p", Branch: "b"}, "http://192.168.1.10:80/up"},
-		{"laravel override", config.DeployConfig{Host: "192.168.1.10", User: "u", Path: "p", Branch: "b", Ports: map[string]int{"laravel": 8383}}, "http://192.168.1.10:8383/up"},
-		{"tls on", config.DeployConfig{Host: "192.168.1.10", User: "u", Path: "p", Branch: "b", TLS: true}, "https://192.168.1.10:443/up"},
+		{"no domain, plain http default", "", config.DeployConfig{Host: "192.168.1.10", User: "u", Path: "p", Branch: "b"}, "http://192.168.1.10:80/up"},
+		{"no domain, laravel override", "", config.DeployConfig{Host: "192.168.1.10", User: "u", Path: "p", Branch: "b", Ports: map[string]int{"laravel": 8383}}, "http://192.168.1.10:8383/up"},
+		{"domain, host IP over https", "myapp.example.com", config.DeployConfig{Host: "192.168.1.10", User: "u", Path: "p", Branch: "b"}, "https://192.168.1.10:443/up"},
 	}
 	for _, c := range cases {
 		url := HealthURL(config.Config{
-			Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+			Project: config.ProjectConfig{Name: "myapp", Domain: c.domain},
 			Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 			Deploy:  map[string]config.DeployConfig{"production": c.dc},
 		}, "production")
@@ -138,17 +139,18 @@ func TestHealthURL(t *testing.T) {
 func TestResolvedURLFallsBackToHostIPWhenDomainDoesNotResolve(t *testing.T) {
 	pinLookup(t, false)
 	cases := []struct {
-		name string
-		dc   config.DeployConfig
-		want string
+		name   string
+		domain string
+		dc     config.DeployConfig
+		want   string
 	}{
-		{"plain http default", config.DeployConfig{Host: "192.168.122.30", User: "u", Path: "p", Branch: "b"}, "http://192.168.122.30:80"},
-		{"laravel override", config.DeployConfig{Host: "192.168.122.30", User: "u", Path: "p", Branch: "b", Ports: map[string]int{"laravel": 8383}}, "http://192.168.122.30:8383"},
-		{"tls on", config.DeployConfig{Host: "192.168.122.30", User: "u", Path: "p", Branch: "b", TLS: true}, "https://192.168.122.30:443"},
+		{"no domain, plain http default", "", config.DeployConfig{Host: "192.168.122.30", User: "u", Path: "p", Branch: "b"}, "http://192.168.122.30:80"},
+		{"no domain, laravel override", "", config.DeployConfig{Host: "192.168.122.30", User: "u", Path: "p", Branch: "b", Ports: map[string]int{"laravel": 8383}}, "http://192.168.122.30:8383"},
+		{"domain, falls back to host IP over https", "myapp.example.com", config.DeployConfig{Host: "192.168.122.30", User: "u", Path: "p", Branch: "b"}, "https://192.168.122.30:443"},
 	}
 	for _, c := range cases {
 		url := ResolvedURL(config.Config{
-			Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+			Project: config.ProjectConfig{Name: "myapp", Domain: c.domain},
 			Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 			Deploy:  map[string]config.DeployConfig{"production": c.dc},
 		}, "production")
@@ -164,7 +166,7 @@ func TestResolvedURLKeepsDomainWithoutDeployHost(t *testing.T) {
 		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 	}, "production")
-	want := "http://myapp.example.com:80"
+	want := "https://myapp.example.com:443"
 	if url != want {
 		t.Errorf("ResolvedURL = %q, want %q (no deploy host to fall back to)", url, want)
 	}
@@ -177,7 +179,7 @@ func TestResolvedURLBareIPDomain(t *testing.T) {
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 		Deploy:  map[string]config.DeployConfig{"production": {Host: "10.0.0.1", User: "u", Path: "p", Branch: "b"}},
 	}, "production")
-	want := "http://192.168.122.30:80"
+	want := "https://192.168.122.30:443"
 	if url != want {
 		t.Errorf("ResolvedURL = %q, want %q (IP domain passes through)", url, want)
 	}
@@ -396,13 +398,13 @@ func TestPipelineSyncTargetsPerBuilder(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Chdir(t.TempDir())
 			seedEnvFile(t)
-			// The render phase does not write docker/nginx/default.conf
+			// The render phase does not write docker/caddy/Caddyfile
 			// (it exists in a real project from `pier init`); seed it
 			// so the image-mode host sync has something to ship.
-			if err := os.MkdirAll(filepath.Join("docker", "nginx"), 0755); err != nil {
+			if err := os.MkdirAll(filepath.Join("docker", "caddy"), 0755); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.WriteFile(filepath.Join("docker", "nginx", "default.conf"), []byte("server {}\n"), 0644); err != nil {
+			if err := os.WriteFile(filepath.Join("docker", "caddy", "Caddyfile"), []byte("example.com {}\n"), 0644); err != nil {
 				t.Fatal(err)
 			}
 			if err := os.WriteFile("marker.txt", []byte("sync me"), 0644); err != nil {
@@ -458,7 +460,7 @@ func TestPipelineSyncTargetsPerBuilder(t *testing.T) {
 				}
 			}
 			// The deploy files always land on the host.
-			for _, f := range []string{"docker-compose.prod.yml", ".env.production", filepath.Join("docker", "nginx", "default.conf")} {
+			for _, f := range []string{"docker-compose.prod.yml", ".env.production", filepath.Join("docker", "caddy", "Caddyfile")} {
 				if _, err := os.Stat(filepath.Join(remoteHost, f)); err != nil {
 					t.Errorf("host missing %s: %v", f, err)
 				}
