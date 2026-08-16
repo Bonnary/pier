@@ -357,6 +357,31 @@ func TestInitDeployFlagsWriteFullDeploySection(t *testing.T) {
 	}
 }
 
+func TestInitPromptsForDomain(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "artisan"), []byte("#!/usr/bin/env php\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "composer.json"), []byte(`{"require":{"laravel/framework":"^11.0"}}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	root := NewRootCmd(&buf, &buf)
+	root.SetIn(strings.NewReader("8.3\n22\n\n1\nmyapp.com\n\n\n\n"))
+	root.SetArgs([]string{"init", dir})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute: %v\n%s", err, buf.String())
+	}
+	got, err := os.ReadFile(filepath.Join(dir, "pier.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(got), `domain = "myapp.com"`) {
+		t.Errorf("pier.toml missing the prompted domain:\n%s", got)
+	}
+}
+
 func TestInitPromptsForDeployFields(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "artisan"), []byte("#!/usr/bin/env php\n"), 0644); err != nil {
@@ -369,7 +394,7 @@ func TestInitPromptsForDeployFields(t *testing.T) {
 	var buf bytes.Buffer
 	root := NewRootCmd(&buf, &buf)
 	root.SetIn(strings.NewReader(
-		"8.3\n22\nredis\n3\nprod.example.com\ndeploy\n/srv/myapp\nbuild.example.com\nbuilder\n/srv/build\n"))
+		"8.3\n22\nredis\n3\nmyapp.com\nprod.example.com\ndeploy\n/srv/myapp\nbuild.example.com\nbuilder\n/srv/build\n"))
 	root.SetArgs([]string{"init", dir})
 	if err := root.Execute(); err != nil {
 		t.Fatalf("Execute: %v\n%s", err, buf.String())
@@ -380,6 +405,7 @@ func TestInitPromptsForDeployFields(t *testing.T) {
 	}
 	for _, want := range []string{
 		`builder = "build_server"`,
+		`domain = "myapp.com"`,
 		`host = "prod.example.com"`,
 		`user = "deploy"`,
 		`path = "/srv/myapp"`,
@@ -407,7 +433,7 @@ func TestInitEmptyDeployPromptsSkipFields(t *testing.T) {
 
 	var buf bytes.Buffer
 	root := NewRootCmd(&buf, &buf)
-	root.SetIn(strings.NewReader("8.3\n22\n\n1\n\n\n\n")) // services: none, builder: 1 (host_server), host/user/path: skip
+	root.SetIn(strings.NewReader("8.3\n22\n\n1\n\n\n\n\n")) // services: none, builder: 1 (host_server), domain: skip, host/user/path: skip
 	root.SetArgs([]string{"init", dir})
 	if err := root.Execute(); err != nil {
 		t.Fatalf("Execute: %v\n%s", err, buf.String())
@@ -442,7 +468,7 @@ func TestInitBuildServerEmptyAnswerReprompts(t *testing.T) {
 	// Prompt order: php, node, services, builder, host, user, path,
 	// then (build_server) build host/user/path. Build path gets one
 	// empty answer, then a real one — the reprompt must recover.
-	root.SetIn(strings.NewReader("8.3\n22\n\n3\n\n\n\nbh\nbu\n\n/srv/build\n"))
+	root.SetIn(strings.NewReader("8.3\n22\n\n3\n\n\n\n\nbh\nbu\n\n/srv/build\n"))
 	root.SetArgs([]string{"init", dir})
 	if err := root.Execute(); err != nil {
 		t.Fatalf("Execute: %v\n%s", err, buf.String())
@@ -468,7 +494,7 @@ func TestInitBuildServerRequiredFieldGivesUp(t *testing.T) {
 	var buf bytes.Buffer
 	root := NewRootCmd(&buf, &buf)
 	// build server host: three empty answers then EOF — must give up with an error.
-	root.SetIn(strings.NewReader("8.3\n22\n\n3\n\n\n\n"))
+	root.SetIn(strings.NewReader("8.3\n22\n\n3\n\n\n\n\n"))
 	root.SetArgs([]string{"init", dir})
 	root.SilenceUsage = true
 	err := root.Execute()

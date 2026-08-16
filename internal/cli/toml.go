@@ -26,6 +26,12 @@ func tomlEncode(c config.Config) ([]byte, error) {
 		fmt.Fprintf(&b, "user = %q\n", dc.User)
 		fmt.Fprintf(&b, "path = %q\n", dc.Path)
 		fmt.Fprintf(&b, "branch = %q\n", dc.Branch)
+		if dc.Domain != "" {
+			fmt.Fprintf(&b, "domain = %q\n", dc.Domain)
+		}
+		if len(dc.ExtraDomains) > 0 {
+			fmt.Fprintf(&b, "extra_domains = %s\n", tomlStringArray(dc.ExtraDomains))
+		}
 		fmt.Fprintf(&b, "builder = %q\n", dc.BuilderMode())
 		if dc.QueueWorkers > 0 {
 			fmt.Fprintf(&b, "queue_workers = %d\n", dc.QueueWorkers)
