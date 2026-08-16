@@ -344,7 +344,7 @@ func TestPipelineRunsHooksAtCorrectStages(t *testing.T) {
 	writeRemoteState(t, remote)
 
 	cfg := &config.Config{
-		Project: config.ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Project: config.ProjectConfig{Name: "x"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 		Deploy: map[string]config.DeployConfig{
 			"production": {
@@ -417,7 +417,7 @@ func TestPipelineSkipsHooksWhenListsEmpty(t *testing.T) {
 	remote := t.TempDir()
 
 	cfg := &config.Config{
-		Project: config.ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Project: config.ProjectConfig{Name: "x"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 		Deploy: map[string]config.DeployConfig{
 			"production": {Host: host, User: "deploy", Path: remote, Branch: "main"},
@@ -469,7 +469,7 @@ func TestPipelineBeforeDeployFailureAborts(t *testing.T) {
 	writeRemoteState(t, remote)
 
 	cfg := &config.Config{
-		Project: config.ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Project: config.ProjectConfig{Name: "x"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 		Deploy: map[string]config.DeployConfig{
 			"production": {
@@ -530,7 +530,7 @@ func TestPipelineAfterDeployFailureFirstDeployReportsHook(t *testing.T) {
 	writeRemoteState(t, remote)
 
 	cfg := &config.Config{
-		Project: config.ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Project: config.ProjectConfig{Name: "x"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 		Deploy: map[string]config.DeployConfig{
 			"production": {
@@ -595,7 +595,7 @@ func TestPipelineAfterDeployFailureRollsBackToPrevious(t *testing.T) {
 	}
 
 	cfg := &config.Config{
-		Project: config.ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Project: config.ProjectConfig{Name: "x"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 		Deploy: map[string]config.DeployConfig{
 			"production": {
@@ -657,7 +657,7 @@ func TestPipelineBeforeDeploySkippedOnFirstDeploy(t *testing.T) {
 	remote := t.TempDir()
 
 	cfg := &config.Config{
-		Project: config.ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Project: config.ProjectConfig{Name: "x"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 		Deploy: map[string]config.DeployConfig{
 			"production": {

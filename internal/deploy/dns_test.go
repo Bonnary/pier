@@ -37,9 +37,9 @@ func TestCheckDomainDNSSkipsWithoutDomain(t *testing.T) {
 func TestCheckDomainDNSFailsWhenDomainDoesNotResolve(t *testing.T) {
 	pinDNS(t, map[string][]string{"1.2.3.4": {"1.2.3.4"}})
 	cfg := config.Config{
-		Project: config.ProjectConfig{Name: "x", Domain: "myapp.example.com"},
+		Project: config.ProjectConfig{Name: "x"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
-		Deploy:  map[string]config.DeployConfig{"production": {Host: "1.2.3.4", User: "u", Path: "p", Branch: "b"}},
+		Deploy:  map[string]config.DeployConfig{"production": {Host: "1.2.3.4", User: "u", Path: "p", Branch: "b", Domain: "myapp.example.com"}},
 	}
 	err := checkDomainDNS(cfg, "production")
 	if err == nil {
@@ -59,9 +59,9 @@ func TestCheckDomainDNSFailsOnMismatch(t *testing.T) {
 		"1.2.3.4":           {"1.2.3.4"},
 	})
 	cfg := config.Config{
-		Project: config.ProjectConfig{Name: "x", Domain: "myapp.example.com"},
+		Project: config.ProjectConfig{Name: "x"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
-		Deploy:  map[string]config.DeployConfig{"production": {Host: "1.2.3.4", User: "u", Path: "p", Branch: "b"}},
+		Deploy:  map[string]config.DeployConfig{"production": {Host: "1.2.3.4", User: "u", Path: "p", Branch: "b", Domain: "myapp.example.com"}},
 	}
 	err := checkDomainDNS(cfg, "production")
 	if err == nil || !strings.Contains(err.Error(), "resolves to") {
@@ -75,9 +75,9 @@ func TestCheckDomainDNSPassesOnMatch(t *testing.T) {
 		"1.2.3.4":           {"1.2.3.4"},
 	})
 	cfg := config.Config{
-		Project: config.ProjectConfig{Name: "x", Domain: "myapp.example.com"},
+		Project: config.ProjectConfig{Name: "x"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
-		Deploy:  map[string]config.DeployConfig{"production": {Host: "1.2.3.4", User: "u", Path: "p", Branch: "b"}},
+		Deploy:  map[string]config.DeployConfig{"production": {Host: "1.2.3.4", User: "u", Path: "p", Branch: "b", Domain: "myapp.example.com"}},
 	}
 	if err := checkDomainDNS(cfg, "production"); err != nil {
 		t.Errorf("checkDomainDNS(match) = %v, want nil", err)
@@ -87,9 +87,9 @@ func TestCheckDomainDNSPassesOnMatch(t *testing.T) {
 func TestCheckDomainDNSPassesWhenHostDoesNotResolve(t *testing.T) {
 	pinDNS(t, map[string][]string{"myapp.example.com": {"1.2.3.4"}})
 	cfg := config.Config{
-		Project: config.ProjectConfig{Name: "x", Domain: "myapp.example.com"},
+		Project: config.ProjectConfig{Name: "x"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
-		Deploy:  map[string]config.DeployConfig{"production": {Host: "hidden.example.com", User: "u", Path: "p", Branch: "b"}},
+		Deploy:  map[string]config.DeployConfig{"production": {Host: "hidden.example.com", User: "u", Path: "p", Branch: "b", Domain: "myapp.example.com"}},
 	}
 	if err := checkDomainDNS(cfg, "production"); err != nil {
 		t.Errorf("checkDomainDNS(unresolvable host) = %v, want nil (the domain resolves as required; the host may live only in the SSH config)", err)

@@ -54,9 +54,9 @@ func TestProbeBackoff(t *testing.T) {
 
 func TestDefaultHealthConfig(t *testing.T) {
 	cfg := config.Config{
-		Project: config.ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Project: config.ProjectConfig{Name: "x"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
-		Deploy:  map[string]config.DeployConfig{"production": {Host: "192.168.1.10", User: "u", Path: "p", Branch: "b"}},
+		Deploy:  map[string]config.DeployConfig{"production": {Host: "192.168.1.10", User: "u", Path: "p", Branch: "b", Domain: "x.example.com"}},
 	}
 	h := DefaultHealthConfig(cfg, "production")
 	if h.URL != "https://x.example.com:443/up" {

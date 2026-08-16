@@ -6,7 +6,7 @@ import (
 	"github.com/Bonnary/pier/internal/config"
 )
 
-// checkDomainDNS verifies that the env's effective domain resolves
+// checkDomainDNS verifies that the env's domain resolves
 // to the deploy host — the precondition for Caddy's ACME HTTP-01
 // challenge, which proves ownership by answering a token on port 80
 // of the domain (a request that only reaches the server when the
@@ -17,11 +17,11 @@ import (
 // (it may live only in the SSH config); the health probe surfaces
 // any real reachability problem.
 func checkDomainDNS(cfg config.Config, env string) error {
-	domain := cfg.DomainForEnv(env)
-	if domain == "" {
+	dc := cfg.Deploy[env]
+	if dc.Domain == "" {
 		return nil
 	}
-	dc := cfg.Deploy[env]
+	domain := dc.Domain
 	domainIPs, err := lookupHost(domain)
 	if err != nil || len(domainIPs) == 0 {
 		return fmt.Errorf(

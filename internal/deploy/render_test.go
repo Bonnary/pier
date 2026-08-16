@@ -12,7 +12,7 @@ import (
 func TestRenderProdFilesWritesMergedComposeAndEnv(t *testing.T) {
 	dir := t.TempDir()
 	cfg := &config.Config{
-		Project: config.ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Project: config.ProjectConfig{Name: "x"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22", Services: []string{"mysql"}},
 		Deploy: map[string]config.DeployConfig{
 			"production": {Host: "h", User: "u", Path: "/srv/x", Branch: "main", Services: []string{"postgres"}},
@@ -58,7 +58,7 @@ func TestRenderProdFilesPreservesUserContent(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := &config.Config{
-		Project: config.ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Project: config.ProjectConfig{Name: "x"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22", Services: []string{"redis"}},
 	}
 	if err := renderProdFiles(dir, cfg, "production"); err != nil {
@@ -95,7 +95,7 @@ func TestRenderProdFilesDropsRemovedService(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := &config.Config{
-		Project: config.ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Project: config.ProjectConfig{Name: "x"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22", Services: []string{"redis"}},
 		Deploy: map[string]config.DeployConfig{
 			"production": {Host: "h", User: "u", Path: "/srv/x", Branch: "main", Services: []string{}},

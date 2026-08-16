@@ -423,18 +423,17 @@ func (p *Pipeline) commit(ctx context.Context, c *Client) error {
 }
 
 // ResolvedURL returns the public URL for the deployed env: scheme
-// and port resolved from the env's effective domain and the
-// "laravel" port (default 443 with a domain, 80 for the plain-HTTP
-// default, or the per-env override from
-// [deploy.<env>.ports.laravel]). The host is the effective domain
-// when it resolves (DNS or /etc/hosts); otherwise it falls back to
-// the deploy host IP, so the printed URL is usable before DNS
-// entries point the domain at the server.
+// and port resolved from the env's domain and the "laravel" port
+// (default 443 with a domain, 80 for the plain-HTTP default, or the
+// per-env override from [deploy.<env>.ports.laravel]). The host is
+// the env's domain when it resolves (DNS or /etc/hosts); otherwise
+// it falls back to the deploy host IP, so the printed URL is usable
+// before DNS entries point the domain at the server.
 func ResolvedURL(cfg config.Config, env string) string {
-	domain := cfg.DomainForEnv(env)
-	host := domain
+	dc, _ := cfg.Deploy[env]
+	host := dc.Domain
 	if host == "" || !hostResolvable(host) {
-		if dc, ok := cfg.Deploy[env]; ok && dc.Host != "" {
+		if dc.Host != "" {
 			host = dc.Host
 		}
 	}
@@ -452,21 +451,21 @@ func hostResolvable(host string) bool {
 	return err == nil && len(addrs) > 0
 }
 
-// HealthURL returns the URL the health probe GETs for env. With an
-// effective domain the probe targets https://<domain>:<port>/up (port
-// resolved via laravelpkg.WebPort, default 443) with normal TLS
-// verification — an end-to-end check that exercises the real Let's
-// Encrypt certificate (the DNS preflight already verified the domain
-// points at the deploy host). Without a domain it probes the deploy
-// host IP with the resolved "laravel" port, so health checks pass
-// before DNS or /etc/hosts entries exist.
+// HealthURL returns the URL the health probe GETs for env. With a
+// domain the probe targets https://<domain>:<port>/up (port resolved
+// via laravelpkg.WebPort, default 443) with normal TLS verification —
+// an end-to-end check that exercises the real Let's Encrypt
+// certificate (the DNS preflight already verified the domain points
+// at the deploy host). Without a domain it probes the deploy host IP
+// with the resolved "laravel" port, so health checks pass before DNS
+// or /etc/hosts entries exist.
 func HealthURL(cfg config.Config, env string) string {
-	if domain := cfg.DomainForEnv(env); domain != "" {
-		return fmt.Sprintf("https://%s:%d/up", domain, laravelpkg.WebPort(cfg, env))
-	}
 	deployCfg, ok := cfg.Deploy[env]
 	if !ok {
 		deployCfg = config.DeployConfig{}
+	}
+	if deployCfg.Domain != "" {
+		return fmt.Sprintf("https://%s:%d/up", deployCfg.Domain, laravelpkg.WebPort(cfg, env))
 	}
 	return fmt.Sprintf("http://%s:%d/up", deployCfg.Host, laravelpkg.WebPort(cfg, env))
 }
