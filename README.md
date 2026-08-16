@@ -314,7 +314,8 @@ implied by domain presence: the effective domain is
 `[deploy.<env>].domain` when set, else `[project].domain`; when it is
 non-empty, Caddy serves HTTPS with an automatic Let's Encrypt
 certificate (and redirects HTTP to HTTPS), and the deploy health
-check probes `https://<domain>/up`. When no domain is set the env
+check probes `https://<domain>/up` — or, with a custom `ports.laravel`
+value, `https://<domain>:<port>/up`. When no domain is set the env
 serves plain HTTP end-to-end: the deploy health check probes
 `http://<host-ip>:<laravel-port>/up` directly on the deploy host IP,
 so it passes before DNS or `/etc/hosts` entries point the domain at

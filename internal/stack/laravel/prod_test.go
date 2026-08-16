@@ -669,6 +669,22 @@ func TestGenerateProdEnvExampleAPPURL(t *testing.T) {
 	if !contains(string(httpsEnv.Contents), "APP_URL=https://myapp.example.com") {
 		t.Errorf("env missing HTTPS APP_URL:\n%s", httpsEnv.Contents)
 	}
+
+	overrideFiles, err := s.GenerateProdFiles(config.Config{
+		Project: config.ProjectConfig{Name: "myapp", Domain: "myapp.example.com"},
+		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+		Deploy:  map[string]config.DeployConfig{"production": {Host: "h", User: "u", Path: "p", Branch: "b", Ports: map[string]int{"laravel": 8383}}},
+	}, "production")
+	if err != nil {
+		t.Fatalf("GenerateProdFiles (https override): %v", err)
+	}
+	overrideEnv := findFile(overrideFiles, ".env.production")
+	if overrideEnv == nil {
+		t.Fatal(".env.production missing (https override)")
+	}
+	if !contains(string(overrideEnv.Contents), "APP_URL=https://myapp.example.com:8383") {
+		t.Errorf("env missing port-carrying HTTPS APP_URL:\n%s", overrideEnv.Contents)
+	}
 }
 
 func TestGenerateProdFilesUsesEnvServicesOverride(t *testing.T) {

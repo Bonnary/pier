@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"strings"
 
@@ -62,7 +63,7 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("%w: project.name is required", ErrConfigInvalid)
 	}
 	if c.Project.Domain != "" && !validHostname(c.Project.Domain) {
-		return fmt.Errorf("%w: project.domain %q is not a valid hostname (no scheme, port, or path)", ErrConfigInvalid, c.Project.Domain)
+		return fmt.Errorf("%w: project.domain %q is not a valid hostname (no scheme, port, path, whitespace, @, or bare IP)", ErrConfigInvalid, c.Project.Domain)
 	}
 	if !validStackType[c.Stack.Type] {
 		return fmt.Errorf("%w: stack.type %q not supported (valid: laravel)", ErrConfigInvalid, c.Stack.Type)
@@ -131,19 +132,20 @@ func (c *Config) validateDeployEnv(env string, dc DeployConfig) error {
 		return fmt.Errorf("%w: deploy.%s requires host, user, path, branch (leave all empty to scaffold)", ErrConfigInvalid, env)
 	}
 	if dc.Domain != "" && !validHostname(dc.Domain) {
-		return fmt.Errorf("%w: deploy.%s.domain %q is not a valid hostname (no scheme, port, or path)", ErrConfigInvalid, env, dc.Domain)
+		return fmt.Errorf("%w: deploy.%s.domain %q is not a valid hostname (no scheme, port, path, whitespace, @, or bare IP)", ErrConfigInvalid, env, dc.Domain)
 	}
 	seen := map[string]bool{}
 	for _, d := range dc.ExtraDomains {
 		if !validHostname(d) {
-			return fmt.Errorf("%w: deploy.%s.extra_domains entry %q is not a valid hostname (no scheme, port, or path)", ErrConfigInvalid, env, d)
+			return fmt.Errorf("%w: deploy.%s.extra_domains entry %q is not a valid hostname (no scheme, port, path, whitespace, @, or bare IP)", ErrConfigInvalid, env, d)
 		}
-		if seen[d] {
+		lowered := strings.ToLower(d)
+		if seen[lowered] {
 			return fmt.Errorf("%w: deploy.%s.extra_domains has duplicate %q", ErrConfigInvalid, env, d)
 		}
-		seen[d] = true
+		seen[lowered] = true
 	}
-	if seen[c.DomainForEnv(env)] {
+	if seen[strings.ToLower(c.DomainForEnv(env))] {
 		return fmt.Errorf("%w: deploy.%s.extra_domains must not contain the primary domain %q", ErrConfigInvalid, env, c.DomainForEnv(env))
 	}
 	if err := validateHookList(env, "before_deploy", dc.BeforeDeploy); err != nil {
@@ -164,12 +166,14 @@ func (c *Config) validateDeployEnv(env string, dc DeployConfig) error {
 	return nil
 }
 
-// validHostname reports whether s is a bare hostname or IP: no
-// scheme, port, path, whitespace, or userinfo. Used to validate
-// project and deploy domains so a pasted URL fails fast at config
-// load instead of rendering a broken Caddyfile.
+// validHostname reports whether s is a bare hostname for Caddy HTTPS:
+// no scheme, port, path, whitespace, userinfo, or bare IP — a bare IP
+// belongs in the deploy host field, where Caddy would only ever
+// present a self-signed certificate for it. Used to validate project
+// and deploy domains so a pasted URL fails fast at config load
+// instead of rendering a broken Caddyfile.
 func validHostname(s string) bool {
-	if s == "" || strings.ContainsAny(s, " /:@") {
+	if s == "" || strings.ContainsAny(s, " /:@\t\r\n") || net.ParseIP(s) != nil {
 		return false
 	}
 	return true

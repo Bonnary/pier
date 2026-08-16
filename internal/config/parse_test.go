@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -561,6 +562,8 @@ func TestValidateDomainSyntax(t *testing.T) {
 		{"project domain with scheme", "https://myapp.example.com"},
 		{"project domain with port", "myapp.example.com:8443"},
 		{"project domain with path", "myapp.example.com/app"},
+		{"project domain with tab", "myapp.example.com\t"},
+		{"project domain with bare IP", "192.168.122.30"},
 	}
 	for _, c := range cases {
 		cfg := &Config{
@@ -572,7 +575,7 @@ func TestValidateDomainSyntax(t *testing.T) {
 			t.Errorf("%s: Validate = %v, want ErrConfigInvalid", c.name, err)
 			continue
 		}
-		if !strings.Contains(err.Error(), c.field) {
+		if !strings.Contains(err.Error(), fmt.Sprintf("%q", c.field)) {
 			t.Errorf("%s: err = %q, want it to mention the bad domain", c.name, err)
 		}
 	}
@@ -613,6 +616,12 @@ func TestValidateExtraDomains(t *testing.T) {
 	}
 	if err := base([]string{"www.x.example.com", "www.x.example.com"}).Validate(); !errors.Is(err, ErrConfigInvalid) {
 		t.Errorf("Validate(duplicate extra_domains) = %v, want ErrConfigInvalid", err)
+	}
+	if err := base([]string{"X.EXAMPLE.COM"}).Validate(); !errors.Is(err, ErrConfigInvalid) {
+		t.Errorf("Validate(extra_domains case-variant of primary) = %v, want ErrConfigInvalid", err)
+	}
+	if err := base([]string{"www.x.example.com", "WWW.X.EXAMPLE.COM"}).Validate(); !errors.Is(err, ErrConfigInvalid) {
+		t.Errorf("Validate(duplicate extra_domains case-variant) = %v, want ErrConfigInvalid", err)
 	}
 	if err := base([]string{"x.example.com"}).Validate(); !errors.Is(err, ErrConfigInvalid) {
 		t.Errorf("Validate(extra_domains containing primary) = %v, want ErrConfigInvalid", err)

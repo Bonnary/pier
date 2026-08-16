@@ -315,7 +315,11 @@ func renderProdEnv(cfg config.Config, env string, services []string) []byte {
 	fmt.Fprintln(&b, "APP_KEY=")
 	fmt.Fprintln(&b, "APP_DEBUG=false")
 	if domain := cfg.DomainForEnv(env); domain != "" {
-		fmt.Fprintf(&b, "APP_URL=%s://%s\n\n", WebScheme(cfg, env), domain)
+		if WebPort(cfg, env) == 443 {
+			fmt.Fprintf(&b, "APP_URL=%s://%s\n\n", WebScheme(cfg, env), domain)
+		} else {
+			fmt.Fprintf(&b, "APP_URL=%s://%s:%d\n\n", WebScheme(cfg, env), domain, WebPort(cfg, env))
+		}
 	} else {
 		host := "localhost"
 		if dc, ok := cfg.Deploy[env]; ok && dc.Host != "" {

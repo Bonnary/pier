@@ -122,7 +122,8 @@ func TestHealthURL(t *testing.T) {
 	}{
 		{"no domain, plain http default", "", config.DeployConfig{Host: "192.168.1.10", User: "u", Path: "p", Branch: "b"}, "http://192.168.1.10:80/up"},
 		{"no domain, laravel override", "", config.DeployConfig{Host: "192.168.1.10", User: "u", Path: "p", Branch: "b", Ports: map[string]int{"laravel": 8383}}, "http://192.168.1.10:8383/up"},
-		{"domain, probe the domain over https", "myapp.example.com", config.DeployConfig{Host: "192.168.1.10", User: "u", Path: "p", Branch: "b"}, "https://myapp.example.com/up"},
+		{"domain, probe the domain over https", "myapp.example.com", config.DeployConfig{Host: "192.168.1.10", User: "u", Path: "p", Branch: "b"}, "https://myapp.example.com:443/up"},
+		{"domain, laravel override, probe carries the port", "myapp.example.com", config.DeployConfig{Host: "192.168.1.10", User: "u", Path: "p", Branch: "b", Ports: map[string]int{"laravel": 8383}}, "https://myapp.example.com:8383/up"},
 	}
 	for _, c := range cases {
 		url := HealthURL(config.Config{
@@ -172,16 +173,16 @@ func TestResolvedURLKeepsDomainWithoutDeployHost(t *testing.T) {
 	}
 }
 
-func TestResolvedURLBareIPDomain(t *testing.T) {
+func TestResolvedURLHostnamePassesThrough(t *testing.T) {
 	pinLookup(t, true)
 	url := ResolvedURL(config.Config{
-		Project: config.ProjectConfig{Name: "myapp", Domain: "192.168.122.30"},
+		Project: config.ProjectConfig{Name: "myapp", Domain: "bare.example.com"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 		Deploy:  map[string]config.DeployConfig{"production": {Host: "10.0.0.1", User: "u", Path: "p", Branch: "b"}},
 	}, "production")
-	want := "https://192.168.122.30:443"
+	want := "https://bare.example.com:443"
 	if url != want {
-		t.Errorf("ResolvedURL = %q, want %q (IP domain passes through)", url, want)
+		t.Errorf("ResolvedURL = %q, want %q (hostname domain passes through when it resolves)", url, want)
 	}
 }
 

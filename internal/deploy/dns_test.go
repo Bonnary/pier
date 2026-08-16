@@ -83,3 +83,15 @@ func TestCheckDomainDNSPassesOnMatch(t *testing.T) {
 		t.Errorf("checkDomainDNS(match) = %v, want nil", err)
 	}
 }
+
+func TestCheckDomainDNSPassesWhenHostDoesNotResolve(t *testing.T) {
+	pinDNS(t, map[string][]string{"myapp.example.com": {"1.2.3.4"}})
+	cfg := config.Config{
+		Project: config.ProjectConfig{Name: "x", Domain: "myapp.example.com"},
+		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+		Deploy:  map[string]config.DeployConfig{"production": {Host: "hidden.example.com", User: "u", Path: "p", Branch: "b"}},
+	}
+	if err := checkDomainDNS(cfg, "production"); err != nil {
+		t.Errorf("checkDomainDNS(unresolvable host) = %v, want nil (the domain resolves as required; the host may live only in the SSH config)", err)
+	}
+}

@@ -465,9 +465,9 @@ func TestInitBuildServerEmptyAnswerReprompts(t *testing.T) {
 
 	var buf bytes.Buffer
 	root := NewRootCmd(&buf, &buf)
-	// Prompt order: php, node, services, builder, host, user, path,
-	// then (build_server) build host/user/path. Build path gets one
-	// empty answer, then a real one — the reprompt must recover.
+	// Prompt order: php, node, services, builder, domain, host, user,
+	// path, then (build_server) build host/user/path. Build path gets
+	// one empty answer, then a real one — the reprompt must recover.
 	root.SetIn(strings.NewReader("8.3\n22\n\n3\n\n\n\n\nbh\nbu\n\n/srv/build\n"))
 	root.SetArgs([]string{"init", dir})
 	if err := root.Execute(); err != nil {
