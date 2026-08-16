@@ -53,7 +53,7 @@ func TestPipelineLocalMachineEndToEnd(t *testing.T) {
 		Builder: "local_machine",
 	}
 	cfg := &config.Config{
-		Project: config.ProjectConfig{Name: "pierit", Domain: "pierit.example.com"},
+		Project: config.ProjectConfig{Name: "pierit"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 		Deploy:  map[string]config.DeployConfig{"production": dc},
 	}

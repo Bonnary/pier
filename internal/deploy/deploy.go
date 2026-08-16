@@ -36,6 +36,12 @@ var pipelineEnsurePath = func(ctx context.Context, c *Client, path string) error
 	return EnsureDeployPath(ctx, c, path)
 }
 
+// pipelineCheckDNS is a seam for tests to inject a fake domain-DNS
+// preflight step into the deploy pipeline's preflight phase.
+var pipelineCheckDNS = func(cfg config.Config, env string) error {
+	return checkDomainDNS(cfg, env)
+}
+
 // Pipeline is the top-level deploy driver. One Pipeline is constructed
 // per `pier deploy <env>` invocation and Run is called exactly once.
 type Pipeline struct {
@@ -263,6 +269,12 @@ func (p *Pipeline) preflight(ctx context.Context) (*Client, error) {
 			p.DeployEnv.Path, p.SSH.Host, p.SSH.User,
 			p.DeployEnv.Path, p.SSH.User, p.SSH.User, p.DeployEnv.Path, p.Env)
 	}
+	if p.Config != nil {
+		if err := pipelineCheckDNS(*p.Config, p.Env); err != nil {
+			client.Close()
+			return nil, err
+		}
+	}
 	if p.DeployEnv.BuilderMode() == "build_server" {
 		if p.BuildSSH.Host == "" {
 			client.Close()
@@ -411,15 +423,17 @@ func (p *Pipeline) commit(ctx context.Context, c *Client) error {
 }
 
 // ResolvedURL returns the public URL for the deployed env: scheme
-// and port resolved from [deploy.<env>].tls and the "laravel" port
-// (default 443 when TLS is enabled, 80 for plain HTTP, or the
-// per-env override from [deploy.<env>.ports.laravel]). The host is
-// the project domain when it resolves (DNS or /etc/hosts); otherwise
-// it falls back to the deploy host IP, so the printed URL is usable
-// before DNS entries point the domain at the server.
+// and port resolved from the env's effective domain and the
+// "laravel" port (default 443 with a domain, 80 for the plain-HTTP
+// default, or the per-env override from
+// [deploy.<env>.ports.laravel]). The host is the effective domain
+// when it resolves (DNS or /etc/hosts); otherwise it falls back to
+// the deploy host IP, so the printed URL is usable before DNS
+// entries point the domain at the server.
 func ResolvedURL(cfg config.Config, env string) string {
-	host := cfg.Project.Domain
-	if !hostResolvable(host) {
+	domain := cfg.DomainForEnv(env)
+	host := domain
+	if host == "" || !hostResolvable(host) {
 		if dc, ok := cfg.Deploy[env]; ok && dc.Host != "" {
 			host = dc.Host
 		}
@@ -438,15 +452,20 @@ func hostResolvable(host string) bool {
 	return err == nil && len(addrs) > 0
 }
 
-// HealthURL returns the URL the health probe GETs for env: the
-// deploy host IP from [deploy.<env>].host with the resolved scheme
-// and "laravel" port, plus "/up". Probing the host IP instead of the
-// public domain means health checks pass before DNS/hosts entries
-// point the domain at the server.
+// HealthURL returns the URL the health probe GETs for env. With an
+// effective domain the probe targets https://<domain>/up with normal
+// TLS verification — an end-to-end check that exercises the real
+// Let's Encrypt certificate (the DNS preflight already verified the
+// domain points at the deploy host). Without a domain it probes the
+// deploy host IP with the resolved "laravel" port, so health checks
+// pass before DNS or /etc/hosts entries exist.
 func HealthURL(cfg config.Config, env string) string {
+	if domain := cfg.DomainForEnv(env); domain != "" {
+		return "https://" + domain + "/up"
+	}
 	deployCfg, ok := cfg.Deploy[env]
 	if !ok {
 		deployCfg = config.DeployConfig{}
 	}
-	return fmt.Sprintf("%s://%s:%d/up", laravelpkg.WebScheme(cfg, env), deployCfg.Host, laravelpkg.WebPort(cfg, env))
+	return fmt.Sprintf("http://%s:%d/up", deployCfg.Host, laravelpkg.WebPort(cfg, env))
 }

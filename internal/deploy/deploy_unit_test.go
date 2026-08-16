@@ -122,7 +122,7 @@ func TestHealthURL(t *testing.T) {
 	}{
 		{"no domain, plain http default", "", config.DeployConfig{Host: "192.168.1.10", User: "u", Path: "p", Branch: "b"}, "http://192.168.1.10:80/up"},
 		{"no domain, laravel override", "", config.DeployConfig{Host: "192.168.1.10", User: "u", Path: "p", Branch: "b", Ports: map[string]int{"laravel": 8383}}, "http://192.168.1.10:8383/up"},
-		{"domain, host IP over https", "myapp.example.com", config.DeployConfig{Host: "192.168.1.10", User: "u", Path: "p", Branch: "b"}, "https://192.168.1.10:443/up"},
+		{"domain, probe the domain over https", "myapp.example.com", config.DeployConfig{Host: "192.168.1.10", User: "u", Path: "p", Branch: "b"}, "https://myapp.example.com/up"},
 	}
 	for _, c := range cases {
 		url := HealthURL(config.Config{
@@ -262,6 +262,9 @@ func TestPipelineSyncsFilesToRemote(t *testing.T) {
 	// (docker info, mkdir -p) that the test server rejects; fake
 	// them. pipelineDial is left as the real Dial — preflight
 	// type-asserts the result to *Client, so a real dial is required.
+	origCheckDNS := pipelineCheckDNS
+	pipelineCheckDNS = func(cfg config.Config, env string) error { return nil }
+	defer func() { pipelineCheckDNS = origCheckDNS }()
 	origProbe, origEnsure := pipelineProbe, pipelineEnsurePath
 	pipelineProbe = func(ctx context.Context, r stdinRunner) (bool, error) { return true, nil }
 	pipelineEnsurePath = func(ctx context.Context, c *Client, path string) error { return nil }
@@ -308,6 +311,9 @@ func TestPipelineRenderAbortsWithoutLocalEnvFile(t *testing.T) {
 		},
 	}
 
+	origCheckDNS := pipelineCheckDNS
+	pipelineCheckDNS = func(cfg config.Config, env string) error { return nil }
+	defer func() { pipelineCheckDNS = origCheckDNS }()
 	origProbe, origEnsure := pipelineProbe, pipelineEnsurePath
 	pipelineProbe = func(ctx context.Context, r stdinRunner) (bool, error) { return true, nil }
 	pipelineEnsurePath = func(ctx context.Context, c *Client, path string) error { return nil }
@@ -350,6 +356,9 @@ func TestPipelineSyncFailureWrapsPreflight(t *testing.T) {
 
 	// Sync fails on the fake client, so build/up/probe never run and
 	// only the preflight-phase seams need faking.
+	origCheckDNS := pipelineCheckDNS
+	pipelineCheckDNS = func(cfg config.Config, env string) error { return nil }
+	defer func() { pipelineCheckDNS = origCheckDNS }()
 	origDial, origProbe, origEnsure := pipelineDial, pipelineProbe, pipelineEnsurePath
 	pipelineDial = func(ctx context.Context, cfg SSHConfig) (bootstrapConn, error) {
 		return &failingSyncClient{Client: &Client{Config: cfg}, err: fmt.Errorf("sync boom")}, nil
@@ -420,6 +429,9 @@ func TestPipelineSyncTargetsPerBuilder(t *testing.T) {
 			remoteHost := t.TempDir()
 			remoteBuild := t.TempDir()
 
+			origCheckDNS := pipelineCheckDNS
+			pipelineCheckDNS = func(cfg config.Config, env string) error { return nil }
+			defer func() { pipelineCheckDNS = origCheckDNS }()
 			origProbe, origEnsure := pipelineProbe, pipelineEnsurePath
 			pipelineProbe = func(ctx context.Context, r stdinRunner) (bool, error) { return true, nil }
 			pipelineEnsurePath = func(ctx context.Context, c *Client, path string) error { return nil }
@@ -483,6 +495,9 @@ func TestPipelineBuildServerPreflightDialsBoth(t *testing.T) {
 	host, hostPort := testAddr(t, hostAddr)
 	build, buildPort := testAddr(t, buildAddr)
 
+	origCheckDNS := pipelineCheckDNS
+	pipelineCheckDNS = func(cfg config.Config, env string) error { return nil }
+	defer func() { pipelineCheckDNS = origCheckDNS }()
 	origDial, origProbe, origEnsure := pipelineDial, pipelineProbe, pipelineEnsurePath
 	var dialed []string
 	pipelineDial = func(ctx context.Context, cfg SSHConfig) (bootstrapConn, error) {

@@ -355,6 +355,9 @@ func TestPipelineRunsHooksAtCorrectStages(t *testing.T) {
 		},
 	}
 
+	origCheckDNS := pipelineCheckDNS
+	pipelineCheckDNS = func(cfg config.Config, env string) error { return nil }
+	defer func() { pipelineCheckDNS = origCheckDNS }()
 	origProbe, origEnsure := pipelineProbe, pipelineEnsurePath
 	pipelineProbe = func(ctx context.Context, r stdinRunner) (bool, error) { return true, nil }
 	pipelineEnsurePath = func(ctx context.Context, c *Client, path string) error { return nil }
@@ -421,6 +424,9 @@ func TestPipelineSkipsHooksWhenListsEmpty(t *testing.T) {
 		},
 	}
 
+	origCheckDNS := pipelineCheckDNS
+	pipelineCheckDNS = func(cfg config.Config, env string) error { return nil }
+	defer func() { pipelineCheckDNS = origCheckDNS }()
 	origProbe, origEnsure := pipelineProbe, pipelineEnsurePath
 	pipelineProbe = func(ctx context.Context, r stdinRunner) (bool, error) { return true, nil }
 	pipelineEnsurePath = func(ctx context.Context, c *Client, path string) error { return nil }
@@ -473,6 +479,9 @@ func TestPipelineBeforeDeployFailureAborts(t *testing.T) {
 		},
 	}
 
+	origCheckDNS := pipelineCheckDNS
+	pipelineCheckDNS = func(cfg config.Config, env string) error { return nil }
+	defer func() { pipelineCheckDNS = origCheckDNS }()
 	origProbe, origEnsure := pipelineProbe, pipelineEnsurePath
 	pipelineProbe = func(ctx context.Context, r stdinRunner) (bool, error) { return true, nil }
 	pipelineEnsurePath = func(ctx context.Context, c *Client, path string) error { return nil }
@@ -531,6 +540,9 @@ func TestPipelineAfterDeployFailureFirstDeployReportsHook(t *testing.T) {
 		},
 	}
 
+	origCheckDNS := pipelineCheckDNS
+	pipelineCheckDNS = func(cfg config.Config, env string) error { return nil }
+	defer func() { pipelineCheckDNS = origCheckDNS }()
 	origProbe, origEnsure := pipelineProbe, pipelineEnsurePath
 	pipelineProbe = func(ctx context.Context, r stdinRunner) (bool, error) { return true, nil }
 	pipelineEnsurePath = func(ctx context.Context, c *Client, path string) error { return nil }
@@ -593,6 +605,9 @@ func TestPipelineAfterDeployFailureRollsBackToPrevious(t *testing.T) {
 		},
 	}
 
+	origCheckDNS := pipelineCheckDNS
+	pipelineCheckDNS = func(cfg config.Config, env string) error { return nil }
+	defer func() { pipelineCheckDNS = origCheckDNS }()
 	origProbe, origEnsure := pipelineProbe, pipelineEnsurePath
 	pipelineProbe = func(ctx context.Context, r stdinRunner) (bool, error) { return true, nil }
 	pipelineEnsurePath = func(ctx context.Context, c *Client, path string) error { return nil }
@@ -653,6 +668,9 @@ func TestPipelineBeforeDeploySkippedOnFirstDeploy(t *testing.T) {
 		},
 	}
 
+	origCheckDNS := pipelineCheckDNS
+	pipelineCheckDNS = func(cfg config.Config, env string) error { return nil }
+	defer func() { pipelineCheckDNS = origCheckDNS }()
 	origProbe, origEnsure := pipelineProbe, pipelineEnsurePath
 	pipelineProbe = func(ctx context.Context, r stdinRunner) (bool, error) { return true, nil }
 	pipelineEnsurePath = func(ctx context.Context, c *Client, path string) error { return nil }
