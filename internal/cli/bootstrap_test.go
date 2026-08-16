@@ -17,7 +17,6 @@ func writeTestTOML(t *testing.T, dir string) string {
 	t.Helper()
 	toml := `[project]
 name = "x"
-domain = "x.example.com"
 
 [stack]
 type = "laravel"

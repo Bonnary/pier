@@ -11,7 +11,7 @@ import (
 
 func TestTomlEncodeRendersCommentedHookExamples(t *testing.T) {
 	cfg := config.Config{
-		Project: config.ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Project: config.ProjectConfig{Name: "x"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 		Deploy: map[string]config.DeployConfig{
 			"production": {Host: "h", User: "u", Path: "/srv/x", Branch: "main"},
@@ -35,7 +35,7 @@ func TestTomlEncodeRendersCommentedHookExamples(t *testing.T) {
 
 func TestTomlEncodeRendersRealHookValues(t *testing.T) {
 	cfg := config.Config{
-		Project: config.ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Project: config.ProjectConfig{Name: "x"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 		Deploy: map[string]config.DeployConfig{
 			"production": {
@@ -63,7 +63,7 @@ func TestTomlEncodeRendersRealHookValues(t *testing.T) {
 
 func TestTomlEncodeRoundTripsDeployQueueWorkers(t *testing.T) {
 	cfg := config.Config{
-		Project: config.ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Project: config.ProjectConfig{Name: "x"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 		Deploy: map[string]config.DeployConfig{
 			"production": {Host: "h", User: "u", Path: "/srv/x", Branch: "main", QueueWorkers: 5},
@@ -97,12 +97,12 @@ func TestTomlEncodeRoundTripsDeployQueueWorkers(t *testing.T) {
 
 func TestTomlEncodeRendersDeployDomain(t *testing.T) {
 	cfg := config.Config{
-		Project: config.ProjectConfig{Name: "x", Domain: "x.example.com"},
+		Project: config.ProjectConfig{Name: "x"},
 		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 		Deploy: map[string]config.DeployConfig{
 			"production": {
 				Host: "h", User: "u", Path: "/srv/x", Branch: "main",
-				Domain: "prod.example.com", ExtraDomains: []string{"www.prod.example.com"},
+				Domain: "prod.example.com", RedirectDomains: []string{"www.prod.example.com"},
 			},
 			"staging": {Host: "s", User: "u", Path: "/srv/x", Branch: "main"},
 		},
@@ -114,15 +114,18 @@ func TestTomlEncodeRendersDeployDomain(t *testing.T) {
 	got := string(b)
 	for _, want := range []string{
 		`domain = "prod.example.com"`,
-		`extra_domains = ["www.prod.example.com"]`,
+		`redirect_domains = ["www.prod.example.com"]`,
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("tomlEncode output missing %q; got:\n%s", want, got)
 		}
 	}
+	if strings.Contains(got, "[project]\nname = \"x\"\ndomain") {
+		t.Errorf("[project] section must not emit a domain key; got:\n%s", got)
+	}
 	for _, sec := range strings.Split(got, "\n[deploy.") {
-		if strings.HasPrefix(sec, "staging]") && (strings.Contains(sec, "domain") || strings.Contains(sec, "extra_domains")) {
-			t.Errorf("staging section must not emit domain keys (empty = inherit); got:\n%s", sec)
+		if strings.HasPrefix(sec, "staging]") && (strings.Contains(sec, "domain") || strings.Contains(sec, "redirect_domains")) {
+			t.Errorf("staging section must not emit domain keys (empty = plain HTTP); got:\n%s", sec)
 		}
 	}
 	path := filepath.Join(t.TempDir(), "pier.toml")
@@ -133,10 +136,10 @@ func TestTomlEncodeRendersDeployDomain(t *testing.T) {
 	if err != nil {
 		t.Fatalf("config.Load: %v\nencoded:\n%s", err, b)
 	}
-	if got := loaded.DomainForEnv("production"); got != "prod.example.com" {
-		t.Errorf("DomainForEnv(production) = %q, want prod.example.com after round trip", got)
+	if got := loaded.Deploy["production"].Domain; got != "prod.example.com" {
+		t.Errorf("Deploy[production].Domain = %q, want prod.example.com after round trip", got)
 	}
-	if got := loaded.DomainForEnv("staging"); got != "x.example.com" {
-		t.Errorf("DomainForEnv(staging) = %q, want x.example.com (inherit) after round trip", got)
+	if got := loaded.Deploy["staging"].Domain; got != "" {
+		t.Errorf("Deploy[staging].Domain = %q, want \"\" (no domain = plain HTTP) after round trip", got)
 	}
 }

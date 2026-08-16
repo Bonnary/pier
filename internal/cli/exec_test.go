@@ -29,7 +29,7 @@ func (c *capturingRunner) Run(ctx context.Context, stdin io.Reader, stdout, stde
 
 func TestExecBuildsCommand(t *testing.T) {
 	dir := t.TempDir()
-	toml := "[project]\nname=\"x\"\ndomain=\"x.example.com\"\n[stack]\ntype=\"laravel\"\nphp=\"8.3\"\nnode=\"22\"\nservices=[]\n"
+	toml := "[project]\nname=\"x\"\n[stack]\ntype=\"laravel\"\nphp=\"8.3\"\nnode=\"22\"\nservices=[]\n"
 	if err := writeFile(filepath.Join(dir, "pier.toml"), []byte(toml)); err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +55,7 @@ func TestExecBuildsCommand(t *testing.T) {
 
 func TestExecRemoteEnvDetection(t *testing.T) {
 	dir := t.TempDir()
-	toml := "[project]\nname=\"x\"\ndomain=\"x.example.com\"\n[stack]\ntype=\"laravel\"\nphp=\"8.3\"\nnode=\"22\"\n[deploy.production]\nbranch=\"main\"\nhost=\"h\"\nuser=\"u\"\npath=\"/srv/x\"\n"
+	toml := "[project]\nname=\"x\"\n[stack]\ntype=\"laravel\"\nphp=\"8.3\"\nnode=\"22\"\n[deploy.production]\nbranch=\"main\"\nhost=\"h\"\nuser=\"u\"\npath=\"/srv/x\"\n"
 	if err := writeFile(filepath.Join(dir, "pier.toml"), []byte(toml)); err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +88,7 @@ func TestExecRemoteEnvDetection(t *testing.T) {
 
 func TestExecRemoteNoCommand(t *testing.T) {
 	dir := t.TempDir()
-	toml := "[project]\nname=\"x\"\ndomain=\"x.example.com\"\n[stack]\ntype=\"laravel\"\nphp=\"8.3\"\nnode=\"22\"\n[deploy.production]\nbranch=\"main\"\nhost=\"h\"\nuser=\"u\"\npath=\"/srv/x\"\n"
+	toml := "[project]\nname=\"x\"\n[stack]\ntype=\"laravel\"\nphp=\"8.3\"\nnode=\"22\"\n[deploy.production]\nbranch=\"main\"\nhost=\"h\"\nuser=\"u\"\npath=\"/srv/x\"\n"
 	if err := writeFile(filepath.Join(dir, "pier.toml"), []byte(toml)); err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +103,7 @@ func TestExecRemoteNoCommand(t *testing.T) {
 
 func TestExecLocalWhenFirstArgNotEnv(t *testing.T) {
 	dir := t.TempDir()
-	toml := "[project]\nname=\"x\"\ndomain=\"x.example.com\"\n[stack]\ntype=\"laravel\"\nphp=\"8.3\"\nnode=\"22\"\n[deploy.production]\nbranch=\"main\"\nhost=\"h\"\nuser=\"u\"\npath=\"/srv/x\"\n"
+	toml := "[project]\nname=\"x\"\n[stack]\ntype=\"laravel\"\nphp=\"8.3\"\nnode=\"22\"\n[deploy.production]\nbranch=\"main\"\nhost=\"h\"\nuser=\"u\"\npath=\"/srv/x\"\n"
 	if err := writeFile(filepath.Join(dir, "pier.toml"), []byte(toml)); err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +131,7 @@ func TestExecLocalWhenFirstArgNotEnv(t *testing.T) {
 
 func TestExecRemoteExitCodePropagates(t *testing.T) {
 	dir := t.TempDir()
-	toml := "[project]\nname=\"x\"\ndomain=\"x.example.com\"\n[stack]\ntype=\"laravel\"\nphp=\"8.3\"\nnode=\"22\"\n[deploy.production]\nbranch=\"main\"\nhost=\"h\"\nuser=\"u\"\npath=\"/srv/x\"\n"
+	toml := "[project]\nname=\"x\"\n[stack]\ntype=\"laravel\"\nphp=\"8.3\"\nnode=\"22\"\n[deploy.production]\nbranch=\"main\"\nhost=\"h\"\nuser=\"u\"\npath=\"/srv/x\"\n"
 	if err := writeFile(filepath.Join(dir, "pier.toml"), []byte(toml)); err != nil {
 		t.Fatal(err)
 	}

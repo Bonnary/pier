@@ -35,7 +35,7 @@ func (f *fakeRunnerCLI) Run(ctx context.Context, stdin io.Reader, stdout, stderr
 
 func TestDevCommand(t *testing.T) {
 	dir := t.TempDir()
-	toml := "[project]\nname=\"x\"\ndomain=\"x.example.com\"\n[stack]\ntype=\"laravel\"\nphp=\"8.3\"\nnode=\"22\"\nservices=[]\n"
+	toml := "[project]\nname=\"x\"\n[stack]\ntype=\"laravel\"\nphp=\"8.3\"\nnode=\"22\"\nservices=[]\n"
 	if err := writeFile(filepath.Join(dir, "pier.toml"), []byte(toml)); err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +70,7 @@ func TestDevCommandPortInUse(t *testing.T) {
 	conflictPort := l.Addr().(*net.TCPAddr).Port
 
 	dir := t.TempDir()
-	toml := fmt.Sprintf("[project]\nname=\"x\"\ndomain=\"x.example.com\"\n[stack]\ntype=\"laravel\"\nphp=\"8.3\"\nnode=\"22\"\nservices=[]\n[dev.ports]\nlaravel=%d\n", conflictPort)
+	toml := fmt.Sprintf("[project]\nname=\"x\"\n[stack]\ntype=\"laravel\"\nphp=\"8.3\"\nnode=\"22\"\nservices=[]\n[dev.ports]\nlaravel=%d\n", conflictPort)
 	if err := writeFile(filepath.Join(dir, "pier.toml"), []byte(toml)); err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +117,7 @@ func TestPrintReadyBlockUsesConfiguredBind(t *testing.T) {
 	}
 	for _, c := range cases {
 		cfg := &config.Config{
-			Project: config.ProjectConfig{Name: "x", Domain: "x.example.com"},
+			Project: config.ProjectConfig{Name: "x"},
 			Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 			Dev:     config.DevConfig{Bind: c.bind},
 		}
@@ -147,7 +147,7 @@ func TestMaybeWarnLanExposure(t *testing.T) {
 	}
 	for _, c := range cases {
 		cfg := &config.Config{
-			Project: config.ProjectConfig{Name: "x", Domain: "x.example.com"},
+			Project: config.ProjectConfig{Name: "x"},
 			Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
 			Dev:     config.DevConfig{Bind: c.bind},
 		}

@@ -14,7 +14,7 @@ import (
 	"github.com/Bonnary/pier/internal/docker"
 )
 
-const shellTestToml = "[project]\nname=\"x\"\ndomain=\"x.example.com\"\n[stack]\ntype=\"laravel\"\nphp=\"8.3\"\nnode=\"22\"\n"
+const shellTestToml = "[project]\nname=\"x\"\n[stack]\ntype=\"laravel\"\nphp=\"8.3\"\nnode=\"22\"\n"
 
 func writeShellTestConfig(t *testing.T, extra string) string {
 	t.Helper()

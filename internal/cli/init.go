@@ -124,7 +124,7 @@ func runInit(cmd *cobra.Command, path string, f *initFlags) error {
 	if !validBuilderValue(builder) {
 		return cliError("--builder %q: must be host_server, local_machine, or build_server", builder)
 	}
-	domain := prompt(cmd.OutOrStdout(), cmd.InOrStdin(), "Project domain (e.g. myapp.com; blank = plain HTTP by IP): ", "")
+	domain := prompt(cmd.OutOrStdout(), cmd.InOrStdin(), "Production domain (e.g. myapp.com; blank = plain HTTP by IP): ", "")
 	host := f.host
 	if host == "" {
 		host = prompt(cmd.OutOrStdout(), cmd.InOrStdin(), "Deploy host (SSH target Domain name or IP address, enter to skip): ", "")
@@ -174,11 +174,12 @@ func runInit(cmd *cobra.Command, path string, f *initFlags) error {
 	if host != "" && user != "" && path != "" {
 		dc.Branch = "main"
 	}
+	dc.Domain = domain
 	if builder == "build_server" {
 		dc.BuildHost, dc.BuildUser, dc.BuildPath = buildHost, buildUser, buildPath
 	}
 	cfg := config.Config{
-		Project: config.ProjectConfig{Name: filepath.Base(abs), Domain: domain},
+		Project: config.ProjectConfig{Name: filepath.Base(abs)},
 		Stack:   config.StackConfig{Type: "laravel", PHP: php, Node: node, Services: services},
 		Deploy:  map[string]config.DeployConfig{"production": dc},
 	}

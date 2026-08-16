@@ -53,7 +53,6 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	fmt.Fprintf(cmd.OutOrStdout(), "project: %s\n", cfg.Project.Name)
-	fmt.Fprintf(cmd.OutOrStdout(), "domain:  %s\n", cfg.Project.Domain)
 	fmt.Fprintf(cmd.OutOrStdout(), "stack:   %s (php %s, node %s)\n", cfg.Stack.Type, cfg.Stack.PHP, cfg.Stack.Node)
 	fmt.Fprintf(cmd.OutOrStdout(), "services: %v\n", cfg.Stack.Services)
 	fmt.Fprintf(cmd.OutOrStdout(), "\n%s\n", string(ps))

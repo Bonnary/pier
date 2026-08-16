@@ -35,7 +35,7 @@ func TestStatusNoConfig(t *testing.T) {
 
 func TestStatusReadsConfig(t *testing.T) {
 	dir := t.TempDir()
-	toml := "[project]\nname=\"x\"\ndomain=\"x.example.com\"\n[stack]\ntype=\"laravel\"\nphp=\"8.3\"\nnode=\"22\"\nservices=[\"redis\"]\n"
+	toml := "[project]\nname=\"x\"\n[stack]\ntype=\"laravel\"\nphp=\"8.3\"\nnode=\"22\"\nservices=[\"redis\"]\n"
 	if err := os.WriteFile(filepath.Join(dir, "pier.toml"), []byte(toml), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -52,6 +52,9 @@ func TestStatusReadsConfig(t *testing.T) {
 	}
 	if !strings.Contains(buf.String(), "x") {
 		t.Errorf("output missing project name: %q", buf.String())
+	}
+	if strings.Contains(buf.String(), "domain:") {
+		t.Errorf("local status output must not print a project domain line (domain is per env): %q", buf.String())
 	}
 }
 
@@ -82,7 +85,7 @@ func (f *fakeStatusRunner) Close() error { return nil }
 
 func TestStatusRemoteSuccess(t *testing.T) {
 	dir := t.TempDir()
-	toml := "[project]\nname=\"x\"\ndomain=\"x.example.com\"\n[stack]\ntype=\"laravel\"\nphp=\"8.3\"\nnode=\"22\"\n[deploy.production]\nbranch=\"main\"\nhost=\"h\"\nuser=\"u\"\npath=\"/srv/x\"\n"
+	toml := "[project]\nname=\"x\"\n[stack]\ntype=\"laravel\"\nphp=\"8.3\"\nnode=\"22\"\n[deploy.production]\nbranch=\"main\"\nhost=\"h\"\nuser=\"u\"\npath=\"/srv/x\"\n"
 	if err := os.WriteFile(filepath.Join(dir, "pier.toml"), []byte(toml), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +121,7 @@ func TestStatusRemoteSuccess(t *testing.T) {
 
 func TestStatusRemoteHealthDownNoDeploy(t *testing.T) {
 	dir := t.TempDir()
-	toml := "[project]\nname=\"x\"\ndomain=\"x.example.com\"\n[stack]\ntype=\"laravel\"\nphp=\"8.3\"\nnode=\"22\"\n[deploy.production]\nbranch=\"main\"\nhost=\"h\"\nuser=\"u\"\npath=\"/srv/x\"\n"
+	toml := "[project]\nname=\"x\"\n[stack]\ntype=\"laravel\"\nphp=\"8.3\"\nnode=\"22\"\n[deploy.production]\nbranch=\"main\"\nhost=\"h\"\nuser=\"u\"\npath=\"/srv/x\"\n"
 	if err := os.WriteFile(filepath.Join(dir, "pier.toml"), []byte(toml), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -151,7 +154,7 @@ func TestStatusRemoteHealthDownNoDeploy(t *testing.T) {
 
 func TestStatusRemoteNoEnvSection(t *testing.T) {
 	dir := t.TempDir()
-	toml := "[project]\nname=\"x\"\ndomain=\"x.example.com\"\n[stack]\ntype=\"laravel\"\nphp=\"8.3\"\nnode=\"22\"\n"
+	toml := "[project]\nname=\"x\"\n[stack]\ntype=\"laravel\"\nphp=\"8.3\"\nnode=\"22\"\n"
 	if err := os.WriteFile(filepath.Join(dir, "pier.toml"), []byte(toml), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -170,7 +173,7 @@ func TestStatusRemoteNoEnvSection(t *testing.T) {
 
 func TestStatusRemoteDialFailure(t *testing.T) {
 	dir := t.TempDir()
-	toml := "[project]\nname=\"x\"\ndomain=\"x.example.com\"\n[stack]\ntype=\"laravel\"\nphp=\"8.3\"\nnode=\"22\"\n[deploy.production]\nbranch=\"main\"\nhost=\"h\"\nuser=\"u\"\npath=\"/srv/x\"\n"
+	toml := "[project]\nname=\"x\"\n[stack]\ntype=\"laravel\"\nphp=\"8.3\"\nnode=\"22\"\n[deploy.production]\nbranch=\"main\"\nhost=\"h\"\nuser=\"u\"\npath=\"/srv/x\"\n"
 	if err := os.WriteFile(filepath.Join(dir, "pier.toml"), []byte(toml), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +198,7 @@ func TestStatusRemoteDialFailure(t *testing.T) {
 
 func TestStatusRemoteAbortPropagates(t *testing.T) {
 	dir := t.TempDir()
-	toml := "[project]\nname=\"x\"\ndomain=\"x.example.com\"\n[stack]\ntype=\"laravel\"\nphp=\"8.3\"\nnode=\"22\"\n[deploy.production]\nbranch=\"main\"\nhost=\"h\"\nuser=\"u\"\npath=\"/srv/x\"\n"
+	toml := "[project]\nname=\"x\"\n[stack]\ntype=\"laravel\"\nphp=\"8.3\"\nnode=\"22\"\n[deploy.production]\nbranch=\"main\"\nhost=\"h\"\nuser=\"u\"\npath=\"/srv/x\"\n"
 	if err := os.WriteFile(filepath.Join(dir, "pier.toml"), []byte(toml), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -220,7 +223,7 @@ func TestStatusRemoteAbortPropagates(t *testing.T) {
 
 func TestStatusRemoteConfigCarriesPasswordPrompt(t *testing.T) {
 	dir := t.TempDir()
-	toml := "[project]\nname=\"x\"\ndomain=\"x.example.com\"\n[stack]\ntype=\"laravel\"\nphp=\"8.3\"\nnode=\"22\"\n[deploy.production]\nbranch=\"main\"\nhost=\"h\"\nuser=\"u\"\npath=\"/srv/x\"\n"
+	toml := "[project]\nname=\"x\"\n[stack]\ntype=\"laravel\"\nphp=\"8.3\"\nnode=\"22\"\n[deploy.production]\nbranch=\"main\"\nhost=\"h\"\nuser=\"u\"\npath=\"/srv/x\"\n"
 	if err := os.WriteFile(filepath.Join(dir, "pier.toml"), []byte(toml), 0644); err != nil {
 		t.Fatal(err)
 	}

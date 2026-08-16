@@ -49,7 +49,7 @@ func TestInitFailsOnExistingPierToml(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "composer.json"), []byte(`{"require":{"laravel/framework":"^11.0"}}`), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "pier.toml"), []byte("[project]\nname=\"x\"\ndomain=\"x.example.com\"\n"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "pier.toml"), []byte("[project]\nname=\"x\"\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	var buf bytes.Buffer
@@ -379,6 +379,10 @@ func TestInitPromptsForDomain(t *testing.T) {
 	}
 	if !strings.Contains(string(got), `domain = "myapp.com"`) {
 		t.Errorf("pier.toml missing the prompted domain:\n%s", got)
+	}
+	projectSection := strings.Split(string(got), "\n[deploy.")[0]
+	if strings.Contains(projectSection, "domain") {
+		t.Errorf("[project] section must not contain a domain key:\n%s", got)
 	}
 }
 

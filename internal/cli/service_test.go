@@ -14,7 +14,7 @@ import (
 
 func writeServiceToml(t *testing.T, dir, extra string) {
 	t.Helper()
-	toml := "[project]\nname=\"x\"\ndomain=\"x.example.com\"\n[stack]\ntype=\"laravel\"\nphp=\"8.3\"\nnode=\"22\"\nservices=[]\n" + extra
+	toml := "[project]\nname=\"x\"\n[stack]\ntype=\"laravel\"\nphp=\"8.3\"\nnode=\"22\"\nservices=[]\n" + extra
 	if err := os.WriteFile(filepath.Join(dir, "pier.toml"), []byte(toml), 0644); err != nil {
 		t.Fatal(err)
 	}
