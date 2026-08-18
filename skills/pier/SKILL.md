@@ -33,7 +33,8 @@ The workflow, in order:
 
 1. **`pier init`** — detect Laravel, write `pier.toml`, generate
    `docker-compose.yml` + runtime Dockerfiles, patch `vite.config.ts`
-   (`server: { host: true }`). Prompts for the deploy target
+   (`server: { host: true }`). Prompts for the production domain
+   (blank = plain HTTP by IP), the deploy target
    (host/user/path/branch) and build machine. Idempotent: re-running
    smart-merges into an existing compose file, preserving hand edits.
 2. **`pier dev`** — bring up the dev stack. Pre-flight port probe;

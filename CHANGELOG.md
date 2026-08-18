@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.0.7-beta (2026-08-18)
 
 ### Added
 
@@ -39,6 +39,9 @@
   (unknown keys are ignored), but envs no longer inherit a
   project-wide domain — set `domain` in each `[deploy.<env>]`
   section.
+- Bumped version constant to `0.0.7-beta` (reflected in
+  `pier --version`, `cmd/pier/main_test.go`, and the README status
+  line).
 
 ### Removed
 
