@@ -216,6 +216,14 @@ func runInit(cmd *cobra.Command, path string, f *initFlags) error {
 	}
 	for _, file := range append(devFiles, prodFiles...) {
 		dest := filepath.Join(abs, file.Path)
+		// config/trustedproxy.php is user-adjacent (it lives in the
+		// app's config dir): an existing file may pin a specific proxy
+		// instead of pier's '*' default, so never overwrite it.
+		if file.Path == "config/trustedproxy.php" {
+			if _, err := os.Stat(dest); err == nil {
+				continue
+			}
+		}
 		if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
 			return err
 		}

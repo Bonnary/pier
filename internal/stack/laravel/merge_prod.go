@@ -67,25 +67,60 @@ func MergeProd(existing string, cfg config.Config, env string, decision func(Mer
 	return string(out), warnings, nil
 }
 
+// userOwnedEnvKeys are the .env.production keys pier never touches:
+// credentials the user fills in (APP_KEY, DB_PASSWORD, AWS access
+// keys) and values the compose file interpolates as ${...} so users
+// can override them from .env.production (TRUSTED_PROXIES,
+// CACHE_STORE, QUEUE_CONNECTION). Every other key renderProdEnv emits
+// is pier-derived from pier.toml (APP_URL from the env's domain, DB_*
+// and REDIS_* from the service list, ...) and is updated when the
+// render changes.
+var userOwnedEnvKeys = map[string]bool{
+	"APP_KEY":               true,
+	"DB_PASSWORD":           true,
+	"AWS_ACCESS_KEY_ID":     true,
+	"AWS_SECRET_ACCESS_KEY": true,
+	"TRUSTED_PROXIES":       true,
+	"CACHE_STORE":           true,
+	"QUEUE_CONNECTION":      true,
+}
+
 // MergeEnvFile merges a fresh render of .env.production into the
-// existing file: every existing KEY=VALUE line is kept verbatim and
-// keys present in fresh but missing from existing are appended with
-// fresh's values. Existing values (secrets) are never changed and no
-// existing key is removed — .env.production is user-owned. An empty
-// existing file yields the fresh render unchanged.
+// existing file. Existing user-owned lines (secrets and overridable
+// keys, see userOwnedEnvKeys) are kept verbatim; pier-derived keys
+// whose fresh value changed are updated to the fresh value; keys
+// present in fresh but missing from existing are appended; user-added
+// keys absent from fresh are kept. An empty existing file yields the
+// fresh render unchanged.
 func MergeEnvFile(existing string, fresh []byte) string {
 	if existing == "" {
 		return string(fresh)
 	}
-	have := map[string]bool{}
-	for _, ln := range strings.Split(existing, "\n") {
-		if k, _, ok := strings.Cut(ln, "="); ok {
-			have[strings.TrimSpace(k)] = true
+	freshValue := map[string]string{}
+	for _, ln := range strings.Split(string(fresh), "\n") {
+		if k, v, ok := strings.Cut(ln, "="); ok {
+			freshValue[strings.TrimSpace(k)] = v
 		}
 	}
+	have := map[string]bool{}
 	var b strings.Builder
-	b.WriteString(existing)
-	if !strings.HasSuffix(existing, "\n") {
+	for _, ln := range strings.Split(existing, "\n") {
+		k, _, ok := strings.Cut(ln, "=")
+		if !ok {
+			b.WriteString(ln)
+			b.WriteString("\n")
+			continue
+		}
+		key := strings.TrimSpace(k)
+		have[key] = true
+		if !userOwnedEnvKeys[key] {
+			if v, ok := freshValue[key]; ok && v != valueOf(ln) {
+				b.WriteString(key + "=" + v)
+				b.WriteString("\n")
+				continue
+			}
+		}
+		b.WriteString(ln)
 		b.WriteString("\n")
 	}
 	for _, ln := range strings.Split(string(fresh), "\n") {
@@ -102,4 +137,13 @@ func MergeEnvFile(existing string, fresh []byte) string {
 		have[key] = true
 	}
 	return b.String()
+}
+
+// valueOf returns the part after the first '=' of a KEY=VALUE line.
+func valueOf(ln string) string {
+	_, v, ok := strings.Cut(ln, "=")
+	if !ok {
+		return ""
+	}
+	return v
 }

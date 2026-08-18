@@ -123,6 +123,62 @@ func TestMergeEnvFilePreservesValuesAndAddsMissing(t *testing.T) {
 	}
 }
 
+func TestMergeProdAddsDomainPublishes443(t *testing.T) {
+	// A domain-less deploy ships webserver ports [80:80]. Adding a
+	// domain re-renders them as [443:443, 80:80]; the merge must
+	// publish 443 or Caddy never answers HTTPS and the health probe
+	// (https://<domain>/up) fails.
+	existing := `services:
+    app:
+        image: x:latest
+    webserver:
+        image: caddy:2-alpine
+        ports:
+            - 80:80
+        volumes:
+            - ./docker/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+            - caddy_data:/data
+            - caddy_config:/config
+    redis:
+        image: redis:7-alpine
+networks:
+    pier:
+        driver: bridge
+`
+	cfg := config.Config{
+		Project: config.ProjectConfig{Name: "x"},
+		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22", Services: []string{"redis"}},
+		Deploy:  map[string]config.DeployConfig{"production": {Domain: "myapp.example.com"}},
+	}
+	merged, _, err := MergeProd(existing, cfg, "production", keep)
+	if err != nil {
+		t.Fatalf("MergeProd: %v", err)
+	}
+	if !contains(merged, "443:443") {
+		t.Errorf("merged compose must publish 443:443 once a domain is set (webserver ports are pier-owned):\n%s", merged)
+	}
+	if !contains(merged, "80:80") {
+		t.Errorf("merged compose must keep the 80:80 HTTP-to-HTTPS redirect port:\n%s", merged)
+	}
+}
+
+func TestMergeEnvFileUpdatesAPPURLWhenDomainChanges(t *testing.T) {
+	existing := "# production environment\nAPP_KEY=real-secret\nAPP_URL=http://1.2.3.4:80\nDB_PASSWORD=supersecret\n"
+	fresh := []byte("APP_NAME=x\nAPP_ENV=production\nAPP_KEY=\nAPP_URL=https://myapp.example.com\nDB_PASSWORD=changeme\n")
+	got := MergeEnvFile(existing, fresh)
+	if !contains(got, "APP_URL=https://myapp.example.com") {
+		t.Errorf("APP_URL must track the env's domain (it is pier-derived):\n%s", got)
+	}
+	if contains(got, "APP_URL=http://1.2.3.4:80") {
+		t.Errorf("stale APP_URL must not survive the merge:\n%s", got)
+	}
+	for _, want := range []string{"APP_KEY=real-secret", "DB_PASSWORD=supersecret"} {
+		if !contains(got, want) {
+			t.Errorf("MergeEnvFile lost secret %q:\n%s", want, got)
+		}
+	}
+}
+
 func TestMergeEnvFileEmptyExistingReturnsFresh(t *testing.T) {
 	fresh := []byte("APP_KEY=\nDB_PASSWORD=changeme\n")
 	got := MergeEnvFile("", fresh)

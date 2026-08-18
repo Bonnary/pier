@@ -27,7 +27,7 @@ func TestInitWritesPierToml(t *testing.T) {
 	if err := root.Execute(); err != nil {
 		t.Fatalf("Execute: %v\n%s", err, buf.String())
 	}
-	for _, want := range []string{"pier.toml", "docker-compose.yml", "docker-compose.prod.yml", "docker/8.3/Dockerfile", ".env", ".env.production"} {
+	for _, want := range []string{"pier.toml", "docker-compose.yml", "docker-compose.prod.yml", "docker/8.3/Dockerfile", ".env", ".env.production", "config/trustedproxy.php"} {
 		if _, err := os.Stat(filepath.Join(dir, want)); err != nil {
 			t.Errorf("expected %s after init: %v", want, err)
 		}
@@ -71,6 +71,38 @@ func TestInitFailsOnNonLaravel(t *testing.T) {
 	err := root.Execute()
 	if err == nil {
 		t.Fatal("Execute = nil error, want non-nil (not a Laravel project)")
+	}
+}
+
+func TestInitPreservesExistingTrustedProxiesConfig(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "artisan"), []byte("#!/usr/bin/env php\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "composer.json"), []byte(`{"require":{"laravel/framework":"^11.0"}}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	existing := "<?php return ['proxies' => '10.0.0.1'];\n"
+	if err := os.MkdirAll(filepath.Join(dir, "config"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "config", "trustedproxy.php"), []byte(existing), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	root := NewRootCmd(&buf, &buf)
+	root.SetIn(strings.NewReader(""))
+	root.SetArgs([]string{"--config", filepath.Join(dir, "pier.toml"), "init", dir, "--php", "8.3", "--node", "22"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute: %v\n%s", err, buf.String())
+	}
+	got, err := os.ReadFile(filepath.Join(dir, "config", "trustedproxy.php"))
+	if err != nil {
+		t.Fatalf("read config/trustedproxy.php: %v", err)
+	}
+	if string(got) != existing {
+		t.Errorf("init clobbered the user's existing config/trustedproxy.php:\n%s", got)
 	}
 }
 

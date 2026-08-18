@@ -173,7 +173,18 @@ func mergeServicesMap(fresh, existing *yaml.Node, owned map[string]bool) (*yaml.
 		out.Content = append(out.Content, k)
 		if existingVal, ok := existingMap[k.Value]; ok {
 			if owned[k.Value] {
-				out.Content = append(out.Content, compose.MergeNodes(existingVal, v))
+				if k.Value == "webserver" {
+					// The webserver is pier's Caddy, configured via
+					// pier.toml (the domain decides its ports) and the
+					// bind-mounted Caddyfile — not by hand-editing the
+					// compose file. Its content is authoritative: the
+					// sequence-preserving merge would otherwise keep a
+					// stale [80:80] ports list and never publish 443
+					// after a domain is added.
+					out.Content = append(out.Content, v)
+				} else {
+					out.Content = append(out.Content, compose.MergeNodes(existingVal, v))
+				}
 			} else {
 				out.Content = append(out.Content, existingVal)
 			}

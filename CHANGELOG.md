@@ -19,6 +19,20 @@
 
 ### Changed
 
+- The deploy render phase re-writes `docker/caddy/Caddyfile` from
+  `pier.toml` before syncing. Setting (or removing) a domain in
+  `[deploy.<env>]` now takes effect on the next `pier deploy`; the
+  file is pier-rendered, so manual edits are overwritten.
+- The webserver service in the merged prod compose is now fully
+  pier-managed: its ports follow `pier.toml`, so adding a domain
+  publishes `443:443` (and removing one drops it) instead of keeping
+  a stale `[80:80]` list that leaves Caddy unable to answer HTTPS.
+- `MergeEnvFile` updates pier-derived `.env.production` keys (e.g.
+  `APP_URL` from the env's domain) when the render changes, instead of
+  preserving every existing line verbatim. User-owned keys are still
+  never touched: secrets (`APP_KEY`, `DB_PASSWORD`, AWS credentials)
+  and the `${...}`-interpolated overrides (`TRUSTED_PROXIES`,
+  `CACHE_STORE`, `QUEUE_CONNECTION`).
 - Domains are per deploy env: `[project].domain` is removed and the
   old per-env extra-domains key is renamed to
   `[deploy.<env>].redirect_domains`. Existing configs keep loading

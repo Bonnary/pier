@@ -9,9 +9,10 @@ import "gopkg.in/yaml.v3"
 
 // MergeNodes returns the result of deep-merging base and overlay.
 // Mappings are merged key-by-key (overlay wins on key collisions),
-// sequences are replaced (base is dropped), scalars and unknowns
-// are replaced with the overlay value. Either argument may be nil;
-// the non-nil one is returned as-is.
+// sequences are preserved (base wins — user-added lists such as
+// volumes or extra_hosts survive), scalars and unknowns are replaced
+// with the overlay value. Either argument may be nil; the non-nil one
+// is returned as-is.
 func MergeNodes(base, overlay *yaml.Node) *yaml.Node {
 	if base == nil {
 		return overlay

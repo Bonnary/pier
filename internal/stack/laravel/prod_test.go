@@ -689,6 +689,41 @@ func TestGenerateProdEnvExampleAPPURL(t *testing.T) {
 	}
 }
 
+func TestGenerateProdFilesTrustedProxies(t *testing.T) {
+	s := New()
+	files, err := s.GenerateProdFiles(config.Config{
+		Project: config.ProjectConfig{Name: "myapp"},
+		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+		Deploy:  map[string]config.DeployConfig{"production": {Host: "h", User: "u", Path: "p", Branch: "b", Domain: "myapp.example.com"}},
+	}, "production")
+	if err != nil {
+		t.Fatalf("GenerateProdFiles: %v", err)
+	}
+	// The webserver (Caddy) terminates TLS and reverse-proxies plain HTTP
+	// to the app (php artisan serve), so Laravel sees scheme http. Laravel 13
+	// no longer applies APP_URL to URL generation and only trusts proxy
+	// headers when configured, so without a trustedproxy config the app
+	// renders http:// asset URLs that browsers block as mixed content →
+	// white screen on https.
+	proxy := findFile(files, "config/trustedproxy.php")
+	if proxy == nil {
+		t.Fatal("config/trustedproxy.php missing (needed so Laravel trusts the Caddy reverse proxy over https)")
+	}
+	if !contains(string(proxy.Contents), "'proxies' => env('TRUSTED_PROXIES', '*')") {
+		t.Errorf("config/trustedproxy.php must trust proxies by default (override via TRUSTED_PROXIES):\n%s", proxy.Contents)
+	}
+
+	env := string(findFile(files, ".env.production").Contents)
+	if !contains(env, "TRUSTED_PROXIES=*") {
+		t.Errorf(".env.production missing TRUSTED_PROXIES=* so users can override the trusted proxy:\n%s", env)
+	}
+
+	compose := string(findFile(files, "docker-compose.prod.yml").Contents)
+	if !contains(compose, "TRUSTED_PROXIES: ${TRUSTED_PROXIES}") {
+		t.Errorf("prod compose app env missing TRUSTED_PROXIES: ${TRUSTED_PROXIES} interpolation:\n%s", compose)
+	}
+}
+
 func TestGenerateProdFilesUsesEnvServicesOverride(t *testing.T) {
 	files, err := New().GenerateProdFiles(config.Config{
 		Stack:  config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22", Services: []string{"mysql", "s3"}},

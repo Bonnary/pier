@@ -407,9 +407,10 @@ func TestPipelineSyncTargetsPerBuilder(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Chdir(t.TempDir())
 			seedEnvFile(t)
-			// The render phase does not write docker/caddy/Caddyfile
-			// (it exists in a real project from `pier init`); seed it
-			// so the image-mode host sync has something to ship.
+			// The render phase rewrites docker/caddy/Caddyfile from
+			// pier.toml; seed one so the image-mode host sync has
+			// something to ship and the pipeline does not abort on a
+			// missing file.
 			if err := os.MkdirAll(filepath.Join("docker", "caddy"), 0755); err != nil {
 				t.Fatal(err)
 			}
