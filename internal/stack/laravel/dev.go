@@ -97,18 +97,26 @@ func (s *Stack) GenerateDevCompose(cfg config.Config) (stack.Files, error) {
 	return files, nil
 }
 
-func hostUID() string {
-	if v := os.Getenv("PIER_WWWUSER"); v != "" {
+// effectiveID resolves a numeric OS UID/GID into a build-arg string. An env
+// override wins. os.Getuid/os.Getgid return -1 on Windows (no POSIX user
+// semantics), so fall back to 1337 (matching Sail and the prod build) rather
+// than emitting an invalid "-1" that `groupadd -g $WWWGROUP sail` rejects.
+func effectiveID(env string, id int) string {
+	if v := os.Getenv(env); v != "" {
 		return v
 	}
-	return strconv.Itoa(os.Getuid())
+	if id == -1 {
+		return "1337"
+	}
+	return strconv.Itoa(id)
+}
+
+func hostUID() string {
+	return effectiveID("PIER_WWWUSER", os.Getuid())
 }
 
 func hostGID() string {
-	if v := os.Getenv("PIER_WWWGROUP"); v != "" {
-		return v
-	}
-	return strconv.Itoa(os.Getgid())
+	return effectiveID("PIER_WWWGROUP", os.Getgid())
 }
 
 func renderDevCompose(cfg config.Config) ([]byte, error) {

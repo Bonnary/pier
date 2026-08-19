@@ -62,6 +62,26 @@ func TestGenerateDevComposeWithServices(t *testing.T) {
 	assertYAMLEqual(t, got.Contents, want)
 }
 
+func TestEffectiveID(t *testing.T) {
+	t.Setenv("PIER_WWWUSER", "")
+	t.Setenv("PIER_WWWGROUP", "")
+	// POSIX host: a real UID/GID passes through unchanged.
+	if got := effectiveID("PIER_WWWUSER", 1000); got != "1000" {
+		t.Errorf("effectiveID(1000) = %q, want %q", got, "1000")
+	}
+	// Windows: os.Getuid/Getgid return -1 (no POSIX semantics); fall back to
+	// 1337 so the Dockerfile's `groupadd -g $WWWGROUP sail` doesn't die on an
+	// invalid GID of -1.
+	if got := effectiveID("PIER_WWWGROUP", -1); got != "1337" {
+		t.Errorf("effectiveID(-1) = %q, want %q", got, "1337")
+	}
+	// An explicit env override always wins, even on Windows.
+	t.Setenv("PIER_WWWUSER", "2000")
+	if got := effectiveID("PIER_WWWUSER", -1); got != "2000" {
+		t.Errorf("effectiveID with PIER_WWWUSER=2000 = %q, want %q", got, "2000")
+	}
+}
+
 func TestGenerateDevComposeRejectsUnknownService(t *testing.T) {
 	s := New()
 	_, err := s.GenerateDevCompose(config.Config{
