@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `pier init` on Windows detects old WSL / missing VirtioFS config and
+  offers (with `[Y/n]` consent) to run `wsl --update` and add
+  `[wsl2] virtio=true` / `virtiofs=true` to `%USERPROFILE%\.wslconfig`,
+  making Docker bind mounts from Windows drives much faster. Existing
+  `.wslconfig` keys are never overwritten; the project must be on a
+  Windows drive (WSL paths are already native).
+
 ## v0.0.7-beta (2026-08-18)
 
 ### Added

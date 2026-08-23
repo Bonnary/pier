@@ -690,6 +690,14 @@ Run through this list locally before pushing changes (see
   missed (e.g. you initialized before this behavior shipped),
   hand-edit `vite.config.ts` to add `server: { host: true }` to the
   `defineConfig({ ... })` call.
+- **Docker bind mounts slow on Windows dev** — container mounts from
+  `C:\` / `D:\` cross into the WSL VM over 9P. Run `pier init` on
+  Windows to enable WSL VirtioFS, or set it manually: add `virtio=true`
+  and `virtiofs=true` under `[wsl2]` in `%USERPROFILE%\.wslconfig`,
+  update WSL to 2.7.1+ (`wsl --update`), then run `wsl --shutdown` and
+  restart Docker Desktop. VirtioFS is experimental: file permissions can
+  behave oddly and strict databases (PostgreSQL/MySQL) on host bind
+  mounts may fail to start — use a named volume for database data.
 - **"pull access denied for opcodesio/log-viewer"** — that is a
   Laravel Composer package, not a container image. The same is true
   for `nicolasbissig/laravel-dumps`. Use the `[dev.services.<name>]`
