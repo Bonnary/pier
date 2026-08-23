@@ -171,3 +171,78 @@ func isWSLPath(p string) bool {
 func askYesNo(stdout io.Writer, stdin io.Reader, label string) bool {
 	return strings.EqualFold(strings.TrimSpace(prompt(stdout, stdin, label, "n")), "y")
 }
+
+// maybeEnableVirtioFS checks the Windows WSL environment and offers to
+// enable VirtioFS for faster Docker bind mounts from Windows drives. It
+// only mutates after an explicit yes, and never runs wsl --shutdown; the
+// restart is left to the printed instructions. No-ops (silently) when not
+// on Windows, when the project already lives on a WSL filesystem, or when
+// wsl.exe is unavailable.
+func maybeEnableVirtioFS(stdout io.Writer, stdin io.Reader, projectAbs string) error {
+	if !virtiofsIsWindows() {
+		return nil
+	}
+	if isWSLPath(projectAbs) {
+		return nil
+	}
+	out, err := virtiofsVersionCmd()
+	if err != nil {
+		return nil // no WSL installed
+	}
+	major, minor, patch, ok := parseWSLVersion(out)
+	if !ok {
+		fmt.Fprintln(stdout, "pier: could not read the WSL version; skipping the VirtioFS check")
+		return nil
+	}
+	if !wslSupportsVirtioFS(major, minor, patch) {
+		fmt.Fprintf(stdout, "WSL %s is installed; WSL %s+ is needed for VirtioFS (faster Docker file mounts)\n",
+			wslVersionString(major, minor, patch), minWSLVirtioFS)
+		if !askYesNo(stdout, stdin, "Run wsl --update now? [Y/n]: ") {
+			return nil
+		}
+		if err := virtiofsUpdateCmd(); err != nil {
+			return fmt.Errorf("run wsl --update: %w", err)
+		}
+		out, err = virtiofsVersionCmd()
+		if err != nil {
+			return nil
+		}
+		major, minor, patch, ok = parseWSLVersion(out)
+		if !ok || !wslSupportsVirtioFS(major, minor, patch) {
+			fmt.Fprintf(stdout, "pier: update WSL to %s+ and rerun pier init to finish the VirtioFS setup\n", minWSLVirtioFS)
+			return nil
+		}
+	}
+	path := virtiofsConfigPath()
+	if path == "" {
+		return nil
+	}
+	if existing, err := virtiofsReadFile(path); err == nil && virtiofsEnabled(existing) {
+		fmt.Fprintf(stdout, "pier: VirtioFS already enabled in %s\n", path)
+		return nil
+	}
+	fmt.Fprintln(stdout, "WSL VirtioFS makes Docker bind mounts from Windows drives much faster.")
+	fmt.Fprintln(stdout, "It is experimental: expect file-permission quirks, and strict databases")
+	fmt.Fprintln(stdout, "(PostgreSQL/MySQL) on host directories may fail to start (use named volumes).")
+	if _, err := virtiofsReadFile(path); err == nil {
+		fmt.Fprintf(stdout, "Will merge into %s (existing keys are kept).\n", path)
+	} else {
+		fmt.Fprintf(stdout, "Will create %s.\n", path)
+	}
+	if !askYesNo(stdout, stdin, "Enable VirtioFS now? [Y/n]: ") {
+		return nil
+	}
+	var existing []byte
+	if b, err := virtiofsReadFile(path); err == nil {
+		existing = b
+	}
+	if err := virtiofsWriteFile(path, mergeVirtioFSConfig(existing), 0644); err != nil {
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	fmt.Fprintf(stdout, "Updated %s: [wsl2] virtio=true, virtiofs=true\n", path)
+	fmt.Fprintln(stdout, "To apply, restart Docker Desktop:")
+	fmt.Fprintln(stdout, "  1. Quit Docker Desktop")
+	fmt.Fprintln(stdout, "  2. Run: wsl --shutdown")
+	fmt.Fprintln(stdout, "  3. Start Docker Desktop")
+	return nil
+}

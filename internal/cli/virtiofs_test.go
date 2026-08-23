@@ -2,6 +2,9 @@ package cli
 
 import (
 	"bytes"
+	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -211,4 +214,197 @@ func TestAskYesNo(t *testing.T) {
 			}
 		})
 	}
+}
+
+// runVirtioFS wires the seams around maybeEnableVirtioFS and runs it.
+// configPath is returned verbatim by the config-path seam; versions are
+// served one per versionCmd call. Returns (output, updateRan, err).
+func runVirtioFS(t *testing.T, isWindows bool, versions []string, versionErr, updateErr error, configPath, input string) (string, bool, error) {
+	t.Helper()
+	prevWin := virtiofsIsWindows
+	virtiofsIsWindows = func() bool { return isWindows }
+	t.Cleanup(func() { virtiofsIsWindows = prevWin })
+
+	vi := 0
+	prevVer := virtiofsVersionCmd
+	virtiofsVersionCmd = func() (string, error) {
+		if vi < len(versions) {
+			ver := versions[vi]
+			vi++
+			return ver, versionErr
+		}
+		return "", versionErr
+	}
+	t.Cleanup(func() { virtiofsVersionCmd = prevVer })
+
+	updated := false
+	prevUpd := virtiofsUpdateCmd
+	virtiofsUpdateCmd = func() error { updated = true; return updateErr }
+	t.Cleanup(func() { virtiofsUpdateCmd = prevUpd })
+
+	prevPath := virtiofsConfigPath
+	virtiofsConfigPath = func() string { return configPath }
+	t.Cleanup(func() { virtiofsConfigPath = prevPath })
+
+	var buf bytes.Buffer
+	err := maybeEnableVirtioFS(&buf, strings.NewReader(input), `C:\code\myapp`)
+	return buf.String(), updated, err
+}
+
+func TestMaybeEnableVirtioFSFlow(t *testing.T) {
+	t.Run("non-windows skips", func(t *testing.T) {
+		out, updated, err := runVirtioFS(t, false, nil, nil, nil, filepath.Join(t.TempDir(), ".wslconfig"), "")
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		if updated {
+			t.Errorf("must not run wsl --update on non-windows")
+		}
+		if strings.Contains(out, "VirtioFS") {
+			t.Errorf("output = %q, want no virtiofs prompt", out)
+		}
+	})
+
+	t.Run("wsl-path project skips wsl version call", func(t *testing.T) {
+		prevWin := virtiofsIsWindows
+		virtiofsIsWindows = func() bool { return true }
+		t.Cleanup(func() { virtiofsIsWindows = prevWin })
+		versionCalls := 0
+		prevVer := virtiofsVersionCmd
+		virtiofsVersionCmd = func() (string, error) {
+			versionCalls++
+			return "WSL version: 2.7.1\n", nil
+		}
+		t.Cleanup(func() { virtiofsVersionCmd = prevVer })
+
+		var buf bytes.Buffer
+		if err := maybeEnableVirtioFS(&buf, strings.NewReader(""), `\\wsl$\Ubuntu\home\user\app`); err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		if versionCalls != 0 {
+			t.Errorf("wsl --version must not run for WSL-path projects; calls = %d", versionCalls)
+		}
+	})
+
+	t.Run("missing wsl skips silently", func(t *testing.T) {
+		out, updated, err := runVirtioFS(t, true, nil, errors.New("wsl not found"), nil, filepath.Join(t.TempDir(), ".wslconfig"), "")
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		if updated {
+			t.Errorf("must not run wsl --update when wsl is missing")
+		}
+		if out != "" {
+			t.Errorf("output = %q, want empty (silent skip)", out)
+		}
+	})
+
+	t.Run("already enabled prints note and skips", func(t *testing.T) {
+		cfgPath := filepath.Join(t.TempDir(), ".wslconfig")
+		if err := os.WriteFile(cfgPath, []byte("[wsl2]\nvirtio=true\nvirtiofs=true\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		out, updated, err := runVirtioFS(t, true, []string{"WSL version: 2.7.1\n"}, nil, nil, cfgPath, "")
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		if updated {
+			t.Errorf("must not run wsl --update")
+		}
+		if !strings.Contains(out, "already enabled") {
+			t.Errorf("output = %q, want 'already enabled'", out)
+		}
+		got, _ := os.ReadFile(cfgPath)
+		if string(got) != "[wsl2]\nvirtio=true\nvirtiofs=true\n" {
+			t.Errorf("config changed: %q", got)
+		}
+	})
+
+	t.Run("old wsl offers update, decline = nothing", func(t *testing.T) {
+		cfgPath := filepath.Join(t.TempDir(), ".wslconfig")
+		out, updated, err := runVirtioFS(t, true, []string{"WSL version: 2.6.2\n"}, nil, nil, cfgPath, "\n")
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		if updated {
+			t.Errorf("must not run wsl --update when declined")
+		}
+		if !strings.Contains(out, "2.7.1") {
+			t.Errorf("output = %q, want the 2.7.1 requirement mentioned", out)
+		}
+		if _, err := os.Stat(cfgPath); err == nil {
+			t.Errorf(".wslconfig must not be written when update is declined")
+		}
+	})
+
+	t.Run("old wsl accepts update then enables", func(t *testing.T) {
+		cfgPath := filepath.Join(t.TempDir(), ".wslconfig")
+		out, updated, err := runVirtioFS(t, true,
+			[]string{"WSL version: 2.6.2\n", "WSL version: 2.7.1\n"}, nil, nil, cfgPath, "y\ny\n")
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		if !updated {
+			t.Errorf("wsl --update must run when accepted")
+		}
+		got, err := os.ReadFile(cfgPath)
+		if err != nil {
+			t.Fatalf("read .wslconfig: %v", err)
+		}
+		if string(got) != "[wsl2]\nvirtio=true\nvirtiofs=true\n" {
+			t.Errorf("config = %q, want both keys", got)
+		}
+		if !strings.Contains(out, "wsl --shutdown") {
+			t.Errorf("output = %q, want restart instructions", out)
+		}
+	})
+
+	t.Run("update still old after update prints rerun note", func(t *testing.T) {
+		out, updated, err := runVirtioFS(t, true,
+			[]string{"WSL version: 2.6.2\n", "WSL version: 2.6.2\n"}, nil, nil, filepath.Join(t.TempDir(), ".wslconfig"), "y\n")
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		if !updated {
+			t.Errorf("wsl --update must run")
+		}
+		if !strings.Contains(out, "rerun pier init") {
+			t.Errorf("output = %q, want rerun note", out)
+		}
+	})
+
+	t.Run("enable declines = no write", func(t *testing.T) {
+		cfgPath := filepath.Join(t.TempDir(), ".wslconfig")
+		out, _, err := runVirtioFS(t, true, []string{"WSL version: 2.7.1\n"}, nil, nil, cfgPath, "n\n")
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		if _, err := os.Stat(cfgPath); err == nil {
+			t.Errorf(".wslconfig must not be written when declined")
+		}
+		if strings.Contains(out, "wsl --shutdown") {
+			t.Errorf("output = %q, want no instructions on decline", out)
+		}
+	})
+
+	t.Run("enable creates file with both keys", func(t *testing.T) {
+		cfgPath := filepath.Join(t.TempDir(), ".wslconfig")
+		out, updated, err := runVirtioFS(t, true, []string{"WSL version: 2.7.1\n"}, nil, nil, cfgPath, "y\n")
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		if updated {
+			t.Errorf("must not run wsl --update when version is sufficient")
+		}
+		got, err := os.ReadFile(cfgPath)
+		if err != nil {
+			t.Fatalf("read .wslconfig: %v", err)
+		}
+		if string(got) != "[wsl2]\nvirtio=true\nvirtiofs=true\n" {
+			t.Errorf("config = %q, want both keys", got)
+		}
+		if !strings.Contains(out, "wsl --shutdown") {
+			t.Errorf("output = %q, want restart instructions", out)
+		}
+	})
 }
