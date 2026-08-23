@@ -17,12 +17,12 @@ const minWSLVirtioFS = "2.7.1"
 
 // Test seams — overridable from *_test.go.
 var (
-	virtiofsIsWindows = func() bool { return runtime.GOOS == "windows" }
+	virtiofsIsWindows  = func() bool { return runtime.GOOS == "windows" }
 	virtiofsVersionCmd = func() (string, error) {
 		out, err := exec.Command("wsl", "--version").Output()
 		return string(out), err
 	}
-	virtiofsUpdateCmd = func() error { return exec.Command("wsl", "--update").Run() }
+	virtiofsUpdateCmd  = func() error { return exec.Command("wsl", "--update").Run() }
 	virtiofsConfigPath = func() string {
 		home, err := os.UserHomeDir()
 		if err != nil {

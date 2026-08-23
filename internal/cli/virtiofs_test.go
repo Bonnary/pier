@@ -11,10 +11,10 @@ import (
 
 func TestParseWSLVersion(t *testing.T) {
 	cases := []struct {
-		name                 string
-		in                   string
-		major, minor, patch  int
-		ok                   bool
+		name                string
+		in                  string
+		major, minor, patch int
+		ok                  bool
 	}{
 		{
 			name:  "standard output",
