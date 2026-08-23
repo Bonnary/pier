@@ -601,3 +601,43 @@ func TestInitBuildFlagsSkipPrompts(t *testing.T) {
 		t.Errorf("init pier.toml must pass validation: %v", err)
 	}
 }
+
+func TestInitAsksVirtioFS(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "artisan"), []byte("#!/usr/bin/env php\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "composer.json"), []byte(`{"require":{"laravel/framework":"^11.0"}}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfgPath := filepath.Join(dir, ".wslconfig")
+	prevWin := virtiofsIsWindows
+	virtiofsIsWindows = func() bool { return true }
+	t.Cleanup(func() { virtiofsIsWindows = prevWin })
+	prevVer := virtiofsVersionCmd
+	virtiofsVersionCmd = func() (string, error) { return "WSL version: 2.7.1\n", nil }
+	t.Cleanup(func() { virtiofsVersionCmd = prevVer })
+	prevPath := virtiofsConfigPath
+	virtiofsConfigPath = func() string { return cfgPath }
+	t.Cleanup(func() { virtiofsConfigPath = prevPath })
+
+	var buf bytes.Buffer
+	root := NewRootCmd(&buf, &buf)
+	// y answers the VirtioFS prompt; the later init prompts hit EOF and take defaults.
+	root.SetIn(strings.NewReader("y\n"))
+	root.SetArgs([]string{"--config", filepath.Join(dir, "pier.toml"), "init", dir, "--php", "8.3", "--node", "22"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute: %v\n%s", err, buf.String())
+	}
+	got, err := os.ReadFile(cfgPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", cfgPath, err)
+	}
+	if string(got) != "[wsl2]\nvirtio=true\nvirtiofs=true\n" {
+		t.Errorf("config = %q, want both virtiofs keys", got)
+	}
+	if !strings.Contains(buf.String(), "VirtioFS") {
+		t.Errorf("output = %q, want the VirtioFS prompt", buf.String())
+	}
+}

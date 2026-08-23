@@ -78,6 +78,9 @@ func runInit(cmd *cobra.Command, path string, f *initFlags) error {
 	if !laravelpkg.New().Detect(abs) {
 		return fmt.Errorf("no Laravel project found at %s (missing composer.json with laravel/framework or artisan)", abs)
 	}
+	if err := maybeEnableVirtioFS(cmd.OutOrStdout(), cmd.InOrStdin(), abs); err != nil {
+		return err
+	}
 	tomlPath := filepath.Join(abs, "pier.toml")
 	if _, err := os.Stat(tomlPath); err == nil {
 		return fmt.Errorf("pier.toml exists at %s; edit it instead of running init again", tomlPath)
