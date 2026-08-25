@@ -1,6 +1,7 @@
 package laravel
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/Bonnary/pier/internal/config"
@@ -112,6 +113,24 @@ func TestProdPortDefaultsComplete(t *testing.T) {
 	for k, v := range want {
 		if got := ProdPortDefaults[k]; got != v {
 			t.Errorf("ProdPortDefaults[%s] = %d, want %d", k, got, v)
+		}
+	}
+}
+
+func TestPortKeysFor(t *testing.T) {
+	cases := []struct {
+		name string
+		want []string
+	}{
+		{"mysql", []string{"mysql"}},
+		{"mailpit", []string{"mailpit_smtp", "mailpit_ui"}},
+		{"s3", []string{"s3_api", "s3_filer", "s3_master"}},
+		{"queue", nil},
+		{"nope", nil},
+	}
+	for _, c := range cases {
+		if got := PortKeysFor(c.name); !slices.Equal(got, c.want) {
+			t.Errorf("PortKeysFor(%q) = %v, want %v", c.name, got, c.want)
 		}
 	}
 }

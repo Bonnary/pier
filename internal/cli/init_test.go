@@ -11,6 +11,15 @@ import (
 	tui "github.com/Bonnary/pier/internal/tui"
 )
 
+// init keeps the virtiofs check off during tests: init tests feed answer
+// payloads through stdin, and on a real Windows dev machine the check
+// would run wsl.exe and consume those answers (breaking every interactive
+// test). The Windows flows are covered explicitly by the seam-driven
+// tests in virtiofs_test.go.
+func init() {
+	virtiofsIsWindows = func() bool { return false }
+}
+
 func TestInitWritesPierToml(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "artisan"), []byte("#!/usr/bin/env php\n"), 0644); err != nil {

@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.0.8-beta (2026-08-25)
 
 ### Added
 
@@ -10,6 +10,21 @@
   making Docker bind mounts from Windows drives much faster. Existing
   `.wslconfig` keys are never overwritten; the project must be on a
   Windows drive (WSL paths are already native).
+
+### Fixed
+
+- The dev compose no longer emits `WWWUSER`/`WWWGROUP` with the value
+  `-1` on Windows: `os.Getuid`/`os.Getgid` return -1 there (no POSIX
+  user semantics), and `groupadd -g $WWWGROUP sail` rejected it,
+  breaking `pier dev`. They now fall back to `1337` (matching Sail and
+  the prod build) when the platform has no UID, while
+  `PIER_WWWUSER` / `PIER_WWWGROUP` env overrides still take precedence.
+
+### Changed
+
+- Bumped version constant to `0.0.8-beta` (reflected in
+  `pier --version`, `cmd/pier/main_test.go`, and the README status
+  line).
 
 ## v0.0.7-beta (2026-08-18)
 

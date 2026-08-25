@@ -53,6 +53,55 @@ func TestParseWSLVersion(t *testing.T) {
 	}
 }
 
+// utf16le encodes an ASCII string the way wsl.exe emits it when piped.
+func utf16le(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		b.WriteByte(byte(r))
+		b.WriteByte(0)
+	}
+	return b.String()
+}
+
+func TestDecodeWSLOutput(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "utf16le wsl output",
+			in:   utf16le("WSL version: 2.7.12.0\r\n"),
+			want: "WSL version: 2.7.12.0\r\n",
+		},
+		{
+			name: "ascii passes through",
+			in:   "WSL version: 2.7.1\n",
+			want: "WSL version: 2.7.1\n",
+		},
+		{
+			name: "empty passes through",
+			in:   "",
+			want: "",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := decodeWSLOutput(c.in); got != c.want {
+				t.Errorf("decodeWSLOutput(%q) = %q, want %q", c.in, got, c.want)
+			}
+		})
+	}
+}
+
+func TestParseWSLVersionFromUTF16(t *testing.T) {
+	major, minor, patch, ok := parseWSLVersion(decodeWSLOutput(
+		utf16le("WSL version: 2.7.12.0\nKernel version: 6.18.33.2-2\n")))
+	if !ok || major != 2 || minor != 7 || patch != 12 {
+		t.Errorf("parseWSLVersion(decode(...)) = (%d,%d,%d,%v), want (2,7,12,true)", major, minor, patch, ok)
+	}
+}
+
 func TestWSLSupportsVirtioFS(t *testing.T) {
 	cases := []struct {
 		major, minor, patch int

@@ -67,6 +67,19 @@ func PortBinding(bind string, host, container int) string {
 	return fmt.Sprintf("%s:%d:%d", bind, host, container)
 }
 
+// PortKeysFor returns the port keys of a registered sidecar service
+// (e.g. "mailpit" -> ["mailpit_smtp", "mailpit_ui"]). These are the
+// keys looked up in DevPortDefaults / ProdPortDefaults. Returns nil
+// for unknown service names and for services that expose no ports
+// (queue, scheduler).
+func PortKeysFor(name string) []string {
+	s, ok := lookup(name)
+	if !ok {
+		return nil
+	}
+	return s.PortKeys
+}
+
 // ResolvePort returns the host port to bind for a given port key, given the
 // user's override map and the env's default map. ok is false when the user
 // has explicitly set the key to 0 (don't expose) OR when neither the
@@ -135,7 +148,7 @@ func CollectHostPorts(composeYAML []byte, userServices map[string]config.DevServ
 	var out []int
 	for _, svc := range doc.Services {
 		for _, p := range svc.Ports {
-			host, ok := hostOfPortBinding(p.Value)
+			host, ok := HostOfPortBinding(p.Value)
 			if ok {
 				out = append(out, host)
 			}
@@ -143,7 +156,7 @@ func CollectHostPorts(composeYAML []byte, userServices map[string]config.DevServ
 	}
 	for _, ds := range userServices {
 		for _, p := range ds.Ports {
-			host, ok := hostOfPortBinding(p)
+			host, ok := HostOfPortBinding(p)
 			if ok {
 				out = append(out, host)
 			}
@@ -152,7 +165,7 @@ func CollectHostPorts(composeYAML []byte, userServices map[string]config.DevServ
 	return out, nil
 }
 
-// hostOfPortBinding parses a compose `ports:` entry and returns the host
+// HostOfPortBinding parses a compose `ports:` entry and returns the host
 // port. Supports three forms:
 //
 //	"8000"                    -> 8000 (host == container)
@@ -160,7 +173,7 @@ func CollectHostPorts(composeYAML []byte, userServices map[string]config.DevServ
 //	"8000:8000"               -> 8000
 //
 // Returns ok=false if the entry can't be parsed as a port number.
-func hostOfPortBinding(s string) (int, bool) {
+func HostOfPortBinding(s string) (int, bool) {
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return 0, false

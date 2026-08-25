@@ -20,9 +20,9 @@ var (
 	virtiofsIsWindows  = func() bool { return runtime.GOOS == "windows" }
 	virtiofsVersionCmd = func() (string, error) {
 		out, err := exec.Command("wsl", "--version").Output()
-		return string(out), err
+		return decodeWSLOutput(string(out)), err
 	}
-	virtiofsUpdateCmd  = func() error { return exec.Command("wsl", "--update").Run() }
+	virtiofsUpdateCmd = func() error { return exec.Command("wsl", "--update").Run() }
 	virtiofsConfigPath = func() string {
 		home, err := os.UserHomeDir()
 		if err != nil {
@@ -33,6 +33,22 @@ var (
 	virtiofsReadFile  = os.ReadFile
 	virtiofsWriteFile = os.WriteFile
 )
+
+// decodeWSLOutput normalizes wsl.exe stdout. When piped (as from a Go
+// exec), wsl.exe emits UTF-16LE, so the ASCII version parser would never
+// match "WSL version:"; decoding restores the text. Text output (UTF-8 or
+// plain ASCII) passes through untouched.
+func decodeWSLOutput(out string) string {
+	if !strings.Contains(out, "\x00") {
+		return out
+	}
+	var b strings.Builder
+	b.Grow(len(out) / 2)
+	for i := 0; i+1 < len(out); i += 2 {
+		b.WriteByte(out[i])
+	}
+	return b.String()
+}
 
 // parseWSLVersion extracts the "WSL version:" line from `wsl --version`
 // output (e.g. "WSL version: 2.7.1.0") and returns its major/minor/patch.

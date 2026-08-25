@@ -1,10 +1,18 @@
 package laravel
 
 import (
+	"bytes"
 	"fmt"
 	"path/filepath"
 	"runtime"
 )
+
+// leanLF converts CRLF to LF. Runtime files are copied into projects and
+// run inside Linux containers, where CRLF (e.g. from a `core.autocrlf`
+// Windows checkout of the pier repo) breaks script shebangs.
+func leanLF(b []byte) []byte {
+	return bytes.ReplaceAll(b, []byte("\r\n"), []byte("\n"))
+}
 
 // Runtime returns the absolute path to the runtimes/<php>
 // directory bundled with this module, which contains the

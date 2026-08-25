@@ -4,10 +4,13 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -16,6 +19,15 @@ import (
 	"github.com/Bonnary/pier/internal/portcheck"
 	laravelpkg "github.com/Bonnary/pier/internal/stack/laravel"
 )
+
+// appReadyTimeout is the default total time `pier dev` waits for the
+// app to answer before showing the ready block anyway. Windows
+// containers commonly take 10-30s to boot.
+const appReadyTimeout = 120 * time.Second
+
+// devAppTimeout is the wait budget used by runDev; a package var so
+// tests can shorten it.
+var devAppTimeout = appReadyTimeout
 
 func newDevCmd(stdout, stderr io.Writer) *cobra.Command {
 	var noBuild bool
@@ -73,13 +85,19 @@ func runDev(cmd *cobra.Command, services []string, noBuild bool) error {
 	if err := c.Up(ctx, services...); err != nil {
 		return err
 	}
+	// Wait for the app only when it is among the services being
+	// started (or when the full stack is); `pier dev redis` should
+	// not stall when the app container wasn't started.
+	if url := appURL(cfg); url != "" && (len(services) == 0 || slices.Contains(services, "laravel.test")) {
+		waitForApp(cmd.OutOrStdout(), url, devAppTimeout)
+	}
 	ps, err := c.PS(ctx)
 	if err != nil {
 		return err
 	}
 	fmt.Fprintln(cmd.OutOrStdout(), string(ps))
 
-	printReadyBlock(cmd.OutOrStdout(), cfg, hostPorts)
+	printReadyBlock(cmd.OutOrStdout(), cfg)
 	return nil
 }
 
@@ -109,7 +127,48 @@ func hostPortsTaken(taken map[int]string) []int {
 	return out
 }
 
-func printReadyBlock(w io.Writer, cfg *config.Config, hostPorts []int) {
+// appURL returns the HTTP URL of the dev app, or "" when the user has
+// opted out of exposing the laravel port ([dev.ports].laravel = 0).
+func appURL(cfg *config.Config) string {
+	v, ok := laravelpkg.ResolvePort("laravel", cfg.Dev.Ports, laravelpkg.DevPortDefaults)
+	if !ok {
+		return ""
+	}
+	return fmt.Sprintf("http://%s:%d", cfg.Dev.Bind, v)
+}
+
+// waitForApp GETs url until any HTTP response arrives (the app server
+// is up), printing a "waiting for app" line after the first failed
+// attempt. On timeout it prints a warning and returns false; the
+// caller still shows the ready block.
+func waitForApp(w io.Writer, url string, timeout time.Duration) bool {
+	client := &http.Client{Timeout: 3 * time.Second}
+	deadline := time.Now().Add(timeout)
+	printed := false
+	for {
+		req, err := http.NewRequest(http.MethodGet, url, nil)
+		if err == nil {
+			if resp, err := client.Do(req); err == nil {
+				resp.Body.Close()
+				return true
+			}
+		}
+		if time.Now().After(deadline) {
+			break
+		}
+		if !printed {
+			fmt.Fprintf(w, "pier dev: waiting for app at %s...\n", url)
+			printed = true
+		}
+		time.Sleep(time.Second)
+	}
+	fmt.Fprintf(w, "pier dev: app still not responding after %s (check `docker compose ps`)\n", timeout)
+	return false
+}
+
+// printReadyBlock prints "pier dev: ready" plus the app, Vite, and
+// every sidecar/dev service the user actually configured.
+func printReadyBlock(w io.Writer, cfg *config.Config) {
 	bind := cfg.Dev.Bind
 	fmt.Fprintln(w, "pier dev: ready")
 	if v, ok := laravelpkg.ResolvePort("laravel", cfg.Dev.Ports, laravelpkg.DevPortDefaults); ok {
@@ -118,16 +177,36 @@ func printReadyBlock(w io.Writer, cfg *config.Config, hostPorts []int) {
 	if v, ok := laravelpkg.ResolvePort("vite", cfg.Dev.Ports, laravelpkg.DevPortDefaults); ok {
 		fmt.Fprintf(w, "  Vite:   http://%s:%d\n", bind, v)
 	}
-	for _, key := range []string{"mysql", "postgres", "redis", "meilisearch"} {
-		if v, ok := laravelpkg.ResolvePort(key, cfg.Dev.Ports, laravelpkg.DevPortDefaults); ok {
-			fmt.Fprintf(w, "  %s:  %s:%d\n", capitalize(key), bind, v)
+	for _, name := range cfg.Stack.Services {
+		for _, key := range laravelpkg.PortKeysFor(name) {
+			if v, ok := laravelpkg.ResolvePort(key, cfg.Dev.Ports, laravelpkg.DevPortDefaults); ok {
+				fmt.Fprintf(w, "  %s: %s:%d\n", labelFor(key), bind, v)
+			}
 		}
 	}
-	for _, key := range []string{"mailpit_smtp", "mailpit_ui", "s3_api", "s3_filer", "s3_master"} {
-		if v, ok := laravelpkg.ResolvePort(key, cfg.Dev.Ports, laravelpkg.DevPortDefaults); ok {
-			fmt.Fprintf(w, "  %s: %s:%d\n", strings.ToUpper(key), bind, v)
+	names := make([]string, 0, len(cfg.Dev.Services))
+	for n := range cfg.Dev.Services {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		for _, p := range cfg.Dev.Services[name].Ports {
+			if host, ok := laravelpkg.HostOfPortBinding(p); ok {
+				fmt.Fprintf(w, "  %s: %s:%d\n", name, bind, host)
+			}
 		}
 	}
+}
+
+// labelFor renders the ready-block label for a sidecar port key:
+// capitalized for the DB/cache keys, uppercase for the rest
+// (matching pier's historical output).
+func labelFor(key string) string {
+	switch key {
+	case "mysql", "postgres", "redis", "meilisearch":
+		return capitalize(key)
+	}
+	return strings.ToUpper(key)
 }
 
 // maybeWarnLanExposure prints a one-time warning to w when the user has

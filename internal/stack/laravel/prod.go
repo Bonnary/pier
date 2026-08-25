@@ -41,6 +41,7 @@ func (s *Stack) GenerateProdFiles(cfg config.Config, env string) (stack.Files, e
 	if err != nil {
 		return nil, fmt.Errorf("laravel: read runtime Dockerfile: %w", err)
 	}
+	dockerfile = leanLF(dockerfile)
 
 	envFile := renderProdEnv(cfg, env, prodServices)
 
@@ -50,8 +51,8 @@ func (s *Stack) GenerateProdFiles(cfg config.Config, env string) (stack.Files, e
 		{Path: ".env.production.example", Contents: envExample, Mode: 0644},
 		{Path: "docker/caddy/Caddyfile", Contents: caddyfile, Mode: 0644},
 		{Path: "config/trustedproxy.php", Contents: trustedProxies, Mode: 0644},
-		{Path: filepath.Join("docker", cfg.Stack.PHP, "Dockerfile"), Contents: dockerfile, Mode: 0644},
-		{Path: filepath.Join("docker", cfg.Stack.PHP, "Dockerfile.prod"), Contents: renderProdDockerfile(dockerfile, cfg.Stack.PHP), Mode: 0644},
+		{Path: "docker/" + cfg.Stack.PHP + "/Dockerfile", Contents: dockerfile, Mode: 0644},
+		{Path: "docker/" + cfg.Stack.PHP + "/Dockerfile.prod", Contents: renderProdDockerfile(dockerfile, cfg.Stack.PHP), Mode: 0644},
 	}, nil
 }
 

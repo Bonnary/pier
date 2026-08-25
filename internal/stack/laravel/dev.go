@@ -78,7 +78,8 @@ func (s *Stack) GenerateDevCompose(cfg config.Config) (stack.Files, error) {
 			return nil, fmt.Errorf("laravel: read runtime %s: %w", src, err)
 		}
 		files = append(files, stack.File{
-			Path: filepath.Join("docker", cfg.Stack.PHP, name), Contents: b, Mode: 0644,
+			// Forward slashes keep generated paths stable across platforms.
+			Path: "docker/" + cfg.Stack.PHP + "/" + name, Contents: leanLF(b), Mode: 0644,
 		})
 	}
 

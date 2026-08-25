@@ -26,7 +26,7 @@ rollback. It is a single, self-contained Go binary — no Composer
 dependency, no daemon, no telemetry, no network calls beyond SSH and the
 Docker CLI.
 
-> **Status:** `v0.0.7-beta` — under active development. The Laravel
+> **Status:** `v0.0.8-beta` — under active development. The Laravel
 > stack is feature-complete for the documented workflows; other stacks
 > (Node, Python, Rails, etc.) are explicitly out of scope for v1.
 
@@ -108,6 +108,10 @@ Docker CLI.
 - **Dev-only sidecars** — `[dev.services.<name>]` in `pier.toml` for
   opt-in dev-only services (log viewers, Reverb, dump inspectors,
   etc.). Never appear in the production compose.
+- **Windows VirtioFS setup** — `pier init` on Windows detects old WSL
+  or a missing VirtioFS config and offers to run `wsl --update` plus
+  add `virtiofs=true` to `.wslconfig`, making Docker bind mounts from
+  `C:\` much faster.
 - **Cross-platform** — Single static binary for macOS, Linux, and
   Windows.
 - **No background daemon** — `pier` is a one-shot CLI. `docker
@@ -187,7 +191,7 @@ sudo mv pier /usr/local/bin/
 
 ```bash
 pier --version
-# pier 0.0.7-beta
+# pier 0.0.8-beta
 ```
 
 ---

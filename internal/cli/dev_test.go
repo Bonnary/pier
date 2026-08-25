@@ -6,10 +6,13 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Bonnary/pier/internal/config"
 	"github.com/Bonnary/pier/internal/docker"
@@ -35,7 +38,7 @@ func (f *fakeRunnerCLI) Run(ctx context.Context, stdin io.Reader, stdout, stderr
 
 func TestDevCommand(t *testing.T) {
 	dir := t.TempDir()
-	toml := "[project]\nname=\"x\"\n[stack]\ntype=\"laravel\"\nphp=\"8.3\"\nnode=\"22\"\nservices=[]\n"
+	toml := "[project]\nname=\"x\"\n[stack]\ntype=\"laravel\"\nphp=\"8.3\"\nnode=\"22\"\nservices=[]\n[dev.ports]\nlaravel=18300\nvite=18301\n"
 	if err := writeFile(filepath.Join(dir, "pier.toml"), []byte(toml)); err != nil {
 		t.Fatal(err)
 	}
@@ -43,6 +46,9 @@ func TestDevCommand(t *testing.T) {
 	origRunner := dockerRunner
 	dockerRunner = docker.Runner(runner)
 	defer func() { dockerRunner = origRunner }()
+	origWait := devAppTimeout
+	devAppTimeout = 50 * time.Millisecond
+	defer func() { devAppTimeout = origWait }()
 
 	var buf bytes.Buffer
 	root := NewRootCmd(&buf, &buf)
@@ -122,7 +128,7 @@ func TestPrintReadyBlockUsesConfiguredBind(t *testing.T) {
 			Dev:     config.DevConfig{Bind: c.bind},
 		}
 		var buf bytes.Buffer
-		printReadyBlock(&buf, cfg, []int{8000, 5173})
+		printReadyBlock(&buf, cfg)
 		got := buf.String()
 		for _, want := range c.mustContain {
 			if !strings.Contains(got, want) {
@@ -133,6 +139,87 @@ func TestPrintReadyBlockUsesConfiguredBind(t *testing.T) {
 			if strings.Contains(got, dont) {
 				t.Errorf("bind=%q: ready block = %q, want it to NOT contain %q", c.bind, got, dont)
 			}
+		}
+	}
+}
+
+func TestDevCommandSubsetSkipsAppWait(t *testing.T) {
+	dir := t.TempDir()
+	toml := "[project]\nname=\"x\"\n[stack]\ntype=\"laravel\"\nphp=\"8.3\"\nnode=\"22\"\nservices=[]\n[dev.ports]\nlaravel=18300\nvite=18301\n"
+	if err := writeFile(filepath.Join(dir, "pier.toml"), []byte(toml)); err != nil {
+		t.Fatal(err)
+	}
+	runner := &fakeRunnerCLI{}
+	origRunner := dockerRunner
+	dockerRunner = docker.Runner(runner)
+	defer func() { dockerRunner = origRunner }()
+	origWait := devAppTimeout
+	devAppTimeout = 50 * time.Millisecond
+	defer func() { devAppTimeout = origWait }()
+
+	var buf bytes.Buffer
+	root := NewRootCmd(&buf, &buf)
+	root.SetArgs([]string{"--config", filepath.Join(dir, "pier.toml"), "dev", "redis"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute: %v\n%s", err, buf.String())
+	}
+	if strings.Contains(buf.String(), "waiting for app") {
+		t.Errorf("subset `dev redis` should not wait for the app; got:\n%s", buf.String())
+	}
+}
+
+func TestPrintReadyBlockShowsOnlyConfiguredServices(t *testing.T) {
+	cfg := &config.Config{
+		Project: config.ProjectConfig{Name: "x"},
+		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22", Services: []string{"mysql", "mailpit"}},
+		Dev: config.DevConfig{
+			Bind: "127.0.0.1",
+			Services: map[string]config.DevService{
+				"log-viewer": {Image: "x", Ports: []string{"8081:8080"}},
+			},
+		},
+	}
+	var buf bytes.Buffer
+	printReadyBlock(&buf, cfg)
+	got := buf.String()
+	for _, want := range []string{
+		"App:    http://127.0.0.1:8000",
+		"Vite:   http://127.0.0.1:5173",
+		"Mysql: 127.0.0.1:3306",
+		"MAILPIT_SMTP: 127.0.0.1:1025",
+		"MAILPIT_UI: 127.0.0.1:8025",
+		"log-viewer: 127.0.0.1:8081",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("ready block missing %q; got:\n%s", want, got)
+		}
+	}
+	for _, dont := range []string{"Postgres", "Redis", "Meilisearch", "S3_"} {
+		if strings.Contains(got, dont) {
+			t.Errorf("ready block shows %q even though not configured; got:\n%s", dont, got)
+		}
+	}
+}
+
+func TestWaitForApp(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	defer srv.Close()
+
+	var buf bytes.Buffer
+	if !waitForApp(&buf, srv.URL, 2*time.Second) {
+		t.Fatal("waitForApp = false, want true (server is up)")
+	}
+	if strings.Contains(buf.String(), "waiting for app") {
+		t.Errorf("instant-ready app should print no waiting message; got %q", buf.String())
+	}
+
+	buf.Reset()
+	if waitForApp(&buf, "http://127.0.0.1:1", 100*time.Millisecond) {
+		t.Fatal("waitForApp = true, want false (nothing listens on port 1)")
+	}
+	for _, want := range []string{"waiting for app at", "not responding"} {
+		if !strings.Contains(buf.String(), want) {
+			t.Errorf("output missing %q; got %q", want, buf.String())
 		}
 	}
 }

@@ -1,6 +1,7 @@
 package laravel
 
 import (
+	"bytes"
 	"flag"
 	"os"
 	"path/filepath"
@@ -196,6 +197,35 @@ func TestGenerateDevComposeCopiesRuntime(t *testing.T) {
 		if findFile(files, name) == nil {
 			t.Errorf("expected file %q in result", name)
 		}
+	}
+}
+
+// TestGenerateDevComposeRuntimeFilesAreLF guards against CRLF runtime
+// files: start-container/supervisord.conf/php.ini are copied into projects
+// and run inside Linux containers, where a `bash\r` CRLF shebang fails the
+// container (exit 127). Guard all runtime copies regardless of path
+// separators (which differ across platforms).
+func TestGenerateDevComposeRuntimeFilesAreLF(t *testing.T) {
+	s := New()
+	files, err := s.GenerateDevCompose(config.Config{
+		Stack: config.StackConfig{Type: "laravel", PHP: "8.5", Node: "22"},
+	})
+	if err != nil {
+		t.Fatalf("GenerateDevCompose: %v", err)
+	}
+	checked := 0
+	for _, f := range files {
+		for _, name := range []string{"Dockerfile", "php.ini", "supervisord.conf", "start-container"} {
+			if strings.HasSuffix(f.Path, name) {
+				checked++
+				if bytes.Contains(f.Contents, []byte("\r\n")) {
+					t.Errorf("%s keeps CRLF; runtime files copied into projects must be LF", f.Path)
+				}
+			}
+		}
+	}
+	if checked != 4 {
+		t.Errorf("runtime check covered %d files, want 4 runtime copies", checked)
 	}
 }
 

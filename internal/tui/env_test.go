@@ -13,9 +13,12 @@ func TestPickEnvEmpty(t *testing.T) {
 }
 
 func TestPickEnvBuildsSinglePicker(t *testing.T) {
-	idx, err := PickEnv([]string{"stage (s.example.com)", "production (p.example.com)"}, 1)
-	_ = idx
-	_ = err
-	// Contract lock: constructing the picker must not panic and the
-	// full Run is exercised via the CLI seam test (cli/bootstrap_test.go).
+	// Contract lock: constructing the picker must not panic. Run() must
+	// stay out of unit tests: on a real console it reads stdin and
+	// blocks forever (the full Run path is covered by the CLI seam, see
+	// cli/bootstrap_test.go).
+	p := NewSinglePicker("Env to bootstrap", []string{"stage (s.example.com)", "production (p.example.com)"}, 1)
+	if p == nil {
+		t.Fatal("NewSinglePicker must return a picker")
+	}
 }
