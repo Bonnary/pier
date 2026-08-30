@@ -37,6 +37,7 @@ func appImageFor(cfg config.Config, image string) string {
 type Service struct {
 	Name        string
 	Image       string
+	Command     []string
 	DevOnly     string
 	Ports       []string
 	PortKeys    []string
@@ -146,8 +147,16 @@ func services() map[string]Service {
 		},
 		"s3": {
 			Name: "s3", Image: "chrislusf/seaweedfs:latest",
+			// `weed mini` runs master, volume, filer and the S3 gateway
+			// as one process (with the S3 gateway on 8333 — `weed server`
+			// does not start S3 unless -s3 is passed) and pre-creates the
+			// bucket on startup. The bucket name is taken from S3_BUCKET,
+			// which pier interpolates from AWS_BUCKET in the env file so
+			// it stays in sync with the app.
+			Command:  []string{"weed", "mini", "-dir=/data"},
 			Ports:    []string{"8333", "8888", "9333"},
 			PortKeys: []string{"s3_api", "s3_filer", "s3_master"},
+			Env:      map[string]string{"S3_BUCKET": "${AWS_BUCKET}"},
 			Volumes:  []string{"s3_data:/data"},
 			Healthcheck: &Healthcheck{
 				Test:     []string{"CMD-SHELL", "nc -z 127.0.0.1 8333"},

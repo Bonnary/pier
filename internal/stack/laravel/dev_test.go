@@ -63,6 +63,69 @@ func TestGenerateDevComposeWithServices(t *testing.T) {
 	assertYAMLEqual(t, got.Contents, want)
 }
 
+func TestGenerateDevComposeS3ConfiguresEnvAndBucket(t *testing.T) {
+	s := New()
+	files, err := s.GenerateDevCompose(config.Config{
+		Project: config.ProjectConfig{Name: "myapp"},
+		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22", Services: []string{"s3"}},
+	})
+	if err != nil {
+		t.Fatalf("GenerateDevCompose: %v", err)
+	}
+
+	env := string(findFile(files, ".env").Contents)
+	for _, want := range []string{
+		"AWS_ENDPOINT=http://s3:8333",
+		"AWS_ACCESS_KEY_ID=somekey",
+		"AWS_SECRET_ACCESS_KEY=somesecret",
+		"AWS_DEFAULT_REGION=us-east-1",
+		"AWS_BUCKET=app",
+		"AWS_USE_PATH_STYLE_ENDPOINT=yes",
+	} {
+		if !strings.Contains(env, want) {
+			t.Errorf(".env missing %q:\n%s", want, env)
+		}
+	}
+
+	got := findFile(files, "docker-compose.yml")
+	if got == nil {
+		t.Fatal("docker-compose.yml missing")
+	}
+	var doc struct {
+		Services map[string]struct {
+			Command []string          `yaml:"command"`
+			Env     map[string]string `yaml:"environment"`
+		} `yaml:"services"`
+	}
+	if err := yaml.Unmarshal(got.Contents, &doc); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	s3, ok := doc.Services["s3"]
+	if !ok {
+		t.Fatalf("s3 service missing from dev compose:\n%s", got.Contents)
+	}
+	wantCmd := []string{"weed", "mini", "-dir=/data"}
+	if len(s3.Command) != len(wantCmd) {
+		t.Errorf("dev s3 command = %v, want %v", s3.Command, wantCmd)
+	} else {
+		for i := range wantCmd {
+			if s3.Command[i] != wantCmd[i] {
+				t.Errorf("dev s3 command[%d] = %q, want %q (weed mini starts the S3 gateway and pre-creates the bucket)", i, s3.Command[i], wantCmd[i])
+			}
+		}
+	}
+	if got := s3.Env["S3_BUCKET"]; got != "${AWS_BUCKET}" {
+		t.Errorf("dev s3 env S3_BUCKET = %q, want ${AWS_BUCKET} (bucket name interpolated from .env)", got)
+	}
+
+	for _, key := range []string{"AWS_ENDPOINT", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_DEFAULT_REGION", "AWS_BUCKET", "AWS_USE_PATH_STYLE_ENDPOINT"} {
+		if _, ok := doc.Services["laravel.test"].Env[key]; !ok {
+			t.Errorf("dev laravel.test env missing %q (the S3 gateway auth needs it in the app container)", key)
+		}
+	}
+}
+
 func TestEffectiveID(t *testing.T) {
 	t.Setenv("PIER_WWWUSER", "")
 	t.Setenv("PIER_WWWGROUP", "")

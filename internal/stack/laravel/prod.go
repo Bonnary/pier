@@ -159,7 +159,7 @@ func renderProdCompose(cfg config.Config, env string, services []string) ([]byte
 			return nil, fmt.Errorf("laravel: unknown service %q", name)
 		}
 		cs := composeService{
-			Image: s.Image, Ports: sidecarPorts("", name, s.PortKeys, s.Ports, deployCfg.Ports, ProdPortDefaults),
+			Image: s.Image, Command: s.Command, Ports: sidecarPorts("", name, s.PortKeys, s.Ports, deployCfg.Ports, ProdPortDefaults),
 			Environment: s.Env, Volumes: s.Volumes,
 			Restart:  "unless-stopped",
 			Networks: []string{"pier"},
@@ -308,6 +308,18 @@ func prodEnvForServices(services []string) map[string]string {
 		// override it.
 		env["QUEUE_CONNECTION"] = "${QUEUE_CONNECTION}"
 	}
+	if set["s3"] {
+		// The S3 gateway (SeaweedFS) runs permissive auth, so these are
+		// the credentials the app uses to reach it at AWS_ENDPOINT. All
+		// values interpolate from .env.production so the app and the s3
+		// container's S3_BUCKET (see services()) stay in sync.
+		env["AWS_ENDPOINT"] = "${AWS_ENDPOINT}"
+		env["AWS_ACCESS_KEY_ID"] = "${AWS_ACCESS_KEY_ID}"
+		env["AWS_SECRET_ACCESS_KEY"] = "${AWS_SECRET_ACCESS_KEY}"
+		env["AWS_DEFAULT_REGION"] = "${AWS_DEFAULT_REGION}"
+		env["AWS_BUCKET"] = "${AWS_BUCKET}"
+		env["AWS_USE_PATH_STYLE_ENDPOINT"] = "${AWS_USE_PATH_STYLE_ENDPOINT}"
+	}
 	return env
 }
 
@@ -374,7 +386,9 @@ func renderProdEnv(cfg config.Config, env string, services []string) []byte {
 		fmt.Fprintln(&b, "\nAWS_ENDPOINT=http://s3:8333")
 		fmt.Fprintln(&b, "AWS_ACCESS_KEY_ID=somekey")
 		fmt.Fprintln(&b, "AWS_SECRET_ACCESS_KEY=somesecret")
+		fmt.Fprintln(&b, "AWS_DEFAULT_REGION=us-east-1")
 		fmt.Fprintln(&b, "AWS_BUCKET=app")
+		fmt.Fprintln(&b, "AWS_USE_PATH_STYLE_ENDPOINT=yes")
 	}
 	return b.Bytes()
 }

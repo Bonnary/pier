@@ -65,6 +65,20 @@ func TestS3HasPorts(t *testing.T) {
 	}
 }
 
+func TestS3RunsMiniToCreateBucket(t *testing.T) {
+	s3 := services()["s3"]
+	cmd := strings.Join(s3.Command, " ")
+	if !strings.Contains(cmd, "weed mini") {
+		t.Errorf("s3 command = %q, want it to run `weed mini` (the all-in-one mode that starts the S3 gateway on 8333 — `weed server` skips S3 unless -s3 is passed — and pre-creates the bucket)", cmd)
+	}
+	if !strings.Contains(cmd, "-dir=/data") {
+		t.Errorf("s3 command = %q, want -dir=/data so data lands in the mounted s3_data:/data volume", cmd)
+	}
+	if got := s3.Env["S3_BUCKET"]; got != "${AWS_BUCKET}" {
+		t.Errorf("s3 env S3_BUCKET = %q, want ${AWS_BUCKET} so the pre-created bucket stays in sync with the app's AWS_BUCKET", got)
+	}
+}
+
 func TestSupportedServices(t *testing.T) {
 	got := SupportedServices()
 	if len(got) != len(services()) {

@@ -808,6 +808,73 @@ func TestGenerateProdFilesImageModeQueueSchedulerUseCurrentTag(t *testing.T) {
 	}
 }
 
+func TestGenerateProdFilesS3ConfiguresEnvAndBucket(t *testing.T) {
+	files, err := New().GenerateProdFiles(config.Config{
+		Project: config.ProjectConfig{Name: "myapp"},
+		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22", Services: []string{"s3"}},
+	}, "production")
+	if err != nil {
+		t.Fatalf("GenerateProdFiles: %v", err)
+	}
+
+	env := string(findFile(files, ".env.production").Contents)
+	for _, want := range []string{
+		"AWS_ENDPOINT=http://s3:8333",
+		"AWS_ACCESS_KEY_ID=somekey",
+		"AWS_SECRET_ACCESS_KEY=somesecret",
+		"AWS_DEFAULT_REGION=us-east-1",
+		"AWS_BUCKET=app",
+		"AWS_USE_PATH_STYLE_ENDPOINT=yes",
+	} {
+		if !strings.Contains(env, want) {
+			t.Errorf(".env.production missing %q:\n%s", want, env)
+		}
+	}
+
+	got := findFile(files, "docker-compose.prod.yml")
+	if got == nil {
+		t.Fatal("docker-compose.prod.yml missing")
+	}
+	var doc struct {
+		Services map[string]struct {
+			Command []string          `yaml:"command"`
+			Env     map[string]string `yaml:"environment"`
+		} `yaml:"services"`
+	}
+	if err := yaml.Unmarshal(got.Contents, &doc); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	s3, ok := doc.Services["s3"]
+	if !ok {
+		t.Fatalf("s3 service missing from prod compose:\n%s", got.Contents)
+	}
+	wantCmd := []string{"weed", "mini", "-dir=/data"}
+	if len(s3.Command) != len(wantCmd) {
+		t.Errorf("prod s3 command = %v, want %v", s3.Command, wantCmd)
+	} else {
+		for i := range wantCmd {
+			if s3.Command[i] != wantCmd[i] {
+				t.Errorf("prod s3 command[%d] = %q, want %q (weed mini starts the S3 gateway and pre-creates the bucket)", i, s3.Command[i], wantCmd[i])
+			}
+		}
+	}
+	if got := s3.Env["S3_BUCKET"]; got != "${AWS_BUCKET}" {
+		t.Errorf("prod s3 env S3_BUCKET = %q, want ${AWS_BUCKET} (bucket name interpolated from .env.production)", got)
+	}
+
+	for _, key := range []string{"AWS_ENDPOINT", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_DEFAULT_REGION", "AWS_BUCKET", "AWS_USE_PATH_STYLE_ENDPOINT"} {
+		v, ok := doc.Services["app"].Env[key]
+		if !ok {
+			t.Errorf("prod app env missing %q; got %v (the S3 gateway auth needs it, and the app has no bind mount to read .env.production)", key, doc.Services["app"].Env)
+			continue
+		}
+		if !strings.Contains(v, "${") {
+			t.Errorf("prod app env %s = %q, want a ${...} interpolation so the value comes from .env.production at runtime", key, v)
+		}
+	}
+}
+
 func TestGenerateProdFilesQueueSchedulerGetConnectionEnv(t *testing.T) {
 	files, err := New().GenerateProdFiles(config.Config{
 		Project: config.ProjectConfig{Name: "myapp"},

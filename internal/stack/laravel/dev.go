@@ -164,7 +164,7 @@ func renderDevCompose(cfg config.Config) ([]byte, error) {
 			return nil, fmt.Errorf("laravel: unknown service %q", name)
 		}
 		cs := composeService{
-			Image: s.Image, Ports: sidecarPorts(cfg.Dev.Bind, name, s.PortKeys, s.Ports, cfg.Dev.Ports, DevPortDefaults), Environment: s.Env, Volumes: s.Volumes, Networks: []string{"pier"},
+			Image: s.Image, Command: s.Command, Ports: sidecarPorts(cfg.Dev.Bind, name, s.PortKeys, s.Ports, cfg.Dev.Ports, DevPortDefaults), Environment: s.Env, Volumes: s.Volumes, Networks: []string{"pier"},
 		}
 		if s.Healthcheck != nil {
 			cs.Healthcheck = &composeHealthcheck{
@@ -265,6 +265,14 @@ func devEnvForServices(svcSet map[string]bool) map[string]string {
 		env["MAIL_HOST"] = "mailpit"
 		env["MAIL_PORT"] = "1025"
 	}
+	if svcSet["s3"] {
+		env["AWS_ENDPOINT"] = "http://s3:8333"
+		env["AWS_ACCESS_KEY_ID"] = "somekey"
+		env["AWS_SECRET_ACCESS_KEY"] = "somesecret"
+		env["AWS_DEFAULT_REGION"] = "us-east-1"
+		env["AWS_BUCKET"] = "app"
+		env["AWS_USE_PATH_STYLE_ENDPOINT"] = "yes"
+	}
 	return env
 }
 
@@ -355,6 +363,14 @@ func renderDevEnv(cfg config.Config) ([]byte, error) {
 	}
 	if svcSet["redis"] {
 		b = append(b, []byte("REDIS_HOST=redis\nREDIS_PORT=6379\nQUEUE_CONNECTION=redis\n")...)
+	}
+	if svcSet["s3"] {
+		b = append(b, []byte("AWS_ENDPOINT=http://s3:8333\n")...)
+		b = append(b, []byte("AWS_ACCESS_KEY_ID=somekey\n")...)
+		b = append(b, []byte("AWS_SECRET_ACCESS_KEY=somesecret\n")...)
+		b = append(b, []byte("AWS_DEFAULT_REGION=us-east-1\n")...)
+		b = append(b, []byte("AWS_BUCKET=app\n")...)
+		b = append(b, []byte("AWS_USE_PATH_STYLE_ENDPOINT=yes\n")...)
 	}
 	return b, nil
 }
