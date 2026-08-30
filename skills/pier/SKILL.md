@@ -88,6 +88,19 @@ aborts the deploy if it is missing (generating a fresh template to
 fill in). Keep it out of git. `.env.production.example` is the
 hand-managed reference template.
 
+The `s3` sidecar is SeaweedFS running in `weed mini` mode. That starts
+the S3 gateway on `:8333` (`weed server` does not enable S3 unless
+`-s3` is passed) and pre-creates a bucket on startup. When `s3` is in
+`[stack].services` (or a `[deploy.<env>].services` override), pier
+writes the S3 config to `.env` / `.env.production`:
+`AWS_ENDPOINT=http://s3:8333`, `AWS_ACCESS_KEY_ID=somekey`,
+`AWS_SECRET_ACCESS_KEY=somesecret`, `AWS_DEFAULT_REGION=us-east-1`,
+`AWS_BUCKET=app`, `AWS_USE_PATH_STYLE_ENDPOINT=yes`. The prod compose
+interpolates these (as `AWS_ENDPOINT: ${AWS_ENDPOINT}`, etc.) into the
+app / queue / scheduler containers; the s3 container's `S3_BUCKET` is
+interpolated from `AWS_BUCKET` so the pre-created bucket matches. Fill
+in real values before deploying.
+
 Deploy hooks: each entry runs in the app container via
 `docker compose exec -T app`. `before_deploy` runs while the old
 release is still serving; `after_deploy` runs after

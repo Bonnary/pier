@@ -26,7 +26,7 @@ rollback. It is a single, self-contained Go binary — no Composer
 dependency, no daemon, no telemetry, no network calls beyond SSH and the
 Docker CLI.
 
-> **Status:** `v0.0.8` — under active development. The Laravel
+> **Status:** `v0.0.9` — under active development. The Laravel
 > stack is feature-complete for the documented workflows; other stacks
 > (Node, Python, Rails, etc.) are explicitly out of scope for v1.
 
@@ -191,7 +191,7 @@ sudo mv pier /usr/local/bin/
 
 ```bash
 pier --version
-# pier 0.0.8
+# pier 0.0.9
 ```
 
 ---
@@ -498,10 +498,12 @@ means the file does not get that key; set it by hand if you need it.
 | mailpit | `MAIL_MAILER` | `smtp` | — (dev-only) |
 | mailpit | `MAIL_HOST` | `mailpit` | — (dev-only) |
 | mailpit | `MAIL_PORT` | `1025` | — (dev-only) |
-| s3 | `AWS_ENDPOINT` | — | `http://s3:8333` |
-| s3 | `AWS_ACCESS_KEY_ID` | — | `somekey` |
-| s3 | `AWS_SECRET_ACCESS_KEY` | — | `somesecret` |
-| s3 | `AWS_BUCKET` | — | `app` |
+| s3 | `AWS_ENDPOINT` | `http://s3:8333` | `http://s3:8333` |
+| s3 | `AWS_ACCESS_KEY_ID` | `somekey` | `somekey` |
+| s3 | `AWS_SECRET_ACCESS_KEY` | `somesecret` | `somesecret` |
+| s3 | `AWS_DEFAULT_REGION` | `us-east-1` | `us-east-1` |
+| s3 | `AWS_BUCKET` | `app` | `app` |
+| s3 | `AWS_USE_PATH_STYLE_ENDPOINT` | `yes` | `yes` |
 
 Notes:
 
@@ -517,8 +519,13 @@ Notes:
 - `queue` and `scheduler` add no `.env` keys — they run the same app
   image and read the same env, so they pick up `QUEUE_CONNECTION`,
   `DB_*`, and friends automatically.
-- With `s3` (SeaweedFS) in dev, add the same `AWS_*` keys to `.env`
-  by hand, pointing at `http://s3:8333`.
+- The `s3` container runs SeaweedFS in `weed mini` mode: it starts the
+  S3 gateway on `:8333` (`weed server` does not) and pre-creates a
+  bucket named by `AWS_BUCKET` (default `app`) on startup, so the app
+  can write to it without a manual `aws s3 mb`. The bucket name and
+  credentials live in `.env` / `.env.production`, and the prod compose
+  interpolates them into the app / queue / scheduler containers via
+  `${AWS_*}`.
 
 ---
 

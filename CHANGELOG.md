@@ -1,5 +1,37 @@
 # Changelog
 
+## v0.0.9 (2026-08-30)
+
+### Added
+
+- The `s3` sidecar (SeaweedFS) now runs in `weed mini` mode, which
+  starts the S3 gateway on port 8333 and pre-creates a bucket on
+  startup. The bucket takes its name from `S3_BUCKET`, which pier
+  interpolates from `AWS_BUCKET` (default `app`) so it stays in sync
+  with the app.
+- `pier init` now writes the full S3 configuration to `.env` (dev) and
+  `.env.production` (prod) when `s3` is in the services list:
+  `AWS_ENDPOINT=http://s3:8333`, `AWS_ACCESS_KEY_ID=somekey`,
+  `AWS_SECRET_ACCESS_KEY=somesecret`, `AWS_DEFAULT_REGION=us-east-1`,
+  `AWS_BUCKET=app`, `AWS_USE_PATH_STYLE_ENDPOINT=yes`. Dev previously
+  needed to add the `AWS_*` keys by hand.
+- The prod compose now interpolates those `AWS_*` values
+  (`${AWS_ENDPOINT}`, `${AWS_ACCESS_KEY_ID}`, ...) into the app,
+  queue, and scheduler containers, so they reach the app even though
+  prod has no bind-mounted `.env`.
+
+### Fixed
+
+- The `s3` container ran SeaweedFS's default `weed server`, which does
+  not start the S3 gateway unless `-s3` is passed — so port 8333 never
+  actually served S3 and the healthcheck could not pass. It now runs
+  `weed mini`, which starts the S3 API on 8333.
+
+### Changed
+
+- Bumped version constant to `0.0.9` (reflected in `pier --version`,
+  `cmd/pier/main_test.go`, and the README status line).
+
 ## v0.0.8-beta (2026-08-25)
 
 ### Added
