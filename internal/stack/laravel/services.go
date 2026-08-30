@@ -147,13 +147,16 @@ func services() map[string]Service {
 		},
 		"s3": {
 			Name: "s3", Image: "chrislusf/seaweedfs:latest",
-			// `weed mini` runs master, volume, filer and the S3 gateway
-			// as one process (with the S3 gateway on 8333 — `weed server`
-			// does not start S3 unless -s3 is passed) and pre-creates the
-			// bucket on startup. The bucket name is taken from S3_BUCKET,
-			// which pier interpolates from AWS_BUCKET in the env file so
-			// it stays in sync with the app.
-			Command:  []string{"weed", "mini", "-dir=/data"},
+			// The chrislusf/seaweedfs image's ENTRYPOINT (/entrypoint.sh)
+			// already execs `weed`, so the command must NOT start with
+			// `weed` — otherwise the container runs `weed weed mini` and
+			// exits with "unknown subcommand". `mini` runs master, volume,
+			// filer and the S3 gateway as one process (with the S3 gateway
+			// on 8333 — `weed server` does not start S3 unless -s3 is
+			// passed) and pre-creates the bucket on startup. The bucket
+			// name is taken from S3_BUCKET, which pier interpolates from
+			// AWS_BUCKET in the env file so it stays in sync with the app.
+			Command:  []string{"mini", "-dir=/data"},
 			Ports:    []string{"8333", "8888", "9333"},
 			PortKeys: []string{"s3_api", "s3_filer", "s3_master"},
 			Env:      map[string]string{"S3_BUCKET": "${AWS_BUCKET}"},

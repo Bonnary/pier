@@ -88,9 +88,13 @@ aborts the deploy if it is missing (generating a fresh template to
 fill in). Keep it out of git. `.env.production.example` is the
 hand-managed reference template.
 
-The `s3` sidecar is SeaweedFS running in `weed mini` mode. That starts
-the S3 gateway on `:8333` (`weed server` does not enable S3 unless
-`-s3` is passed) and pre-creates a bucket on startup. When `s3` is in
+The `s3` sidecar is SeaweedFS running in `mini` mode (the
+`chrislusf/seaweedfs` image ENTRYPOINT already execs `weed`, so pier
+runs `mini`, not `weed mini` — a leading `weed` would make the
+container run `weed weed mini` and exit with "unknown subcommand").
+That starts the S3 gateway on `:8333` (`weed server` does not enable
+S3 unless `-s3` is passed) and pre-creates a bucket on startup. When
+`s3` is in
 `[stack].services` (or a `[deploy.<env>].services` override), pier
 writes the S3 config to `.env` / `.env.production`:
 `AWS_ENDPOINT=http://s3:8333`, `AWS_ACCESS_KEY_ID=somekey`,

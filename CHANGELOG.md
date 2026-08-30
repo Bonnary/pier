@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.0.10 (2026-08-30)
+
+### Fixed
+
+- The `s3` container ran SeaweedFS as `weed mini`, but the
+  `chrislusf/seaweedfs` image's `ENTRYPOINT` already execs `weed`, so
+  the container actually ran `weed weed mini` and exited with "unknown
+  subcommand" — the S3 gateway never came up. The command is now `mini`
+  (the ENTRYPOINT supplies the `weed` prefix), which starts the S3
+  gateway on `:8333` and pre-creates the bucket again.
+
+### Changed
+
+- Bumped version constant to `0.0.10` (reflected in `pier --version`,
+  `cmd/pier/main_test.go`, and the README status line).
+
 ## v0.0.9 (2026-08-30)
 
 ### Added

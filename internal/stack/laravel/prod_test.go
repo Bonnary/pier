@@ -849,13 +849,13 @@ func TestGenerateProdFilesS3ConfiguresEnvAndBucket(t *testing.T) {
 	if !ok {
 		t.Fatalf("s3 service missing from prod compose:\n%s", got.Contents)
 	}
-	wantCmd := []string{"weed", "mini", "-dir=/data"}
+	wantCmd := []string{"mini", "-dir=/data"}
 	if len(s3.Command) != len(wantCmd) {
 		t.Errorf("prod s3 command = %v, want %v", s3.Command, wantCmd)
 	} else {
 		for i := range wantCmd {
 			if s3.Command[i] != wantCmd[i] {
-				t.Errorf("prod s3 command[%d] = %q, want %q (weed mini starts the S3 gateway and pre-creates the bucket)", i, s3.Command[i], wantCmd[i])
+				t.Errorf("prod s3 command[%d] = %q, want %q (the image ENTRYPOINT already execs `weed`; `mini` starts the S3 gateway and pre-creates the bucket)", i, s3.Command[i], wantCmd[i])
 			}
 		}
 	}
