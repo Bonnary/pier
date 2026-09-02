@@ -45,7 +45,7 @@ func TestTagRetagsLatestToSHAAndCurrent(t *testing.T) {
 	if len(f.cmds) != 1 {
 		t.Fatalf("Tag ran %d commands, want 1", len(f.cmds))
 	}
-	want := "docker tag myapp:latest myapp:abc1234 && docker tag myapp:latest myapp:current"
+	want := "docker tag 'myapp':latest 'myapp':'abc1234' && docker tag 'myapp':latest 'myapp':current"
 	if f.cmds[0] != want {
 		t.Errorf("Tag command = %q, want %q", f.cmds[0], want)
 	}

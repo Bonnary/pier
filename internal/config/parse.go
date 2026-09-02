@@ -157,6 +157,12 @@ func (c *Config) validateDeployEnv(env string, dc DeployConfig) error {
 	if dc.QueueWorkers < 0 || dc.QueueWorkers > MaxQueueWorkers {
 		return fmt.Errorf("%w: deploy.%s.queue_workers = %d, must be in 0..%d (0 = inherit)", ErrConfigInvalid, env, dc.QueueWorkers, MaxQueueWorkers)
 	}
+	if dc.Port < 0 || dc.Port > 65535 {
+		return fmt.Errorf("%w: deploy.%s.port = %d, must be in 0..65535 (0 = 22)", ErrConfigInvalid, env, dc.Port)
+	}
+	if dc.BuildPort < 0 || dc.BuildPort > 65535 {
+		return fmt.Errorf("%w: deploy.%s.build_port = %d, must be in 0..65535 (0 = 22)", ErrConfigInvalid, env, dc.BuildPort)
+	}
 	if dc.BuilderMode() == "build_server" && (dc.BuildHost == "" || dc.BuildUser == "" || dc.BuildPath == "") {
 		return fmt.Errorf("%w: deploy.%s.builder = \"build_server\" requires build_host, build_user, and build_path", ErrConfigInvalid, env)
 	}

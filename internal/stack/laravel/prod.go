@@ -47,7 +47,7 @@ func (s *Stack) GenerateProdFiles(cfg config.Config, env string) (stack.Files, e
 
 	return stack.Files{
 		{Path: "docker-compose.prod.yml", Contents: compose, Mode: 0644},
-		{Path: ".env.production", Contents: envFile, Mode: 0644},
+		{Path: ".env.production", Contents: envFile, Mode: 0600},
 		{Path: ".env.production.example", Contents: envExample, Mode: 0644},
 		{Path: "docker/caddy/Caddyfile", Contents: caddyfile, Mode: 0644},
 		{Path: "config/trustedproxy.php", Contents: trustedProxies, Mode: 0644},

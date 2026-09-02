@@ -26,7 +26,7 @@ rollback. It is a single, self-contained Go binary — no Composer
 dependency, no daemon, no telemetry, no network calls beyond SSH and the
 Docker CLI.
 
-> **Status:** `v0.0.10` — under active development. The Laravel
+> **Status:** `v0.0.11` — under active development. The Laravel
 > stack is feature-complete for the documented workflows; other stacks
 > (Node, Python, Rails, etc.) are explicitly out of scope for v1.
 
@@ -191,7 +191,7 @@ sudo mv pier /usr/local/bin/
 
 ```bash
 pier --version
-# pier 0.0.10
+# pier 0.0.11
 ```
 
 ---
@@ -301,6 +301,7 @@ user   = "deploy"
 path   = "/srv/myapp"
 branch = "main"
 services = ["redis", "queue"]   # optional; absent = inherit [stack].services
+# port = 8282   # optional: SSH port for the host; absent = 22
 # queue_workers = 4   # optional; absent = inherit [stack].queue_workers
 # domain = "myapp.example.com"   # optional: serves HTTPS (Let's Encrypt); absent = plain HTTP by IP
 # redirect_domains = ["www.myapp.example.com"]   # optional: served and redirected to the domain
@@ -312,6 +313,7 @@ laravel = 443   # only the keys the user writes are applied
 ```
 
 `[deploy.<env>]` fields: `host`, `user`, `path`, `branch`, optional
+`port` (the SSH port used to reach the host; 22 when absent), optional
 `domain` / `redirect_domains`, and optional `ports` overrides. HTTPS is
 implied by domain presence: when `domain` is
 non-empty, Caddy serves HTTPS with an automatic Let's Encrypt
@@ -331,7 +333,9 @@ key is removed — delete it and set (or blank) the domain instead.
 deploy host itself. `"local_machine"` builds on the machine running
 `pier` (Docker required locally). `"build_server"` builds on a
 dedicated machine configured with `build_host`, `build_user`, and
-`build_path` (the path the source tree is synced to and built in).
+`build_path` (the path the source tree is synced to and built in), plus
+an optional `build_port` for the build server's SSH port (22 when
+absent).
 Both image modes sync only the deploy files (`docker-compose.prod.yml`,
 `.env.production`, `docker/caddy/Caddyfile`) to the host, stream
 the built image over SSH, and render the prod compose with

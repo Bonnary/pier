@@ -97,6 +97,8 @@ type DeployConfig struct {
 	User   string `toml:"user"`
 	Path   string `toml:"path"`
 	Branch string `toml:"branch"`
+	// Port is the SSH port used to reach the deploy host. 0 means 22.
+	Port int `toml:"port"`
 	// Domain is the env's public domain. A non-empty domain means
 	// Caddy serves HTTPS with an automatic Let's Encrypt certificate;
 	// an empty one means plain HTTP by IP.
@@ -118,6 +120,9 @@ type DeployConfig struct {
 	BuildHost string `toml:"build_host"`
 	BuildUser string `toml:"build_user"`
 	BuildPath string `toml:"build_path"`
+	// BuildPort is the SSH port used to reach the build server.
+	// 0 means 22.
+	BuildPort int `toml:"build_port"`
 	// Services, when present, is the full list of sidecar services
 	// for this env, overriding [stack].services. When absent the env
 	// inherits [stack].services. An explicitly empty list means the

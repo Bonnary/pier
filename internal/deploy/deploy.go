@@ -114,13 +114,13 @@ func (p *Pipeline) Run(ctx context.Context) error {
 	var syncErr error
 	switch p.DeployEnv.BuilderMode() {
 	case "host_server":
-		syncErr = client.SyncDir(ctx, ".", p.DeployEnv.Path, rsyncExcludes)
+		syncErr = client.SyncDir(ctx, ".", p.DeployEnv.Path, syncExcludes)
 	case "local_machine":
 		// The host only needs the deploy files; the build runs from
 		// the local working tree.
 		syncErr = client.SyncDir(ctx, ".", p.DeployEnv.Path, deployFilesOnly)
 	case "build_server":
-		if syncErr = p.buildClient.SyncDir(ctx, ".", p.DeployEnv.BuildPath, rsyncExcludes); syncErr == nil {
+		if syncErr = p.buildClient.SyncDir(ctx, ".", p.DeployEnv.BuildPath, syncExcludes); syncErr == nil {
 			syncErr = client.SyncDir(ctx, ".", p.DeployEnv.Path, deployFilesOnly)
 		}
 	}
@@ -397,7 +397,7 @@ func (p *Pipeline) transfer(ctx context.Context, hostClient *Client) error {
 		return err
 	}
 	p.Logger.Log("transfer", "image %s (%d bytes) loaded on %s", image, n, p.SSH.Host)
-	if _, _, err := hostClient.Run(ctx, "docker tag "+image+" "+p.Config.Project.Name+":current"); err != nil {
+	if _, _, err := hostClient.Run(ctx, "docker tag "+quoteShell(image)+" "+quoteShell(p.Config.Project.Name)+":current"); err != nil {
 		p.Logger.PhaseEnd("transfer", err)
 		return fmt.Errorf("transfer: retag current: %w", err)
 	}

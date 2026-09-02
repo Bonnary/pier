@@ -26,6 +26,9 @@ func tomlEncode(c config.Config) ([]byte, error) {
 		fmt.Fprintf(&b, "user = %q\n", dc.User)
 		fmt.Fprintf(&b, "path = %q\n", dc.Path)
 		fmt.Fprintf(&b, "branch = %q\n", dc.Branch)
+		if dc.Port > 0 {
+			fmt.Fprintf(&b, "port = %d\n", dc.Port)
+		}
 		if dc.Domain != "" {
 			fmt.Fprintf(&b, "domain = %q\n", dc.Domain)
 		}
@@ -44,6 +47,9 @@ func tomlEncode(c config.Config) ([]byte, error) {
 		}
 		if dc.BuildPath != "" {
 			fmt.Fprintf(&b, "build_path = %q\n", dc.BuildPath)
+		}
+		if dc.BuildPort > 0 {
+			fmt.Fprintf(&b, "build_port = %d\n", dc.BuildPort)
 		}
 		if dc.Services != nil {
 			fmt.Fprintf(&b, "services = %s\n", tomlStringArray(dc.Services))

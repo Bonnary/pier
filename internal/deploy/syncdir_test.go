@@ -46,7 +46,7 @@ func TestSyncDirUploadsTree(t *testing.T) {
 	}
 	defer c.Close()
 
-	if err := c.SyncDir(context.Background(), local, remote, rsyncExcludes); err != nil {
+	if err := c.SyncDir(context.Background(), local, remote, syncExcludes); err != nil {
 		t.Fatalf("SyncDir: %v", err)
 	}
 
@@ -89,7 +89,7 @@ func TestSyncDirPreservesMode(t *testing.T) {
 	}
 	defer c.Close()
 
-	if err := c.SyncDir(context.Background(), local, remote, rsyncExcludes); err != nil {
+	if err := c.SyncDir(context.Background(), local, remote, syncExcludes); err != nil {
 		t.Fatalf("SyncDir: %v", err)
 	}
 	info, err := os.Stat(filepath.Join(remote, rel))
@@ -129,7 +129,7 @@ func TestSyncDirRecreatesSymlinks(t *testing.T) {
 	}
 	defer c.Close()
 
-	if err := c.SyncDir(context.Background(), local, remote, rsyncExcludes); err != nil {
+	if err := c.SyncDir(context.Background(), local, remote, syncExcludes); err != nil {
 		t.Fatalf("SyncDir: %v", err)
 	}
 	remoteLink := filepath.Join(remote, "public", "storage")
@@ -148,7 +148,7 @@ func TestSyncDirRecreatesSymlinks(t *testing.T) {
 		t.Errorf("remote symlink target = %q, want %q", got, target)
 	}
 
-	if err := c.SyncDir(context.Background(), local, remote, rsyncExcludes); err != nil {
+	if err := c.SyncDir(context.Background(), local, remote, syncExcludes); err != nil {
 		t.Fatalf("second SyncDir: %v", err)
 	}
 	info, err = os.Lstat(remoteLink)
@@ -205,7 +205,7 @@ func TestSyncDirReplacesStaleFileWithSymlink(t *testing.T) {
 	}
 	defer c.Close()
 
-	if err := c.SyncDir(context.Background(), local, remote, rsyncExcludes); err != nil {
+	if err := c.SyncDir(context.Background(), local, remote, syncExcludes); err != nil {
 		t.Fatalf("SyncDir: %v", err)
 	}
 	info, err := os.Lstat(remoteLink)
@@ -239,7 +239,7 @@ func TestSyncDirEmptyLocalKeepsNothing(t *testing.T) {
 	}
 	defer c.Close()
 
-	if err := c.SyncDir(context.Background(), t.TempDir(), remote, rsyncExcludes); err != nil {
+	if err := c.SyncDir(context.Background(), t.TempDir(), remote, syncExcludes); err != nil {
 		t.Fatalf("SyncDir: %v", err)
 	}
 	entries, err := os.ReadDir(remote)
@@ -248,5 +248,61 @@ func TestSyncDirEmptyLocalKeepsNothing(t *testing.T) {
 	}
 	if len(entries) != 0 {
 		t.Errorf("remote has %d entries, want 0", len(entries))
+	}
+}
+
+// TestSyncDirRefusesWriteThroughSymlink reproduces the F4 write-through
+// attack: deploy A ships an absolute symlink (evil -> /tmp/<attacker>),
+// deploy B replaces it with a real directory containing a file. SyncDir
+// must refuse to write through the symlinked parent on the remote side,
+// so the file never lands in the attacker-chosen target directory.
+func TestSyncDirRefusesWriteThroughSymlink(t *testing.T) {
+	addr := startSSHServer(t, passwordOnlyServer())
+	host, port := testAddr(t, addr)
+	remote := t.TempDir()
+	local := t.TempDir()
+	targetDir := t.TempDir() // stands in for /home/deploy/.ssh
+
+	target := targetDir // absolute symlink target
+	link := filepath.Join(local, "evil")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlink not supported: %v", err)
+	}
+
+	c, err := Dial(context.Background(), SSHConfig{
+		Host: host, User: "deploy", Port: port,
+		KeyPath:  writeTestKeyPath(t),
+		Password: "secret",
+	})
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	defer c.Close()
+
+	// Deploy A: ship the symlink.
+	if err := c.SyncDir(context.Background(), local, remote, syncExcludes); err != nil {
+		t.Fatalf("SyncDir (deploy A): %v", err)
+	}
+
+	// Deploy B: replace the local symlink with a real directory holding a
+	// file, as if the repo now ships evil/authorized_keys.
+	if err := os.Remove(link); err != nil {
+		t.Fatal(err)
+	}
+	realDir := filepath.Join(local, "evil")
+	if err := os.MkdirAll(realDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	secret := filepath.Join(realDir, "authorized_keys")
+	if err := os.WriteFile(secret, []byte("ssh-ed25519 ATTACKERKEY"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	err = c.SyncDir(context.Background(), local, remote, syncExcludes)
+	if err == nil {
+		t.Fatal("SyncDir (deploy B) = nil error, want error refusing to write through symlinked parent")
+	}
+	if _, serr := os.Stat(filepath.Join(targetDir, "authorized_keys")); !os.IsNotExist(serr) {
+		t.Fatalf("attacker file written through symlink into target dir: %v", serr)
 	}
 }

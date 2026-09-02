@@ -27,7 +27,7 @@ func Rollback(ctx context.Context, st stateStore, r runner, dir, project, target
 	if state == nil || !state.HasPrevious() {
 		return fmt.Errorf("deploy: rollback: no previous deploy to roll back to")
 	}
-	cmd := fmt.Sprintf("cd %s && docker tag %s:%s %s:%s", dir, project, state.Previous, project, target)
+	cmd := fmt.Sprintf("%sdocker tag %s:%s %s:%s", remotePrefix(dir), quoteShell(project), quoteShell(state.Previous), quoteShell(project), quoteShell(target))
 	if _, _, err := r.Run(ctx, cmd); err != nil {
 		return fmt.Errorf("deploy: rollback tag: %w", err)
 	}

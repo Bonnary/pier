@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
-	"strings"
 )
 
 // Build runs `docker compose --env-file .env.production -f
@@ -14,7 +13,7 @@ import (
 // The --env-file is passed so ${...} interpolation in the compose file
 // resolves instead of warning; --pull keeps the image fresh.
 func Build(ctx context.Context, r runner, dir, project, sha string, onLine func(string)) error {
-	cmd := fmt.Sprintf("cd %s && docker compose --env-file %s -f %s build --pull", dir, remoteEnvFile, remoteComposeFile)
+	cmd := fmt.Sprintf("%sdocker compose --env-file %s -f %s build --pull", remotePrefix(dir), remoteEnvFile, remoteComposeFile)
 	return r.RunStream(ctx, cmd, onLine)
 }
 
@@ -22,7 +21,7 @@ func Build(ctx context.Context, r runner, dir, project, sha string, onLine func(
 // (the immutable deploy record) and to <project>:current (the live
 // alias that Rollback overwrites).
 func Tag(ctx context.Context, r runner, project, sha string) error {
-	tag := fmt.Sprintf("docker tag %s:latest %s:%s && docker tag %s:latest %s:current", project, project, sha, project, project)
+	tag := fmt.Sprintf("docker tag %s:%s %s:%s && docker tag %s:%s %s:%s", quoteShell(project), "latest", quoteShell(project), quoteShell(sha), quoteShell(project), "latest", quoteShell(project), "current")
 	_, _, err := r.Run(ctx, tag)
 	return err
 }
@@ -83,7 +82,12 @@ func BuildLocalImage(ctx context.Context, dir, php, project, sha string, onLine 
 // RemoteBuildImage runs plain `docker build` on a remote build server
 // inside dir (the synced project root), streaming output lines to
 // onLine. Used as the build stage of the build_server builder mode.
+// dir, php, project, and sha are shell-quoted so a hostile value in
+// pier.toml cannot inject commands into the remote shell (F2).
 func RemoteBuildImage(ctx context.Context, r runner, dir, php, project, sha string, onLine func(string)) error {
-	cmd := "cd " + dir + " && docker " + strings.Join(imageBuildArgs(php, project, sha), " ")
+	cmd := remotePrefix(dir) + "docker build --pull -f " +
+		quoteShell("docker/"+php+"/Dockerfile.prod") +
+		" --build-arg WWWUSER=1337 --build-arg WWWGROUP=1337 -t " +
+		quoteShell(project+":"+sha) + " ."
 	return r.RunStream(ctx, cmd, onLine)
 }

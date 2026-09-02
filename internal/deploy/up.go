@@ -31,11 +31,11 @@ import (
 // sidecars the per-env render dropped — while named volumes
 // (mysql_data, s3_data, ...) are preserved.
 func Up(ctx context.Context, r runner, dir string) error {
-	cmd := fmt.Sprintf("cd %s && docker compose --env-file %s -f %s up -d --wait --wait-timeout 120 --remove-orphans", dir, remoteEnvFile, remoteComposeFile)
+	cmd := fmt.Sprintf("%sdocker compose --env-file %s -f %s up -d --wait --wait-timeout 120 --remove-orphans", remotePrefix(dir), remoteEnvFile, remoteComposeFile)
 	if _, _, err := r.Run(ctx, cmd); err != nil {
 		return err
 	}
-	reload := fmt.Sprintf("cd %s && docker compose --env-file %s -f %s exec -T webserver caddy reload --config /etc/caddy/Caddyfile || true", dir, remoteEnvFile, remoteComposeFile)
+	reload := fmt.Sprintf("%sdocker compose --env-file %s -f %s exec -T webserver caddy reload --config /etc/caddy/Caddyfile || true", remotePrefix(dir), remoteEnvFile, remoteComposeFile)
 	_, _, err := r.Run(ctx, reload)
 	return err
 }

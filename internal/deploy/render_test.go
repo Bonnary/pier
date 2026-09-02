@@ -35,6 +35,15 @@ func TestRenderProdFilesWritesMergedComposeAndEnv(t *testing.T) {
 	if !strings.Contains(string(env), "DB_CONNECTION=pgsql") {
 		t.Errorf("env file missing pgsql connection:\n%s", env)
 	}
+	// F5: the secret env file must not be world-readable on a shared
+	// host or workstation.
+	info, err := os.Stat(filepath.Join(dir, ".env.production"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Errorf(".env.production mode = %v, want 0600", info.Mode().Perm())
+	}
 	// The trustedproxy config is baked into the local build context
 	// (Dockerfile.prod COPYs . into the image), so render must ensure it
 	// exists on projects that predate the fix (pier init refuses to

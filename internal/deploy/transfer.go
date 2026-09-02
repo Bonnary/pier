@@ -38,7 +38,7 @@ type remoteSaver struct {
 }
 
 func (s remoteSaver) Save(ctx context.Context, image string, sink io.Writer, onLine func(string)) error {
-	return s.c.StreamOut(ctx, "docker save "+image, sink, onLine)
+	return s.c.StreamOut(ctx, "docker save "+quoteShell(image), sink, onLine)
 }
 
 // saveLocal runs `docker save <image>` locally in dir, streaming the

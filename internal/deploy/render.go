@@ -113,7 +113,10 @@ func renderProdFiles(dir string, cfg *config.Config, env string) error {
 		return fmt.Errorf("render: read %s: %w", envPath, err)
 	}
 	mergedEnv := laravelpkg.MergeEnvFile(string(existingEnv), freshEnv)
-	if err := os.WriteFile(envPath, []byte(mergedEnv), 0644); err != nil {
+	// .env.production holds secrets (APP_KEY, DB_PASSWORD, AWS creds);
+	// write it 0600 so a shared host/workstation cannot read it, and the
+	// SFTP sync preserves the mode on the deploy host.
+	if err := os.WriteFile(envPath, []byte(mergedEnv), 0600); err != nil {
 		return fmt.Errorf("render: write %s: %w", envPath, err)
 	}
 	return nil

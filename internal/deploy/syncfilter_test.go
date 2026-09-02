@@ -23,9 +23,11 @@ func TestPathExcluded(t *testing.T) {
 		{".DS_Store", true},
 		{"sub/dir/.env.production", false},
 		{"sub/dir/.env.local", true},
+		{".pier/state.json", true},
+		{".pier", true}, // dir itself pruned; nothing under it ships
 	}
 	for _, c := range cases {
-		if got := pathExcluded(c.path, rsyncExcludes); got != c.want {
+		if got := pathExcluded(c.path, syncExcludes); got != c.want {
 			t.Errorf("pathExcluded(%q) = %v, want %v", c.path, got, c.want)
 		}
 	}

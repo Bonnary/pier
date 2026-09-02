@@ -10,11 +10,13 @@ import (
 	"io/fs"
 	"net"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/knownhosts"
 )
 
 // SSHConfig is everything Dial needs to open a connection: target
@@ -22,7 +24,11 @@ import (
 // and the TCP port (0 means 22). When the server rejects the key
 // (or the key file does not exist), Dial falls back to a password:
 // Password wins, then PasswordPrompt (which may be nil to forbid
-// prompting).
+// prompting). KnownHostsPath names the OpenSSH known_hosts file to
+// verify the remote host against; when it is set, the host key is
+// verified trust-on-first-use (TOFU) — an unknown host is accepted and
+// recorded, a known host whose key changed is rejected (MITM defense,
+// F3). When empty, the host key is not verified.
 type SSHConfig struct {
 	Host           string
 	User           string
@@ -30,6 +36,7 @@ type SSHConfig struct {
 	Port           int
 	Password       string
 	PasswordPrompt func() (string, error)
+	KnownHostsPath string
 }
 
 func (c *SSHConfig) port() int {
@@ -54,13 +61,14 @@ type Client struct {
 }
 
 // Dial opens an SSH connection to cfg and returns a ready Client.
-// The host key is NOT verified (InsecureIgnoreHostKey) — the
-// out-of-scope v1 list explicitly defers strict host-key checking.
-// Key auth is tried first; if the key file is missing or the server
-// rejects every offered key (an auth-class failure), Dial falls back
-// to the password from cfg.Password or cfg.PasswordPrompt and retries
-// once. A password fallback is attempted only when a password source
-// exists; otherwise the original handshake error is returned.
+// When cfg.KnownHostsPath is set the remote host key is verified
+// trust-on-first-use (F3); the CLI always sets it to
+// ~/.ssh/known_hosts. Key auth is tried first; if the key file is
+// missing or the server rejects every offered key (an auth-class
+// failure), Dial falls back to the password from cfg.Password or
+// cfg.PasswordPrompt and retries once. A password fallback is
+// attempted only when a password source exists; otherwise the
+// original handshake error is returned.
 func Dial(ctx context.Context, cfg SSHConfig) (*Client, error) {
 	if cfg.Host == "" {
 		return nil, fmt.Errorf("%w: empty host", ErrPreflight)
@@ -117,6 +125,10 @@ func Dial(ctx context.Context, cfg SSHConfig) (*Client, error) {
 // with the given auth methods. The TCP connection is closed on
 // handshake failure.
 func dialOnce(ctx context.Context, addr string, cfg SSHConfig, auth []ssh.AuthMethod) (*ssh.Client, error) {
+	cb, err := hostKeyCallback(cfg)
+	if err != nil {
+		return nil, err
+	}
 	d := net.Dialer{Timeout: 10 * time.Second}
 	tcpConn, err := d.DialContext(ctx, "tcp", addr)
 	if err != nil {
@@ -125,13 +137,91 @@ func dialOnce(ctx context.Context, addr string, cfg SSHConfig, auth []ssh.AuthMe
 	ncc, chans, reqs, err := ssh.NewClientConn(tcpConn, addr, &ssh.ClientConfig{
 		User:            cfg.User,
 		Auth:            auth,
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		HostKeyCallback: cb,
 	})
 	if err != nil {
 		tcpConn.Close()
 		return nil, err
 	}
 	return ssh.NewClient(ncc, chans, reqs), nil
+}
+
+// hostKeyCallback returns the HostKeyCallback for a connection. When
+// cfg.KnownHostsPath is set it verifies the remote host trust-on-first-
+// use (F3); otherwise it accepts any key (the historical, insecure
+// behavior used by internal/test callers that do not name a known_hosts
+// file — the CLI always sets KnownHostsPath).
+func hostKeyCallback(cfg SSHConfig) (ssh.HostKeyCallback, error) {
+	if cfg.KnownHostsPath == "" {
+		return ssh.InsecureIgnoreHostKey(), nil
+	}
+	return tofuHostKeyCallback(cfg.KnownHostsPath)
+}
+
+// tofuHostKeyCallback verifies the remote host against the OpenSSH
+// known_hosts file at path, trust-on-first-use: an unknown host is
+// accepted and its key recorded, a known host whose key changed is
+// rejected (a possible MITM). The file (and its parent directory) is
+// created on first use if missing. The known_hosts file is re-read on
+// every check so a key recorded by a prior connection in the same
+// process is honored.
+func tofuHostKeyCallback(path string) (ssh.HostKeyCallback, error) {
+	if err := ensureKnownHostsFile(path); err != nil {
+		return nil, err
+	}
+	return func(hostname string, remote net.Addr, key ssh.PublicKey) error {
+		check, err := knownhosts.New(path)
+		if err != nil {
+			return fmt.Errorf("deploy: load known_hosts %s: %w", path, err)
+		}
+		err = check(hostname, remote, key)
+		if err == nil {
+			return nil
+		}
+		var ke *knownhosts.KeyError
+		if !errors.As(err, &ke) || len(ke.Want) > 0 {
+			// Known host with a different key, or a revoked key: reject.
+			return err
+		}
+		// Unknown host: TOFU — accept and record the key.
+		if err := appendKnownHost(path, hostname, key); err != nil {
+			return fmt.Errorf("deploy: record host key for %s: %w", hostname, err)
+		}
+		return nil
+	}, nil
+}
+
+// ensureKnownHostsFile creates path (and its parent) with 0600 when it
+// does not yet exist, so knownhosts.New can read it on first use.
+func ensureKnownHostsFile(path string) error {
+	if _, err := os.Stat(path); err == nil {
+		return nil
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	if dir := filepath.Dir(path); dir != "." && dir != "" {
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			return err
+		}
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY, 0600)
+	if err != nil {
+		return err
+	}
+	return f.Close()
+}
+
+// appendKnownHost appends the host key line for hostname to the
+// known_hosts file at path, creating it with 0600 if needed.
+func appendKnownHost(path, hostname string, key ssh.PublicKey) error {
+	line := knownhosts.Line([]string{hostname}, key)
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = f.WriteString(line)
+	return err
 }
 
 // isAuthFailure reports whether err is an SSH authentication-class

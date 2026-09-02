@@ -66,6 +66,12 @@ func TestLoadFull(t *testing.T) {
 	if prod.Host != "prod.example.com" || prod.User != "deploy" || prod.Path != "/srv/myapp" || prod.Branch != "main" {
 		t.Errorf("production = %+v", prod)
 	}
+	if got := prod.Port; got != 8282 {
+		t.Errorf("production.Port = %d, want 8282", got)
+	}
+	if got := prod.BuildPort; got != 0 {
+		t.Errorf("production.BuildPort = %d, want 0 (unset)", got)
+	}
 	staging, ok := cfg.Deploy["staging"]
 	if !ok {
 		t.Fatal(`Deploy["staging"] missing`)
@@ -519,6 +525,35 @@ func TestValidateQueueWorkers(t *testing.T) {
 	c.Deploy = map[string]DeployConfig{"production": {QueueWorkers: MaxQueueWorkers + 1}}
 	if err := c.Validate(); !errors.Is(err, ErrConfigInvalid) {
 		t.Errorf("Validate(deploy queue_workers=%d) = %v, want ErrConfigInvalid", MaxQueueWorkers+1, err)
+	}
+}
+
+func TestValidateDeploySSHPorts(t *testing.T) {
+	base := &Config{
+		Project: ProjectConfig{Name: "x"},
+		Stack:   StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+	}
+	for _, tc := range []struct {
+		name string
+		dc   DeployConfig
+		want bool
+	}{
+		{"port 0 defaults to 22", DeployConfig{Host: "h", User: "u", Path: "p", Branch: "b"}, true},
+		{"port 8282 valid", DeployConfig{Host: "h", User: "u", Path: "p", Branch: "b", Port: 8282}, true},
+		{"build_port 8282 valid", DeployConfig{Host: "h", User: "u", Path: "p", Branch: "b", BuildPort: 8282}, true},
+		{"negative port", DeployConfig{Host: "h", User: "u", Path: "p", Branch: "b", Port: -1}, false},
+		{"too-large port", DeployConfig{Host: "h", User: "u", Path: "p", Branch: "b", Port: 65536}, false},
+		{"too-large build_port", DeployConfig{Host: "h", User: "u", Path: "p", Branch: "b", BuildPort: 65536}, false},
+	} {
+		cfg := *base
+		cfg.Deploy = map[string]DeployConfig{"production": tc.dc}
+		err := cfg.Validate()
+		if tc.want && err != nil {
+			t.Errorf("%s: Validate = %v, want nil", tc.name, err)
+		}
+		if !tc.want && !errors.Is(err, ErrConfigInvalid) {
+			t.Errorf("%s: Validate = %v, want ErrConfigInvalid", tc.name, err)
+		}
 	}
 }
 

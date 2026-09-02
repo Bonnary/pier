@@ -387,7 +387,7 @@ func TestPipelineRunsHooksAtCorrectStages(t *testing.T) {
 	if !strings.Contains(fs.cmds[0], "build --pull") {
 		t.Errorf("command 0 = %q, want the build command", fs.cmds[0])
 	}
-	if !strings.Contains(fs.cmds[1], "docker tag x:latest x:") {
+	if !strings.Contains(fs.cmds[1], "docker tag 'x':latest 'x':'") {
 		t.Errorf("command 1 = %q, want the docker tag command", fs.cmds[1])
 	}
 	wantBefore := "cd '" + remote + "' && docker compose --env-file .env.production -f docker-compose.prod.yml exec -T app 'php' 'artisan' 'down'"
@@ -633,7 +633,7 @@ func TestPipelineAfterDeployFailureRollsBackToPrevious(t *testing.T) {
 	if len(fs.cmds) != 8 {
 		t.Fatalf("recorded commands = %q, want exactly 8 (build, tag, up, reload, failing hook, rollback tag, up, reload)", fs.cmds)
 	}
-	if !strings.Contains(fs.cmds[5], "docker tag x:old x:latest") {
+	if !strings.Contains(fs.cmds[5], "docker tag 'x':'old' 'x':'latest'") {
 		t.Errorf("command 5 = %q, want the rollback retag of the previous image to the host_server :latest tag", fs.cmds[5])
 	}
 	if !strings.Contains(fs.cmds[6], "up -d --wait") {

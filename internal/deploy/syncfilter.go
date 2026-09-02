@@ -2,14 +2,17 @@ package deploy
 
 import "strings"
 
-// rsyncExcludes is the default set of paths pier skips when syncing
-// the project tree to the deploy host: version control, build
-// artifacts, secrets, editor state, and macOS metadata. .env.production
-// is allowed through; everything else starting with .env is dropped.
-// The list keeps the rsync CLI shape (--include= / --exclude=) so it
-// stays recognizable; pathExcluded interprets it directly.
-var rsyncExcludes = []string{
+// syncExcludes is the default set of paths pier skips when syncing
+// the project tree to the deploy host: version control, the deploy
+// record (.pier, which must stay server-side so a malicious repo
+// cannot overwrite it), build artifacts, secrets, editor state, and
+// macOS metadata. .env.production is allowed through; everything else
+// starting with .env is dropped. The list keeps the rsync CLI shape
+// (--include= / --exclude=) so it stays recognizable; pathExcluded
+// interprets it directly.
+var syncExcludes = []string{
 	"--exclude=.git",
+	"--exclude=.pier",
 	"--exclude=node_modules",
 	"--exclude=vendor",
 	"--exclude=.env",

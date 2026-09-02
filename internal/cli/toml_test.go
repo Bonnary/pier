@@ -143,3 +143,44 @@ func TestTomlEncodeRendersDeployDomain(t *testing.T) {
 		t.Errorf("Deploy[staging].Domain = %q, want \"\" (no domain = plain HTTP) after round trip", got)
 	}
 }
+
+func TestTomlEncodeRoundTripsDeploySSHPorts(t *testing.T) {
+	cfg := config.Config{
+		Project: config.ProjectConfig{Name: "x"},
+		Stack:   config.StackConfig{Type: "laravel", PHP: "8.3", Node: "22"},
+		Deploy: map[string]config.DeployConfig{
+			"production": {
+				Host: "h", User: "u", Path: "/srv/x", Branch: "main",
+				Port: 8282, BuildPort: 8822,
+			},
+			"staging": {Host: "s", User: "u", Path: "/srv/x", Branch: "main"},
+		},
+	}
+	b, err := tomlEncode(cfg)
+	if err != nil {
+		t.Fatalf("tomlEncode: %v", err)
+	}
+	path := filepath.Join(t.TempDir(), "pier.toml")
+	if err := os.WriteFile(path, b, 0644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("config.Load: %v\nencoded:\n%s", err, b)
+	}
+	prod := got.Deploy["production"]
+	if prod.Port != 8282 {
+		t.Errorf("Deploy[production].Port = %d, want 8282 after round trip\nencoded:\n%s", prod.Port, b)
+	}
+	if prod.BuildPort != 8822 {
+		t.Errorf("Deploy[production].BuildPort = %d, want 8822 after round trip\nencoded:\n%s", prod.BuildPort, b)
+	}
+	if got.Deploy["staging"].Port != 0 || got.Deploy["staging"].BuildPort != 0 {
+		t.Errorf("Deploy[staging] ports = (%d,%d), want (0,0) (absent = 22)\nencoded:\n%s", got.Deploy["staging"].Port, got.Deploy["staging"].BuildPort, b)
+	}
+	for _, sec := range strings.Split(string(b), "\n[deploy.") {
+		if strings.HasPrefix(sec, "staging]") && (strings.Contains(sec, "port") || strings.Contains(sec, "build_port")) {
+			t.Errorf("staging section must not emit port keys (0 = 22); got:\n%s", b)
+		}
+	}
+}

@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"golang.org/x/term"
 
@@ -33,12 +34,16 @@ func readPassword(prompt string) (string, error) {
 // newSSHConfig builds the SSHConfig for a deploy env: target host
 // and user from [deploy.<env>], key path from sshKeyPath, and an
 // interactive password prompt that Dial falls back to when the
-// server rejects the key. The password is never stored.
+// server rejects the key. The password is never stored. KnownHostsPath
+// points at the user's OpenSSH known_hosts file so the remote host's
+// key is verified trust-on-first-use (F3).
 func newSSHConfig(dc config.DeployConfig) deploy.SSHConfig {
 	return deploy.SSHConfig{
-		Host:    dc.Host,
-		User:    dc.User,
-		KeyPath: sshKeyPath(),
+		Host:           dc.Host,
+		User:           dc.User,
+		Port:           dc.Port,
+		KeyPath:        sshKeyPath(),
+		KnownHostsPath: defaultKnownHostsPath(),
 		PasswordPrompt: func() (string, error) {
 			return readPassword(fmt.Sprintf("SSH password for %s@%s: ", dc.User, dc.Host))
 		},
@@ -51,11 +56,24 @@ func newSSHConfig(dc config.DeployConfig) deploy.SSHConfig {
 // are authenticating to.
 func newBuildSSHConfig(dc config.DeployConfig) deploy.SSHConfig {
 	return deploy.SSHConfig{
-		Host:    dc.BuildHost,
-		User:    dc.BuildUser,
-		KeyPath: sshKeyPath(),
+		Host:           dc.BuildHost,
+		User:           dc.BuildUser,
+		Port:           dc.BuildPort,
+		KeyPath:        sshKeyPath(),
+		KnownHostsPath: defaultKnownHostsPath(),
 		PasswordPrompt: func() (string, error) {
 			return readPassword(fmt.Sprintf("SSH password for %s@%s: ", dc.BuildUser, dc.BuildHost))
 		},
 	}
+}
+
+// defaultKnownHostsPath returns the user's OpenSSH known_hosts file
+// (~/.ssh/known_hosts), falling back to empty (no host-key verification)
+// if the home directory cannot be resolved.
+func defaultKnownHostsPath() string {
+	home, err := osUserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".ssh", "known_hosts")
 }

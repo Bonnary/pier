@@ -20,6 +20,7 @@ const (
 	sftpOpen     = 3
 	sftpClose    = 4
 	sftpWrite    = 6
+	sftpLstat    = 7
 	sftpRemove   = 13
 	sftpMkdir    = 14
 	sftpStat     = 17
@@ -171,6 +172,23 @@ func (s *openSSHRenameSFTP) run() {
 			if err := s.attrs(id, info); err != nil {
 				return
 			}
+		case sftpLstat:
+			// OpenSSH's sftp-server supports LSTAT; report the link
+			// itself so the client can refuse to write through a
+			// symlinked parent (F4).
+			path, _, ok := readSFTPString(body)
+			if !ok {
+				s.status(id, statusFailure, "bad lstat")
+				continue
+			}
+			info, err := os.Lstat(s.local(path))
+			if err != nil {
+				s.status(id, statusNoSuchFile, err.Error())
+				continue
+			}
+			if err := s.attrs(id, info); err != nil {
+				return
+			}
 		case sftpRename:
 			oldp, rest, ok := readSFTPString(body)
 			if !ok {
@@ -251,13 +269,16 @@ func (s *openSSHRenameSFTP) status(id uint32, code uint32, msg string) error {
 
 // attrs sends a SSH_FXP_ATTRS reply carrying just the permissions
 // attribute (mode + filetype bits), which is what pkg/sftp's client
-// consults for IsDir.
+// consults for IsDir and mode bits.
 func (s *openSSHRenameSFTP) attrs(id uint32, info os.FileInfo) error {
 	p := binary.BigEndian.AppendUint32(nil, 0x00000004) // SSH_FILEXFER_ATTR_PERMISSIONS
 	mode := uint32(info.Mode().Perm())
-	if info.IsDir() {
+	switch {
+	case info.Mode()&os.ModeSymlink != 0:
+		mode |= 0xA000 // S_IFLNK
+	case info.IsDir():
 		mode |= 0x4000 // S_IFDIR
-	} else {
+	default:
 		mode |= 0x8000 // S_IFREG
 	}
 	p = binary.BigEndian.AppendUint32(p, mode)

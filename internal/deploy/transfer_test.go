@@ -162,7 +162,7 @@ func TestPipelineTransferRetagsCurrentOnHost(t *testing.T) {
 	if got := string(fs.stdin()); got != "TAR" {
 		t.Errorf("docker load stdin = %q, want the save stream", got)
 	}
-	if len(fs.cmds) != 2 || fs.cmds[1] != "docker tag myapp:abc1234 myapp:current" {
-		t.Errorf("cmds = %q, want [docker load docker tag myapp:abc1234 myapp:current]", fs.cmds)
+	if len(fs.cmds) != 2 || fs.cmds[1] != "docker tag 'myapp:abc1234' 'myapp':current" {
+		t.Errorf("cmds = %q, want [docker load docker tag 'myapp:abc1234' 'myapp':current]", fs.cmds)
 	}
 }

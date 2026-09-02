@@ -1,4 +1,23 @@
 # Changelog
+## v0.0.11 (2026-09-02)
+
+### Added
+
+- `deploy.<env>.port` — SSH port for the deploy host (default 22), and
+  `deploy.<env>.builder.build_port` for the build server (default 22).
+
+### Security
+
+- SSH host keys are now verified trust-on-first-use against the user's
+  `~/.ssh/known_hosts` (MITM defense). A known host whose key changed is
+  rejected.
+- SFTP writes now reject symlinked parent directories on the remote side,
+  so compromised per-file paths cannot write through a symlink into
+  e.g. `~/.ssh/authorized_keys`.
+- `.env.production` is now written mode `0600` instead of `0644`; the SFTP
+  sync preserves the mode on the deploy host.
+
+## v0.0.10 (2026-08-30)
 
 ## v0.0.10 (2026-08-30)
 

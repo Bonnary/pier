@@ -43,13 +43,13 @@ type StatusReport struct {
 func RemoteStatus(ctx context.Context, de config.DeployConfig, health HealthConfig, r StatusRunner) (*StatusReport, error) {
 	rep := &StatusReport{}
 
-	out, _, err := r.Run(ctx, fmt.Sprintf("cd %s && docker compose --env-file %s -f %s ps", de.Path, remoteEnvFile, remoteComposeFile))
+	out, _, err := r.Run(ctx, fmt.Sprintf("%sdocker compose --env-file %s -f %s ps", remotePrefix(de.Path), remoteEnvFile, remoteComposeFile))
 	if err != nil {
 		return nil, fmt.Errorf("remote `docker compose ps` failed: %w", err)
 	}
 	rep.Containers = strings.TrimRight(string(out), "\n")
 
-	out, _, err = r.Run(ctx, fmt.Sprintf("df -h %s", de.Path))
+	out, _, err = r.Run(ctx, fmt.Sprintf("df -h %s", quoteShell(de.Path)))
 	if err != nil {
 		return nil, fmt.Errorf("remote `df -h` failed: %w", err)
 	}
@@ -61,7 +61,7 @@ func RemoteStatus(ctx context.Context, de config.DeployConfig, health HealthConf
 	}
 	rep.DockerDisk = strings.TrimRight(string(out), "\n")
 
-	out, _, err = r.Run(ctx, fmt.Sprintf("cat %s", filepath.Join(de.Path, stateFile)))
+	out, _, err = r.Run(ctx, fmt.Sprintf("cat %s", quoteShell(filepath.Join(de.Path, stateFile))))
 	if err == nil {
 		var s State
 		if jerr := json.Unmarshal(out, &s); jerr != nil {

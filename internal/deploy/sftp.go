@@ -95,10 +95,13 @@ func (c *Client) WriteFile(ctx context.Context, remotePath string, b []byte) err
 		return fmt.Errorf("sftp: %w", err)
 	}
 	defer sc.Close()
+	tmp := remotePath + ".tmp"
+	if err := rejectSymlinkedParents(sc, tmp); err != nil {
+		return err
+	}
 	if err := sc.MkdirAll(filepath.ToSlash(filepath.Dir(remotePath))); err != nil {
 		return fmt.Errorf("sftp mkdir %s: %w", filepath.Dir(remotePath), err)
 	}
-	tmp := remotePath + ".tmp"
 	f, err := sc.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC)
 	if err != nil {
 		return fmt.Errorf("sftp open %s: %w", tmp, err)
@@ -180,9 +183,39 @@ func putSFTPLink(sc *sftp.Client, localPath, remotePath string) error {
 	return nil
 }
 
+// rejectSymlinkedParents returns an error if any parent directory of
+// remotePath (the components above the file itself) is a symlink on the
+// remote side. OpenFile/WriteFile would otherwise follow a symlinked
+// parent and write attacker-controlled bytes into a directory outside
+// the deploy tree (e.g. ~/.ssh/authorized_keys) — the F4 write-through.
+// A component that does not yet exist is fine: MkdirAll creates real
+// directories for it. A symlink at the leaf path itself is handled by
+// the caller (putSFTPLink replaces it; WriteFile's .tmp is never a
+// symlink on a clean deploy).
+func rejectSymlinkedParents(sc *sftp.Client, remotePath string) error {
+	dir := filepath.ToSlash(filepath.Dir(remotePath))
+	for dir != "/" && dir != "." && dir != "" {
+		info, err := sc.Lstat(dir)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return nil
+			}
+			return fmt.Errorf("lstat %s: %w", dir, err)
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("refusing to write through symlinked directory %s", dir)
+		}
+		dir = filepath.ToSlash(filepath.Dir(dir))
+	}
+	return nil
+}
+
 // putSFTPFile writes one local file to the remote path, creating
 // parent directories, preserving mode and mtime.
 func putSFTPFile(sc *sftp.Client, localPath, remotePath string, info fs.FileInfo) error {
+	if err := rejectSymlinkedParents(sc, remotePath); err != nil {
+		return err
+	}
 	if err := sc.MkdirAll(filepath.ToSlash(filepath.Dir(remotePath))); err != nil {
 		return fmt.Errorf("mkdir %s: %w", filepath.Dir(remotePath), err)
 	}

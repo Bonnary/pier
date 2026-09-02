@@ -17,6 +17,7 @@ host = "prod.example.com"
 user = "deploy"
 path = "/srv/myapp"
 branch = "main"
+port = 8282
 domain = "myapp.example.com"
 
 [deploy.production.ports]
